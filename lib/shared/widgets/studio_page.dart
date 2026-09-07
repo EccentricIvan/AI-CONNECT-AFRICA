@@ -29,7 +29,31 @@ class EduImageBadge extends StatelessWidget {
         kEduIllustrationAsset,
         fit: BoxFit.cover,
         semanticLabel: 'Learning illustration',
+        // A 1.5 MB source painted at 52 px. Without a decode hint the full
+        // bitmap sits in memory, which matters on the 4 GB Android floor.
+        cacheWidth: (size * 3).round(),
       ),
+    );
+  }
+}
+
+/// The app logo, for the one header that stands in for the app itself.
+///
+/// The redesign replaced home's logo-and-wordmark lockup with a generic
+/// illustration, which dropped the branding `fc54a44` had deliberately added.
+class BrandBadge extends StatelessWidget {
+  const BrandBadge({super.key, this.size = 44});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/branding/ai-connect-africa-logo.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      semanticLabel: 'AI Connect Africa',
     );
   }
 }
@@ -118,6 +142,7 @@ class StudioPageHeader extends StatelessWidget {
     this.showNotifications = false,
     this.showEduImage = true,
     this.showBack = false,
+    this.leading,
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 12),
   });
 
@@ -128,6 +153,10 @@ class StudioPageHeader extends StatelessWidget {
   final bool showNotifications;
   final bool showEduImage;
   final bool showBack;
+
+  /// Replaces the default badge — home passes [BrandBadge] so the app still
+  /// leads with its own logo rather than stock art.
+  final Widget? leading;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -151,6 +180,9 @@ class StudioPageHeader extends StatelessWidget {
               },
             ),
             const SizedBox(width: 10),
+          ] else if (leading != null) ...[
+            leading!,
+            const SizedBox(width: 12),
           ] else if (showEduImage) ...[
             const EduImageBadge(),
             const SizedBox(width: 12),

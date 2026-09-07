@@ -63,6 +63,7 @@ class HomeScreen extends ConsumerWidget {
               StudioPageHeader(
                 title: trFill(context, 'Welcome, {name}!', {'name': name}),
                 subtitle: tr(context, 'Learn, Create & Build'),
+                leading: const BrandBadge(),
                 showNotifications: true,
                 padding: EdgeInsets.zero,
               ),
