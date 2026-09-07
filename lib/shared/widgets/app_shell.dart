@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/app_info_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../features/learn/path/path_provider.dart';
 import '../../l10n/app_locale.dart';
@@ -42,6 +43,10 @@ class AppShell extends StatelessWidget {
   /// Flat bar items (chat is the raised center FAB).
   static const _mobileIndices = [0, 1, 2, 3];
   static const _chatPath = '/chat';
+
+  /// Height of the flat bar itself, and how far the chat FAB rises above it.
+  static const _kNavBarHeight = 72.0;
+  static const _kFabOverhang = 18.0;
 
   int _selectedIndex(BuildContext context) {
     final path = GoRouterState.of(context).uri.path;
@@ -87,63 +92,80 @@ class AppShell extends StatelessWidget {
           selectedIndex: selectedIndex,
           destinations: _destinations,
         ),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: ac.surface,
-            border: Border(top: BorderSide(color: ac.border)),
-            boxShadow: ac.isDark
-                ? const []
-                : const [
-                    BoxShadow(
-                      color: Color(0x141A4A7A),
-                      blurRadius: 16,
-                      offset: Offset(0, -4),
-                    ),
-                  ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 72,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.bottomCenter,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Row(
-                      children: [
-                        for (var i = 0; i < _mobileIndices.length; i++) ...[
-                          Expanded(
-                            child: _FloatingNavItem(
-                              icon: _destinations[_mobileIndices[i]].icon,
-                              selectedIcon:
-                                  _destinations[_mobileIndices[i]].selectedIcon,
-                              label: tr(
-                                context,
-                                _destinations[_mobileIndices[i]].label,
-                              ),
-                              selected: mobileSelected == i,
-                              onTap: () => context
-                                  .go(_destinations[_mobileIndices[i]].path),
+        // The chat FAB overhangs the top of the bar. It has to stay *inside*
+        // the bottomNavigationBar's own box: Flutter paints a child that
+        // overflows its parent (Clip.none) but will not route pointer events
+        // to it, so a negative `top` here makes the overhanging strip of the
+        // button visible and dead to taps. Instead the box is
+        // _kFabOverhang taller than the bar, and the bar is pinned to its
+        // bottom — same look, whole button tappable.
+        bottomNavigationBar: SizedBox(
+          height: _kNavBarHeight + _kFabOverhang + MediaQuery.paddingOf(context).bottom,
+          child: Stack(
+            children: [
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: ac.surface,
+                    border: Border(top: BorderSide(color: ac.border)),
+                    boxShadow: ac.isDark
+                        ? const []
+                        : const [
+                            BoxShadow(
+                              color: Color(0x141A4A7A),
+                              blurRadius: 16,
+                              offset: Offset(0, -4),
                             ),
-                          ),
-                          if (i == 1) const SizedBox(width: 64),
-                        ],
-                      ],
+                          ],
+                  ),
+                  child: SafeArea(
+                    top: false,
+                    child: SizedBox(
+                      height: _kNavBarHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: Row(
+                          children: [
+                            for (var i = 0; i < _mobileIndices.length; i++) ...[
+                              Expanded(
+                                child: _FloatingNavItem(
+                                  icon: _destinations[_mobileIndices[i]].icon,
+                                  selectedIcon: _destinations[_mobileIndices[i]]
+                                      .selectedIcon,
+                                  label: tr(
+                                    context,
+                                    _destinations[_mobileIndices[i]].label,
+                                  ),
+                                  selected: mobileSelected == i,
+                                  onTap: () => context
+                                      .go(_destinations[_mobileIndices[i]].path),
+                                ),
+                              ),
+                              if (i == 1) const SizedBox(width: 64),
+                            ],
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                  Positioned(
-                    top: -18,
-                    child: _ChatFabButton(
-                      active: isChatActive,
-                      ringColor: ac.isDark ? ac.surface : Colors.white,
-                      onTap: () => context.go(_chatPath),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: _ChatFabButton(
+                    active: isChatActive,
+                    ringColor: ac.isDark ? ac.surface : Colors.white,
+                    onTap: () => context.go(_chatPath),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -382,9 +404,20 @@ class _SideNav extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  'Offline · v1.1',
-                  style: TextStyle(fontSize: 12, color: ac.textHint),
+                // Read the real build version. This line has been hand-edited
+                // to a stale number more than once (it shipped as v1.1 while
+                // pubspec said 1.2.0), so it no longer hardcodes anything.
+                Consumer(
+                  builder: (context, ref, _) {
+                    final version =
+                        ref.watch(packageInfoProvider).valueOrNull?.version;
+                    return Text(
+                      version == null
+                          ? tr(context, 'Offline')
+                          : '${tr(context, 'Offline')} · v$version',
+                      style: TextStyle(fontSize: 12, color: ac.textHint),
+                    );
+                  },
                 ),
               ],
             ),

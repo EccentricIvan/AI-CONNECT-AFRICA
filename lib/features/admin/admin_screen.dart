@@ -8,6 +8,7 @@ import '../../core/app_info_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 
@@ -24,9 +25,9 @@ class AdminScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: const StudioAppBar(
-        title: 'Admin',
-        subtitle: 'Device & learner management',
+      appBar: StudioAppBar(
+        title: tr(context, 'Admin dashboard'),
+        subtitle: tr(context, 'Device & learner management'),
       ),
       body: MaxWidth(
         maxWidth: 900,

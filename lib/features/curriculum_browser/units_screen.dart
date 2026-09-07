@@ -35,7 +35,11 @@ class UnitsScreen extends ConsumerWidget {
           backgroundColor: Colors.transparent,
           appBar: StudioAppBar(
             title: subject.name,
-            subtitle: '${subject.totalLessons} lessons',
+            subtitle: trFill(
+              context,
+              '{count} lessons',
+              {'count': '${subject.totalLessons}'},
+            ),
             showBack: true,
             showMenu: false,
             showEduImage: false,

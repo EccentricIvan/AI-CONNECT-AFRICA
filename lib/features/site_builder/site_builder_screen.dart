@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class _TemplateInfo {
   const _TemplateInfo({
@@ -167,6 +168,7 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
         leading: _selected != null
             ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back)
             : null,
+        actions: const [StudioDrawerButton()],
       ),
       floatingActionButton: _selected != null && !_showPreview
           ? FloatingActionButton.extended(

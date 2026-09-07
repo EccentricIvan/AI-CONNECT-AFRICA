@@ -30,10 +30,41 @@ dist\models\translate-afrislm.gguf
 In `pubspec.yaml`:
 
 ```yaml
-version: 1.2.0+3        # marketingVersion+buildNumber — bump both
+version: 1.3.0+4        # marketingVersion+buildNumber — bump both
 ```
 
 Add a [CHANGELOG.md](../CHANGELOG.md) entry. Commit.
+
+---
+
+## 1b. Refresh the translation keys
+
+Any new `tr()` / `trFill()` string is English-only until it reaches the
+generator, and `tr()` falls back silently — so the miss shows up as English on
+a Kinyarwanda device, never as an error. Before a release:
+
+```powershell
+dart run tools/scan_l10n_keys.dart          # rewrite tools/l10n_keys.json
+dart run tools/scan_l10n_keys.dart --check  # non-zero if it is stale
+flutter test tools/generate_ui_strings.dart # hours — writes ui_strings_generated.dart
+```
+
+The generator needs `dist\models\translate-afrislm.gguf` and checkpoints to
+`tools/.l10n_progress.json` after each language, so an interrupted run resumes.
+
+---
+
+## 1c. Play Store artifact
+
+Play needs an **AAB**, not the APK these steps produce, and CI has no keystore
+— build it on the machine that holds `android/release-keystore.jks`:
+
+```powershell
+flutter build appbundle --release   # build\app\outputs\bundle\release\app-release.aab
+```
+
+See [PLAY_STORE_ASSET_DELIVERY.md](PLAY_STORE_ASSET_DELIVERY.md). The APK below
+stays the sideload / USB / download-link artifact.
 
 ---
 

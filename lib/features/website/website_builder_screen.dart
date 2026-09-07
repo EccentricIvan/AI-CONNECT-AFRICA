@@ -6,6 +6,7 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../l10n/app_locale.dart';
+import '../../shared/widgets/studio_page.dart';
 import 'block_models.dart';
 import 'website_provider.dart';
 
@@ -67,7 +68,10 @@ class _StartView extends ConsumerWidget {
     final studentAsync = ref.watch(activeStudentProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Website Builder')),
+      appBar: AppBar(
+        title: const Text('Website Builder'),
+        actions: const [StudioDrawerButton()],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _newSite(context, ref),
         icon: const Icon(Icons.add),

@@ -187,7 +187,9 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                     : AppColors.teachColor,
               ),
               label: Text(
-                status.isDemo ? 'Demo' : (status.backendLabel ?? 'AI'),
+                status.isDemo
+                    ? tr(context, 'Demo')
+                    : (status.backendLabel ?? tr(context, 'AI')),
                 style: TextStyle(
                   fontSize: 11,
                   color: status.isDemo

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../l10n/app_locale.dart';
 import 'app_shell.dart';
 
 const kEduIllustrationAsset = 'assets/illustrations/home-secondary-learner.png';
@@ -29,6 +30,26 @@ class EduImageBadge extends StatelessWidget {
         fit: BoxFit.cover,
         semanticLabel: 'Learning illustration',
       ),
+    );
+  }
+}
+
+/// Opens the app drawer from a screen that still uses a plain [AppBar].
+///
+/// The shell used to paint a floating menu button over every screen; that was
+/// removed when [StudioAppBar] took over the chrome, which left the screens
+/// that were never converted (the labs, the site/website builders, the
+/// teacher detail view) with no way to reach the drawer at all. Their own
+/// [Scaffold] has no drawer, so `AppBar` will not draw a hamburger for them.
+class StudioDrawerButton extends StatelessWidget {
+  const StudioDrawerButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.menu_rounded),
+      tooltip: tr(context, 'Menu'),
+      onPressed: () => AppShell.mobileScaffoldKey.currentState?.openDrawer(),
     );
   }
 }

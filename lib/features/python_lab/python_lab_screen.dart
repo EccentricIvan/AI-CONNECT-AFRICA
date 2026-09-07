@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class _PyLesson {
   const _PyLesson({required this.title, required this.instruction, required this.starterCode, required this.expectedOutput, this.hint, this.challenge});
@@ -359,6 +360,7 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
           Text('Python Lab'),
         ]),
         actions: [
+          const StudioDrawerButton(),
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: 'All lessons',

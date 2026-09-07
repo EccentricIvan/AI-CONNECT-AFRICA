@@ -98,15 +98,18 @@ metered data that split is the difference between usable and not.
 
 ## Still to do
 
-- **UI.** `ModelDownloadController` and its progress state are wired, but no
-  screen calls them yet. The button belongs in Settings *and* on the existing
-  "Model not installed — transfer via USB" screen, which is now misleading on
-  its own for a Play user.
-- **Publish the release.** Run the `Publish model pack` workflow once. The
-  `model-pack` tag does not exist yet, so the app currently gets a 404 (the
-  downloader reports this as "not published yet" rather than a raw error).
-  This also repairs `build-release-artifacts.yml`, which already tries to
-  `gh release download model-pack` and fails today.
+- ~~**UI.**~~ Done — `FetchPackagesTile` (`lib/features/settings/`) calls
+  `ModelDownloadController` and is mounted in Settings, with per-model Fetch
+  buttons and a pending-lookup guard (`test/fetch_packages_tile_test.dart`).
+  Still worth putting the same button on the "Model not installed — transfer
+  via USB" screen, which reads as misleading on its own for a Play user.
+- ~~**Publish the release.**~~ Done — the `model-pack` release was published
+  2026-09-06 by the `Publish model pack` workflow, so the downloader resolves
+  instead of 404ing.
+- **Build an AAB.** No workflow runs `flutter build appbundle` yet. Play will
+  not accept the APK these workflows produce, and CI cannot sign one anyway
+  (see the signing blocker below), so the Play artifact has to be built on the
+  machine that holds the keystore.
 - **Wi-Fi-only default.** Not implemented. 1.2 GB on mobile data is a real
   cost for the target user; worth a preference before wide release.
 - **Foreground-only.** Android will kill a backgrounded HTTP download. v1

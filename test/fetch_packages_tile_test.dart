@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:ai_connect_africa/ai_core/model/model_download_controller.dart';
 import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
 import 'package:ai_connect_africa/ai_core/providers/ai_provider.dart';
 import 'package:ai_connect_africa/features/settings/fetch_packages_tile.dart';

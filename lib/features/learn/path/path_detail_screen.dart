@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../l10n/app_locale.dart';
 import '../../../shared/widgets/responsive.dart';
 import '../../../shared/widgets/studio_page.dart';
 import 'path_models.dart';
@@ -27,7 +28,7 @@ class _PathDetailScreenState extends ConsumerState<PathDetailScreen> {
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
         title: widget.topic,
-        subtitle: 'Your learning path',
+        subtitle: tr(context, 'Your learning path'),
         showBack: true,
         showMenu: false,
         showEduImage: false,

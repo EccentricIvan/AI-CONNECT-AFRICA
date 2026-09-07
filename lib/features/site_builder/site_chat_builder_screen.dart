@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class _Template {
   const _Template(this.id, this.name, this.icon, this.askFields, this.autoFields);
@@ -415,6 +416,7 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
           Text('Website Builder'),
         ]),
         actions: [
+          const StudioDrawerButton(),
           TextButton(
             onPressed: () => context.push('/website'),
             child: const Text('Block canvas'),

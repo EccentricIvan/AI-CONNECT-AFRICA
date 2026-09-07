@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/widgets/studio_page.dart';
 
 // ── Lesson data ──────────────────────────────────────────────────────────────
 
@@ -483,6 +484,7 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
           ],
         ),
         actions: [
+          const StudioDrawerButton(),
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: 'All lessons',

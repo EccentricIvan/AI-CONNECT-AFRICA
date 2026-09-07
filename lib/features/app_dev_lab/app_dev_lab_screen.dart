@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_provider.dart';
 import '../../curriculum/curriculum_models.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class AppDevLabScreen extends ConsumerWidget {
   const AppDevLabScreen({super.key});
@@ -27,6 +28,7 @@ class AppDevLabScreen extends ConsumerWidget {
                 Text('App Dev Lab'),
               ],
             ),
+            actions: const [StudioDrawerButton()],
           ),
           body: Column(
             children: [

@@ -41,13 +41,13 @@ class HomeScreen extends ConsumerWidget {
         parsedPaths.fold<int>(0, (sum, p) => sum + p.totalLessons);
     final overallProgress =
         lessonsTotal == 0 ? 0.0 : lessonsCompleted / lessonsTotal;
-    final todayDone = continuePath?.completedLessons ?? 0;
-    final todayGoal = continuePath == null
-        ? 5
-        : (continuePath.totalLessons == 0 ? 5 : continuePath.totalLessons)
-            .clamp(1, 5);
-    final todayProgress =
-        (todayDone.clamp(0, todayGoal)) / todayGoal;
+    // Nothing here is date-filtered — these are the active path's lifetime
+    // counts. Labelling them "Today's Progress" against a goal clamped to 5
+    // meant the card read "5 / 5" every day forever once a student had ever
+    // finished five lessons. Report the active path's real progress instead.
+    final activeDone = continuePath?.completedLessons ?? 0;
+    final activeTotal = continuePath?.totalLessons ?? 0;
+    final activeProgress = activeTotal == 0 ? 0.0 : activeDone / activeTotal;
 
     final bottomPad = MediaQuery.paddingOf(context).bottom + 100;
 
@@ -61,17 +61,17 @@ class HomeScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               StudioPageHeader(
-                title: trFill(context, 'Hello, {name}!', {'name': name}),
-                subtitle: tr(context, 'Keep learning, keep growing'),
+                title: trFill(context, 'Welcome, {name}!', {'name': name}),
+                subtitle: tr(context, 'Learn, Create & Build'),
                 showNotifications: true,
                 padding: EdgeInsets.zero,
               ),
               const SizedBox(height: 20),
               _JourneyHeroCard(
                 name: name,
-                progress: todayProgress,
-                completed: todayDone.clamp(0, todayGoal),
-                goal: todayGoal,
+                progress: activeProgress,
+                completed: activeDone,
+                goal: activeTotal,
                 onContinue: () => _openContinue(context, continuePath),
               ),
               const SizedBox(height: 16),
@@ -87,17 +87,22 @@ class HomeScreen extends ConsumerWidget {
                 onAction: () => context.go('/learn'),
               ),
               const SizedBox(height: 14),
-              const _LearnGrid(),
+              _TileGrid(items: _TileGrid.learnItems(context)),
               const SizedBox(height: 28),
-              StudioSectionHeader(
-                title: tr(context, 'Continue Learning'),
-                onAction: () => context.go('/learn'),
-              ),
+              StudioSectionHeader(title: tr(context, 'MY PATHS')),
               const SizedBox(height: 14),
               _ContinueLearningCard(
                 path: continuePath,
                 onTap: () => _openContinue(context, continuePath),
               ),
+              const SizedBox(height: 28),
+              StudioSectionHeader(title: tr(context, 'CREATE')),
+              const SizedBox(height: 14),
+              _TileGrid(items: _TileGrid.createItems(context)),
+              const SizedBox(height: 28),
+              StudioSectionHeader(title: tr(context, 'MORE')),
+              const SizedBox(height: 14),
+              _TileGrid(items: _TileGrid.moreItems(context)),
               const SizedBox(height: 8),
             ],
           ),
@@ -169,7 +174,7 @@ class _JourneyHeroCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      tr(context, 'YOUR LEARNING JOURNEY'),
+                      tr(context, 'LEARN'),
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -190,60 +195,61 @@ class _JourneyHeroCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      tr(
-                        context,
-                        'Great to have you back. Keep building your future, one lesson at a time.',
-                      ),
+                      tr(context, 'What would you like to do today?'),
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.45,
                         color: ac.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      tr(context, "Today's Progress"),
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: ac.textPrimary,
+                    // No active path yet means there is no progress to report;
+                    // a "0 / 0 lessons" bar is worse than no bar.
+                    if (goal > 0) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        tr(context, 'Your progress'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: ac.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(99),
-                            child: LinearProgressIndicator(
-                              value: progress.clamp(0.0, 1.0),
-                              minHeight: 8,
-                              backgroundColor: AppColors.primary
-                                  .withValues(alpha: 0.15),
-                              valueColor: const AlwaysStoppedAnimation(
-                                AppColors.primary,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(99),
+                              child: LinearProgressIndicator(
+                                value: progress.clamp(0.0, 1.0),
+                                minHeight: 8,
+                                backgroundColor: AppColors.primary
+                                    .withValues(alpha: 0.15),
+                                valueColor: const AlwaysStoppedAnimation(
+                                  AppColors.primary,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Text(
-                          trFill(
-                            context,
-                            '{completed} / {goal} lessons',
-                            {
-                              'completed': '$completed',
-                              'goal': '$goal',
-                            },
+                          const SizedBox(width: 10),
+                          Text(
+                            trFill(
+                              context,
+                              '{completed} / {goal} lessons',
+                              {
+                                'completed': '$completed',
+                                'goal': '$goal',
+                              },
+                            ),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: ac.textSecondary,
+                            ),
                           ),
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: ac.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     FilledButton(
                       onPressed: onContinue,
@@ -309,7 +315,7 @@ class _JourneyHeroCard extends StatelessWidget {
                     right: 10,
                     bottom: 12,
                     child: Text(
-                      tr(context, 'Better Skills,\nBrighter Future'),
+                      tr(context, 'Learn, Create & Build'),
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Saira',
@@ -463,55 +469,125 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _LearnGrid extends StatelessWidget {
-  const _LearnGrid();
+/// The three home sections. The redesign shipped only [learnItems] and
+/// dropped CREATE and MORE entirely, which took eight destinations
+/// (`/sitechat`, `/weblab`, `/pythonlab`, `/applab`, `/projects`,
+/// `/achievements`, `/certificates`, `/settings`) off the home screen — the
+/// labs have no bottom-nav tab either, so they became drawer-only. Restored.
+class _TileGrid extends StatelessWidget {
+  const _TileGrid({required this.items});
+
+  final List<_LearnItem> items;
+
+  static List<_LearnItem> learnItems(BuildContext context) => [
+        _LearnItem(
+          title: tr(context, 'Subjects'),
+          subtitle: tr(context, 'Explore your courses'),
+          icon: Icons.menu_book_rounded,
+          color: const Color(0xFF3B8FE8),
+          background: const Color(0xFFE8F2FF),
+          route: '/learn',
+        ),
+        _LearnItem(
+          title: tr(context, 'Practice'),
+          subtitle: tr(context, 'Sharpen your skills'),
+          icon: Icons.fact_check_rounded,
+          color: const Color(0xFF2EBB6E),
+          background: const Color(0xFFE8F8EF),
+          route: '/practice',
+        ),
+        _LearnItem(
+          title: tr(context, 'AI Chat'),
+          subtitle: tr(context, 'Get instant help'),
+          icon: Icons.smart_toy_rounded,
+          color: const Color(0xFF7B6CF6),
+          background: const Color(0xFFF0EDFF),
+          route: '/chat',
+        ),
+        _LearnItem(
+          title: tr(context, 'Teach'),
+          subtitle: tr(context, 'Share your knowledge'),
+          icon: Icons.school_rounded,
+          color: const Color(0xFF2EB8A0),
+          background: const Color(0xFFE6F8F4),
+          route: '/teach',
+        ),
+      ];
+
+  static List<_LearnItem> createItems(BuildContext context) => [
+        _LearnItem(
+          title: tr(context, 'Website'),
+          icon: Icons.web_rounded,
+          color: AppColors.createColor,
+          background: const Color(0xFFE8F4FF),
+          route: '/sitechat',
+        ),
+        _LearnItem(
+          title: tr(context, 'Web Lab'),
+          icon: Icons.code_rounded,
+          color: AppColors.practiceColor,
+          background: const Color(0xFFE6F6FA),
+          route: '/weblab',
+        ),
+        _LearnItem(
+          title: tr(context, 'Python*'),
+          icon: Icons.terminal_rounded,
+          color: AppColors.accentDeep,
+          background: const Color(0xFFE8F1FC),
+          route: '/pythonlab',
+        ),
+        _LearnItem(
+          title: tr(context, 'App Lab*'),
+          icon: Icons.phone_android_rounded,
+          color: AppColors.learnColor,
+          background: const Color(0xFFE9F1FD),
+          route: '/applab',
+        ),
+      ];
+
+  static List<_LearnItem> moreItems(BuildContext context) => [
+        _LearnItem(
+          title: tr(context, 'Projects'),
+          icon: Icons.folder_rounded,
+          color: AppColors.secondary,
+          background: const Color(0xFFE6F5F9),
+          route: '/projects',
+        ),
+        _LearnItem(
+          title: tr(context, 'Badges'),
+          icon: Icons.emoji_events_rounded,
+          color: AppColors.gold,
+          background: const Color(0xFFEAF6FF),
+          route: '/achievements',
+        ),
+        _LearnItem(
+          title: tr(context, 'Certs'),
+          icon: Icons.workspace_premium_rounded,
+          color: AppColors.primaryLight,
+          background: const Color(0xFFEDF7FF),
+          route: '/certificates',
+        ),
+        _LearnItem(
+          title: tr(context, 'Settings'),
+          icon: Icons.settings_rounded,
+          color: AppColors.lifeSkillsColor,
+          background: const Color(0xFFEAF6FF),
+          route: '/settings',
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
-    final items = [
-      _LearnItem(
-        title: tr(context, 'Subjects'),
-        subtitle: tr(context, 'Explore your courses'),
-        icon: Icons.menu_book_rounded,
-        color: const Color(0xFF3B8FE8),
-        background: const Color(0xFFE8F2FF),
-        route: '/learn',
-      ),
-      _LearnItem(
-        title: tr(context, 'Practice'),
-        subtitle: tr(context, 'Sharpen your skills'),
-        icon: Icons.fact_check_rounded,
-        color: const Color(0xFF2EBB6E),
-        background: const Color(0xFFE8F8EF),
-        route: '/practice',
-      ),
-      _LearnItem(
-        title: tr(context, 'AI Chat'),
-        subtitle: tr(context, 'Get instant help'),
-        icon: Icons.smart_toy_rounded,
-        color: const Color(0xFF7B6CF6),
-        background: const Color(0xFFF0EDFF),
-        route: '/chat',
-      ),
-      _LearnItem(
-        title: tr(context, 'Teach'),
-        subtitle: tr(context, 'Share your knowledge'),
-        icon: Icons.school_rounded,
-        color: const Color(0xFF2EB8A0),
-        background: const Color(0xFFE6F8F4),
-        route: '/teach',
-      ),
-    ];
-
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        childAspectRatio: 1.15,
+        // Subtitle-less tiles need less vertical room.
+        childAspectRatio: items.any((i) => i.subtitle != null) ? 1.15 : 1.7,
       ),
       itemBuilder: (context, i) => _LearnTile(item: items[i]),
     );
@@ -521,7 +597,7 @@ class _LearnGrid extends StatelessWidget {
 class _LearnItem {
   const _LearnItem({
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.icon,
     required this.color,
     required this.background,
@@ -529,7 +605,10 @@ class _LearnItem {
   });
 
   final String title;
-  final String subtitle;
+
+  /// Optional — the CREATE and MORE tiles are label-only, so the tile drops
+  /// the subtitle line rather than inventing filler for it.
+  final String? subtitle;
   final IconData icon;
   final Color color;
   final Color background;
@@ -570,15 +649,17 @@ class _LearnTile extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      item.subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: ac.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: item.subtitle == null
+                        ? const SizedBox.shrink()
+                        : Text(
+                            item.subtitle!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: ac.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                   ),
                   Container(
                     width: 28,
@@ -615,9 +696,11 @@ class _ContinueLearningCard extends StatelessWidget {
     final title = path?.title ?? tr(context, 'Start a learning path');
     final subtitle = path == null
         ? tr(context, 'Pick a subject and begin your first lesson')
-        : _chapterLabel(path!);
+        : _chapterLabel(context, path!);
     final done = path?.completedLessons ?? 0;
-    final total = path?.totalLessons == 0 ? 5 : (path?.totalLessons ?? 5);
+    // Report the path's real lesson count. The previous `== 0 ? 5` substituted
+    // a made-up denominator, so an empty path read "0 / 5 lessons".
+    final total = path?.totalLessons ?? 0;
     final progress = total == 0 ? 0.0 : done / total;
     final tag = path?.topic ?? tr(context, 'Learn');
 
@@ -753,17 +836,21 @@ class _ContinueLearningCard extends StatelessWidget {
     );
   }
 
-  static String _chapterLabel(ParsedPath path) {
+  static String _chapterLabel(BuildContext context, ParsedPath path) {
+    String label(int index, String title) => trFill(
+          context,
+          'Chapter {number}: {title}',
+          {'number': '${index + 1}', 'title': title},
+        );
+
     for (var u = 0; u < path.units.length; u++) {
       final unit = path.units[u];
       for (var l = 0; l < unit.lessons.length; l++) {
-        if (!unit.lessons[l].isCompleted) {
-          return 'Chapter ${u + 1}: ${unit.title}';
-        }
+        if (!unit.lessons[l].isCompleted) return label(u, unit.title);
       }
     }
     if (path.units.isEmpty) return path.description;
-    return 'Chapter ${path.units.length}: ${path.units.last.title}';
+    return label(path.units.length - 1, path.units.last.title);
   }
 }
 

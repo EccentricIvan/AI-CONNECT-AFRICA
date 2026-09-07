@@ -20,6 +20,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] — 2026-09-07
+
+### Added
+- Redesigned home dashboard and a shared `StudioAppBar` header used across every screen.
+- `tools/scan_l10n_keys.dart` — derives `tools/l10n_keys.json` from the actual
+  `tr()` call sites instead of a hand-maintained list, with a `--check` mode.
+  The generator's header had always referred to "the scanner"; it did not exist,
+  so new UI strings silently fell back to English.
+
+### Fixed
+- Home reported "Today's Progress" from lifetime lesson counts against a goal
+  clamped to 5, so it read "5 / 5" every day once a student had ever completed
+  five lessons. It now reports the active path's real progress.
+- The chat FAB sat at `top: -18` in a 72px bar, putting its top 18px outside the
+  nav bar's render box — visible but not tappable. The box is now taller than
+  the bar, so the whole button takes taps.
+- Restored the CREATE and MORE home sections. The redesign dropped eight
+  destinations (`/sitechat`, `/weblab`, `/pythonlab`, `/applab`, `/projects`,
+  `/achievements`, `/certificates`, `/settings`), none of which has a bottom-nav tab.
+- The labs and site/website builders had no way to open the drawer after the
+  shell's floating menu button was removed; they now carry a `StudioDrawerButton`.
+- The sidebar build stamp was hand-reverted to `v1.1` while pubspec said 1.2.0.
+  It now reads the real package version.
+- Home, admin, path detail, unit, lesson and chat headers no longer hardcode
+  English; the new dashboard strings reuse existing translated keys where one
+  exists.
+- `flutter analyze` failed on main over an unused import in
+  `test/fetch_packages_tile_test.dart`, which blocked every release build.
+
+---
+
 ## [Unreleased]
 
 ### Added

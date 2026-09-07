@@ -67,15 +67,15 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       builder: (context, snapshot) {
         final subject = snapshot.data;
         if (subject == null) {
-          return const Scaffold(
+          return Scaffold(
             backgroundColor: Colors.transparent,
             appBar: StudioAppBar(
-              title: 'Lesson',
+              title: tr(context, 'Loading…'),
               showBack: true,
               showMenu: false,
               showEduImage: false,
             ),
-            body: Center(child: CircularProgressIndicator()),
+            body: const Center(child: CircularProgressIndicator()),
           );
         }
 
