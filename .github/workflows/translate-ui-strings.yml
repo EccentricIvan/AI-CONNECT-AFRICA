@@ -1,0 +1,157 @@
+name: Translate UI strings
+
+# Fills lib/l10n/ui_strings_generated.dart by running TranslatePsy-AfriSLM over
+# every key in tools/l10n_keys.json.
+#
+# generate_ui_strings.dart walks all 19 languages in one process and its own
+# header rates that in hours. Here each language gets its own runner, so the
+# wall clock is one language rather than nineteen. Each job uploads its
+# tools/l10n_out/<code>.json and the merge job stitches them together and
+# commits the result.
+#
+# Windows runners: the generator overrides the target platform to Windows and
+# llm_llamacpp's prebuilt path is the tested one there.
+on:
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: 'Comma-separated codes, or blank for all 19'
+        type: string
+        default: ''
+      commit:
+        description: 'Commit the regenerated table back to the branch'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: translate-ui-strings-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRANSLATE_URL: https://huggingface.co/qvac/TranslatePsy-AfriSLM-0.8B-Q4-GGUF/resolve/main/TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf
+  TRANSLATE_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
+
+jobs:
+  plan:
+    name: Pick languages
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested="${{ inputs.languages }}"
+          if [ -z "$requested" ]; then
+            # supportedLanguages uses a positional constructor:
+            #   SupportedLanguage('sw', 'Swahili')
+            # Take the first argument of each, minus English.
+            requested=$(grep -oE "SupportedLanguage\('[a-z]{2,3}'" \
+              lib/ai_core/translate/supported_languages.dart \
+              | sed -E "s/.*'([a-z]{2,3})'.*/\1/" | grep -v '^en$' | paste -sd, -)
+          fi
+          if [ -z "$requested" ]; then
+            echo "::error::no language codes parsed from supported_languages.dart"
+            exit 1
+          fi
+          echo "languages: $requested"
+          json=$(echo "$requested" | tr ',' '\n' | sed '/^$/d' \
+            | jq -R . | jq -sc .)
+          echo "matrix=$json" >> "$GITHUB_OUTPUT"
+
+  translate:
+    name: ${{ matrix.lang }}
+    needs: plan
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      # A language that fails should not take the other eighteen with it, and
+      # the merge step tolerates missing shards.
+      max-parallel: 10
+      matrix:
+        lang: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.x'
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Fetch the translation model
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/models | Out-Null
+          $dest = 'dist/models/translate-afrislm.gguf'
+          Invoke-WebRequest -Uri $env:TRANSLATE_URL -OutFile $dest -UseBasicParsing
+          $actual = (Get-FileHash $dest -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $env:TRANSLATE_SHA) { throw "Checksum mismatch: $actual" }
+
+      - name: Translate ${{ matrix.lang }}
+        shell: pwsh
+        env:
+          L10N_LANGS: ${{ matrix.lang }}
+          L10N_MODEL: dist/models/translate-afrislm.gguf
+        run: flutter test tools/generate_ui_strings.dart
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: l10n-${{ matrix.lang }}
+          path: tools/l10n_out/${{ matrix.lang }}.json
+          if-no-files-found: error
+
+  merge:
+    name: Merge and commit
+    needs: translate
+    if: always() && needs.translate.result != 'cancelled'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.x'
+          cache: true
+
+      - run: flutter pub get
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: tools/l10n_out
+          pattern: l10n-*
+          merge-multiple: true
+
+      - run: ls -lh tools/l10n_out
+
+      - name: Merge into ui_strings_generated.dart
+        run: dart run tools/merge_ui_strings.dart
+
+      - name: Commit
+        if: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- lib/l10n/ui_strings_generated.dart; then
+            echo "No change."
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add lib/l10n/ui_strings_generated.dart
+          git commit -m 'Generate UI translations for the 19 AfriSLM languages'
+          git push origin HEAD:${{ github.ref_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui_strings_generated
+          path: lib/l10n/ui_strings_generated.dart

@@ -44,7 +44,9 @@ void main() {
             as List)
         .cast<String>();
 
-    const candidates = [
+    final env = Platform.environment;
+    final candidates = [
+      if (env['L10N_MODEL'] != null) env['L10N_MODEL']!,
       r'dist\models\translate-afrislm.gguf',
       r'C:\Users\esian\OneDrive\Documents\OTIC\translate-afrislm.gguf',
     ];
@@ -72,8 +74,22 @@ void main() {
       stdout.writeln('Resuming: ${done.keys.length} languages already done');
     }
 
-    final targets =
-        supportedLanguages.where((l) => l.code != 'en').toList();
+    // L10N_LANGS shards the run: CI gives each language its own job, which
+    // turns a multi-hour sequential pass into one language's worth of wall
+    // clock. Unset means every language, as before.
+    final only = (env['L10N_LANGS'] ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+    final targets = supportedLanguages
+        .where((l) => l.code != 'en')
+        .where((l) => only.isEmpty || only.contains(l.code))
+        .toList();
+    if (targets.isEmpty) {
+      throw StateError('L10N_LANGS matched no supported language: $only');
+    }
+    stdout.writeln('Langs : ${targets.map((l) => l.code).join(', ')}');
 
     for (final lang in targets) {
       if (done[lang.code]?.length == keys.length) {
@@ -109,10 +125,22 @@ void main() {
       stdout.writeln('${lang.code}: ${table.length}/${keys.length} '
           '($failed dropped) in ${secs}s');
       progressFile.writeAsStringSync(jsonEncode(done));
+
+      // One file per language so a sharded CI run can upload each job's
+      // result and have tools/merge_ui_strings.dart stitch them together.
+      final shard = Directory('tools/l10n_out')..createSync(recursive: true);
+      File('${shard.path}/${lang.code}.json')
+          .writeAsStringSync(jsonEncode(table));
     }
 
-    _writeDartTable(done, keys);
-    stdout.writeln('\nWrote lib/l10n/ui_strings_generated.dart');
+    // A sharded run only holds its own languages, so it must not overwrite the
+    // full table — the merge step does that from the per-language files.
+    if (only.isEmpty) {
+      _writeDartTable(done, keys);
+      stdout.writeln('\nWrote lib/l10n/ui_strings_generated.dart');
+    } else {
+      stdout.writeln('\nSharded run — wrote tools/l10n_out/*.json only');
+    }
   }, timeout: const Timeout(Duration(hours: 8)));
 }
 
