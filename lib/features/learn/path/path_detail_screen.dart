@@ -31,7 +31,6 @@ class _PathDetailScreenState extends ConsumerState<PathDetailScreen> {
         subtitle: tr(context, 'Your learning path'),
         showBack: true,
         showMenu: false,
-        showEduImage: false,
       ),
       body: pathAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

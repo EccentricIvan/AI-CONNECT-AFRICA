@@ -73,7 +73,6 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
               title: tr(context, 'Loading…'),
               showBack: true,
               showMenu: false,
-              showEduImage: false,
             ),
             body: const Center(child: CircularProgressIndicator()),
           );
@@ -91,7 +90,6 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
             subtitle: unit.title,
             showBack: true,
             showMenu: false,
-            showEduImage: false,
           ),
           body: SingleChildScrollView(
             padding: const EdgeInsets.all(20),

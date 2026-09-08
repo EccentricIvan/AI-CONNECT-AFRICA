@@ -7,7 +7,54 @@ import 'app_shell.dart';
 
 const kEduIllustrationAsset = 'assets/illustrations/home-secondary-learner.png';
 
-/// Rounded educational thumbnail used in headers (no avatars).
+/// Gradient icon tile used as the leading mark on headers and cards.
+class StudioIconChip extends StatelessWidget {
+  const StudioIconChip({
+    super.key,
+    required this.icon,
+    this.color = AppColors.primary,
+    this.size = 44,
+    this.radius = 15,
+    this.glow = true,
+  });
+
+  final IconData icon;
+  final Color color;
+  final double size;
+  final double radius;
+  final bool glow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(color, Colors.white, 0.28)!,
+            color,
+          ],
+        ),
+        boxShadow: glow
+            ? [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.30),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ]
+            : null,
+      ),
+      child: Icon(icon, color: Colors.white, size: size * 0.5),
+    );
+  }
+}
+
+/// Rounded educational thumbnail — kept for hero art, not used as an avatar.
 class EduImageBadge extends StatelessWidget {
   const EduImageBadge({super.key, this.size = 52});
 
@@ -96,28 +143,30 @@ class StudioHeaderIconButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final ac = AppColors.of(context);
     final button = Material(
-      color: ac.iconWell,
-      shape: const CircleBorder(),
+      color: ac.surface,
+      shape: CircleBorder(side: BorderSide(color: ac.border)),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: SizedBox(
-          width: 44,
-          height: 44,
+          width: 42,
+          height: 42,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(icon, size: 22, color: ac.textPrimary),
+              Icon(icon, size: 21, color: ac.textPrimary),
               if (badge)
                 Positioned(
-                  top: 11,
-                  right: 12,
+                  top: 10,
+                  right: 11,
                   child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFF4D4F),
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF4D4F),
                       shape: BoxShape.circle,
+                      border: Border.all(color: ac.surface, width: 1.5),
                     ),
                   ),
                 ),
@@ -131,16 +180,17 @@ class StudioHeaderIconButton extends StatelessWidget {
   }
 }
 
-/// Shared dashboard header: educational image + title + actions (no avatar).
+/// Shared page header: optional gradient icon mark, title, subtitle, actions.
 class StudioPageHeader extends StatelessWidget {
   const StudioPageHeader({
     super.key,
     required this.title,
     this.subtitle,
+    this.icon,
+    this.iconColor = AppColors.primary,
     this.actions = const [],
     this.showMenu = true,
     this.showNotifications = false,
-    this.showEduImage = true,
     this.showBack = false,
     this.leading,
     this.padding = const EdgeInsets.fromLTRB(20, 8, 20, 12),
@@ -148,10 +198,11 @@ class StudioPageHeader extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+  final IconData? icon;
+  final Color iconColor;
   final List<Widget> actions;
   final bool showMenu;
   final bool showNotifications;
-  final bool showEduImage;
   final bool showBack;
 
   /// Replaces the default badge — home passes [BrandBadge] so the app still
@@ -179,12 +230,12 @@ class StudioPageHeader extends StatelessWidget {
                 }
               },
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
           ] else if (leading != null) ...[
             leading!,
             const SizedBox(width: 12),
-          ] else if (showEduImage) ...[
-            const EduImageBadge(),
+          ] else if (icon != null) ...[
+            StudioIconChip(icon: icon!, color: iconColor, size: 42),
             const SizedBox(width: 12),
           ],
           Expanded(
@@ -197,10 +248,11 @@ class StudioPageHeader extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontFamily: 'Saira',
-                    fontSize: 20,
+                    fontSize: 21,
                     fontWeight: FontWeight.w700,
                     color: ac.textPrimary,
-                    height: 1.2,
+                    height: 1.15,
+                    letterSpacing: -0.2,
                   ),
                 ),
                 if (subtitle != null && subtitle!.isNotEmpty) ...[
@@ -210,7 +262,7 @@ class StudioPageHeader extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w500,
                       color: ac.textSecondary,
                     ),
@@ -246,30 +298,32 @@ class StudioPageHeader extends StatelessWidget {
   }
 }
 
-/// Drop-in AppBar replacement that matches the home dashboard chrome.
+/// Drop-in AppBar replacement that matches the dashboard chrome.
 class StudioAppBar extends StatelessWidget implements PreferredSizeWidget {
   const StudioAppBar({
     super.key,
     required this.title,
     this.subtitle,
+    this.icon,
+    this.iconColor = AppColors.primary,
     this.actions = const [],
     this.showMenu = true,
     this.showNotifications = false,
-    this.showEduImage = true,
     this.showBack = false,
     this.bottom,
   });
 
   final String title;
   final String? subtitle;
+  final IconData? icon;
+  final Color iconColor;
   final List<Widget> actions;
   final bool showMenu;
   final bool showNotifications;
-  final bool showEduImage;
   final bool showBack;
   final PreferredSizeWidget? bottom;
 
-  double get _toolbarHeight => subtitle != null ? 76 : 68;
+  double get _toolbarHeight => subtitle != null ? 74 : 66;
 
   @override
   Size get preferredSize => Size.fromHeight(
@@ -288,24 +342,25 @@ class StudioAppBar extends StatelessWidget implements PreferredSizeWidget {
       title: StudioPageHeader(
         title: title,
         subtitle: subtitle,
+        icon: icon,
+        iconColor: iconColor,
         actions: actions,
         showMenu: showMenu,
         showNotifications: showNotifications,
-        showEduImage: showEduImage,
         showBack: showBack,
-        padding: const EdgeInsets.fromLTRB(4, 0, 4, 0),
+        padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
       ),
       bottom: bottom,
     );
   }
 }
 
-/// Section title row matching home ("Learn" + "View all >").
+/// Section title with a gradient accent bar and a pill "view all" action.
 class StudioSectionHeader extends StatelessWidget {
   const StudioSectionHeader({
     super.key,
     required this.title,
-    this.actionLabel = 'View all >',
+    this.actionLabel = 'View all',
     this.onAction,
     this.padding = EdgeInsets.zero,
   });
@@ -322,26 +377,62 @@ class StudioSectionHeader extends StatelessWidget {
       padding: padding,
       child: Row(
         children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(99),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.primaryLight, AppColors.accentDeep],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontFamily: 'Saira',
-                fontSize: 20,
+                fontSize: 19,
                 fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
                 color: ac.textPrimary,
               ),
             ),
           ),
           if (onAction != null)
-            GestureDetector(
-              onTap: onAction,
-              child: Text(
-                actionLabel,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
+            Material(
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(99),
+              child: InkWell(
+                onTap: onAction,
+                borderRadius: BorderRadius.circular(99),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        actionLabel,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 17,
+                        color: AppColors.primary,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -351,7 +442,67 @@ class StudioSectionHeader extends StatelessWidget {
   }
 }
 
-/// Soft blue hero strip with educational illustration — reuse on hub screens.
+/// Soft gradient surface used for the app's content cards.
+class StudioCard extends StatelessWidget {
+  const StudioCard({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.radius = 22,
+    this.onTap,
+    this.accent,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double radius;
+  final VoidCallback? onTap;
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
+    final tint = accent;
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: ac.softShadow(ac.isDark),
+      ),
+      child: Material(
+        color: ac.surface,
+        borderRadius: BorderRadius.circular(radius),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(
+                color: tint == null
+                    ? ac.border
+                    : tint.withValues(alpha: ac.isDark ? 0.30 : 0.18),
+              ),
+              gradient: tint == null
+                  ? null
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        tint.withValues(alpha: ac.isDark ? 0.16 : 0.10),
+                        tint.withValues(alpha: ac.isDark ? 0.05 : 0.02),
+                      ],
+                    ),
+            ),
+            child: Padding(padding: padding, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Slim gradient hero strip with educational illustration.
 class StudioHeroBanner extends StatelessWidget {
   const StudioHeroBanner({
     super.key,
@@ -360,7 +511,7 @@ class StudioHeroBanner extends StatelessWidget {
     required this.body,
     this.ctaLabel,
     this.onCta,
-    this.height = 148,
+    this.height = 132,
   });
 
   final String eyebrow;
@@ -382,8 +533,8 @@ class StudioHeroBanner extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: ac.isDark
-              ? const [Color(0xFF1A2E44), Color(0xFF152536)]
-              : const [Color(0xFFE8F4FF), Color(0xFFF5FAFF)],
+              ? const [Color(0xFF1B3049), Color(0xFF152536)]
+              : const [Color(0xFFEAF4FF), Color(0xFFF7FBFF)],
         ),
         border: Border.all(color: ac.border),
         boxShadow: ac.softShadow(ac.isDark),
@@ -400,6 +551,8 @@ class StudioHeroBanner extends StatelessWidget {
                 children: [
                   Text(
                     eyebrow.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
@@ -414,7 +567,7 @@ class StudioHeroBanner extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontFamily: 'Saira',
-                      fontSize: 20,
+                      fontSize: 19,
                       fontWeight: FontWeight.w700,
                       color: ac.textPrimary,
                     ),
@@ -433,17 +586,37 @@ class StudioHeroBanner extends StatelessWidget {
                     ),
                   ),
                   if (ctaLabel != null && onCta != null)
-                    TextButton(
-                      onPressed: onCta,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        padding: EdgeInsets.zero,
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        ctaLabel!,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                    Material(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(99),
+                      child: InkWell(
+                        onTap: onCta,
+                        borderRadius: BorderRadius.circular(99),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                ctaLabel!,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 15,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                 ],
@@ -452,10 +625,30 @@ class StudioHeroBanner extends StatelessWidget {
           ),
           Expanded(
             flex: 8,
-            child: Image.asset(
-              kEduIllustrationAsset,
-              fit: BoxFit.cover,
-              alignment: Alignment.center,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  kEduIllustrationAsset,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                ),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        (ac.isDark
+                                ? const Color(0xFF152536)
+                                : const Color(0xFFEAF4FF))
+                            .withValues(alpha: 0.55),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

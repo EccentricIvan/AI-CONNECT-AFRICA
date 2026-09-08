@@ -37,6 +37,8 @@ class TeacherDashboardScreen extends ConsumerWidget {
       appBar: StudioAppBar(
         title: 'Teacher',
         subtitle: 'Classroom progress overview',
+        icon: Icons.groups_rounded,
+        iconColor: const Color(0xFF3B8FE8),
         actions: [
           StudioHeaderIconButton(
             tooltip: 'Refresh',
@@ -199,7 +201,6 @@ class TeacherStudentDetailScreen extends ConsumerWidget {
         subtitle: 'Student progress detail',
         showBack: true,
         showMenu: false,
-        showEduImage: false,
       ),
       body: MaxWidth(
         maxWidth: 900,

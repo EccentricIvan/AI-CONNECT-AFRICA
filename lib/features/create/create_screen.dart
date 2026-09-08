@@ -240,6 +240,8 @@ class _CreateScreenState extends ConsumerState<CreateScreen> {
         subtitle: state.started
             ? tr(context, 'Build step by step with AI')
             : tr(context, 'Turn ideas into projects'),
+        icon: Icons.lightbulb_rounded,
+        iconColor: const Color(0xFFFF8A3D),
         actions: [
           if (state.started &&
               state.savedProjectId == null &&

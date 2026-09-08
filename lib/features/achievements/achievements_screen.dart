@@ -21,6 +21,8 @@ class AchievementsScreen extends ConsumerWidget {
 appBar: StudioAppBar(
         title: tr(context, 'Achievements'),
         subtitle: tr(context, 'Badges, points & streaks'),
+        icon: Icons.emoji_events_rounded,
+        iconColor: const Color(0xFFFF8A3D),
       ),
       body: studentAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

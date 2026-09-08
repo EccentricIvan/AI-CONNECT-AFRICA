@@ -84,6 +84,8 @@ class _CollaborateScreenState extends ConsumerState<CollaborateScreen> {
 appBar: StudioAppBar(
         title: tr(context, 'Nearby learners'),
         subtitle: tr(context, 'Discover classmates on this network'),
+        icon: Icons.wifi_tethering_rounded,
+        iconColor: const Color(0xFF2EB8A0),
       ),
       body: MaxWidth(
         maxWidth: 760,

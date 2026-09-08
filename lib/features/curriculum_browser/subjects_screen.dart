@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/studio_page.dart';
@@ -39,6 +40,8 @@ class SubjectsScreen extends ConsumerWidget {
       appBar: StudioAppBar(
         title: tr(context, 'Learn'),
         subtitle: tr(context, 'Explore your courses'),
+        icon: Icons.auto_stories_rounded,
+        iconColor: const Color(0xFF3B8FE8),
       ),
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -53,7 +56,7 @@ class SubjectsScreen extends ConsumerWidget {
                 context,
                 'Browse courses and keep building skills one lesson at a time.',
               ),
-              ctaLabel: tr(context, 'Open AI Chat →'),
+              ctaLabel: tr(context, 'Open AI Chat'),
               onCta: () => context.go('/chat'),
             ),
             const SizedBox(height: 20),
@@ -66,7 +69,7 @@ class SubjectsScreen extends ConsumerWidget {
                 crossAxisCount: 2,
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 1.25,
+                childAspectRatio: 1.32,
               ),
               itemCount: subjects.length,
               itemBuilder: (context, i) {
@@ -106,65 +109,99 @@ class _SubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              color.withValues(alpha: 0.15),
-              color.withValues(alpha: 0.04),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [color.withValues(alpha: 0.3), color.withValues(alpha: 0.1)],
-                ),
-                borderRadius: BorderRadius.circular(13),
-                border: Border.all(color: color.withValues(alpha: 0.2)),
+    final ac = AppColors.of(context);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: ac.softShadow(ac.isDark),
+      ),
+      child: Material(
+        color: ac.surface,
+        borderRadius: BorderRadius.circular(22),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: color.withValues(alpha: ac.isDark ? 0.30 : 0.16),
               ),
-              child: Icon(icon, color: color, size: 22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  color.withValues(alpha: ac.isDark ? 0.20 : 0.13),
+                  color.withValues(alpha: ac.isDark ? 0.06 : 0.02),
+                ],
+              ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Stack(
               children: [
-                Text(
-                  name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: Theme.of(context).colorScheme.onSurface,
+                Positioned(
+                  right: -22,
+                  top: -22,
+                  child: Container(
+                    width: 74,
+                    height: 74,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color.withValues(alpha: 0.10),
+                    ),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '$lessonCount lessons',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).hintColor,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StudioIconChip(
+                        icon: icon,
+                        color: color,
+                        size: 38,
+                        radius: 13,
+                      ),
+                      const Spacer(),
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontFamily: 'Saira',
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: ac.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$lessonCount lessons',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: ac.textSecondary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 17,
+                            color: color,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -25,7 +25,6 @@ class UnitsScreen extends ConsumerWidget {
               title: tr(context, 'Loading…'),
               showBack: true,
               showMenu: false,
-              showEduImage: false,
             ),
             body: const Center(child: CircularProgressIndicator()),
           );
@@ -42,7 +41,6 @@ class UnitsScreen extends ConsumerWidget {
             ),
             showBack: true,
             showMenu: false,
-            showEduImage: false,
           ),
           body: ListView.builder(
             padding: const EdgeInsets.all(16),

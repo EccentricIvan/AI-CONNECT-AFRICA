@@ -192,6 +192,8 @@ class _TeachScreenState extends ConsumerState<TeachScreen> {
 appBar: StudioAppBar(
         title: tr(context, 'Teach'),
         subtitle: tr(context, 'Explain it to master it'),
+        icon: Icons.school_rounded,
+        iconColor: const Color(0xFF2EB8A0),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

@@ -26,6 +26,8 @@ class CertificatesScreen extends ConsumerWidget {
 appBar: StudioAppBar(
         title: tr(context, 'Certificates'),
         subtitle: tr(context, 'Celebrate completed paths'),
+        icon: Icons.workspace_premium_rounded,
+        iconColor: const Color(0xFF7B6CF6),
       ),
       body: studentAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

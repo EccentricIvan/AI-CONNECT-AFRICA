@@ -50,6 +50,8 @@ class PracticeScreen extends StatelessWidget {
 appBar: StudioAppBar(
           title: tr(context, 'Practice'),
           subtitle: tr(context, 'Sharpen your skills'),
+          icon: Icons.fact_check_rounded,
+          iconColor: const Color(0xFF2EBB6E),
           bottom: TabBar(
             tabs: [
               Tab(icon: const Icon(Icons.quiz_outlined), text: tr(context, 'Practice')),
