@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'engine_scheduler.dart';
 import 'litert_lm_engine.dart';
 import 'llama_cpp_engine.dart';
 

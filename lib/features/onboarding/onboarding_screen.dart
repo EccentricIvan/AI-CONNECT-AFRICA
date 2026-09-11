@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai_core/translate/chat_languages.dart';
-import '../../ai_core/translate/supported_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
