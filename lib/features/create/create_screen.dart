@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ai_core/inference/localized_generate.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
@@ -71,9 +72,12 @@ class _CreateState {
 }
 
 class _Msg {
-  const _Msg({required this.text, required this.isUser});
+  const _Msg({required this.text, required this.isUser, this.english});
   final String text;
   final bool isUser;
+
+  /// English the brain saw or produced. [text] is what the student reads.
+  final String? english;
 }
 
 class _CreateNotifier extends AutoDisposeNotifier<_CreateState> {
@@ -93,7 +97,11 @@ class _CreateNotifier extends AutoDisposeNotifier<_CreateState> {
   Future<void> send(String text) => _send(text);
 
   Future<void> _send(String userText) async {
-    final msgs = [...state.messages, _Msg(text: userText, isUser: true)];
+    final lang = await studentLanguageCode(ref);
+    final msgs = [
+      ...state.messages,
+      _Msg(text: userText, isUser: true, english: userText),
+    ];
     state = state.copyWith(
       messages: msgs,
       isGenerating: true,
@@ -101,15 +109,18 @@ class _CreateNotifier extends AutoDisposeNotifier<_CreateState> {
     );
 
     try {
-      final engine = await ref.read(engineLoadedProvider.future);
+      final engine = state.projectType == 'Code Plan'
+          ? await ref.read(programmingEngineProvider.future)
+          : await ref.read(engineLoadedProvider.future);
       final prior = state.messages.length > 1
           ? state.messages.sublist(0, state.messages.length - 1)
           : const <_Msg>[];
+      // Keep history in the language the student is using.
       final history = prior
-          .map((m) => '${m.isUser ? 'Student' : 'Tutor'}: ${m.text}')
+          .map((m) =>
+              '${m.isUser ? 'Student' : 'Tutor'}: ${m.english ?? m.text}')
           .join('\n');
 
-      final englishUser = await localizeOutgoing(ref, userText);
       final prompt =
           '''You are a creative project mentor.
 Help the student build a ${state.projectType} about "${state.topic}".
@@ -117,20 +128,28 @@ Guide them one step at a time: plan → draft → review.
 Ask one clear question or give one clear instruction. Be encouraging.
 Keep responses concise (3-5 sentences max).
 
-${history.isNotEmpty ? 'Conversation so far:\n$history\n' : ''}Student: $englishUser
+${history.isNotEmpty ? 'Conversation so far:\n$history\n' : ''}Student: $userText
 Tutor:''';
 
-      final response = await engine.generate(
+      final localized = await generateLocalizedReply(
+        engine: engine,
         prompt: prompt,
+        languageCode: lang,
+        pipeline: await ensureTranslationPipeline(ref),
         maxTokens: 350,
         temperature: 0.8,
+        onDisplay: (shown) {
+          state = state.copyWith(streamingText: shown);
+        },
       );
-
-      final display = await localizeIncoming(ref, response);
       state = state.copyWith(
         messages: [
           ...state.messages,
-          _Msg(text: display, isUser: false),
+          _Msg(
+            text: localized.text,
+            isUser: false,
+            english: localized.english,
+          ),
         ],
         isGenerating: false,
         streamingText: '',

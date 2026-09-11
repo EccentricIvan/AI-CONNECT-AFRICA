@@ -472,6 +472,12 @@ const kUiStringsMore = <String, Map<String, String>>{
     'Speak your question': 'Vuga ikibazo cyawe',
     'Stop dictation': 'Hagarika kuvuga',
     'Send': 'Ohereza',
+    'Your turn — try this:': 'Ni umwanya wawe — gerageza:',
+    'Write the equation': 'Andika equation',
+    'Undo the constant': 'Kuraho constant',
+    'Divide to isolate x': 'Kora division kugira ngo ubone x',
+    'Execute the arithmetic': 'Kora imibare',
+    'State the solution': 'Tanga igisubizo',
   },
   'rn': {
     'Chat': 'Ikiganiro',

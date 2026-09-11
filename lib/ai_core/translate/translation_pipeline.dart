@@ -6,8 +6,20 @@ import 'package:flutter/foundation.dart';
 import '../inference/inference_engine.dart';
 import '../inference/pinned_prompt_cache.dart';
 import '../inference/runtime_config.dart';
-import 'supported_languages.dart';
+import '../science/science_text.dart';
+import 'chat_languages.dart';
 import 'translation_quality.dart';
+
+/// Prompt-based translator (AfriSLM GGUF). Mocks stay on [TranslationPipeline]
+/// for unit tests.
+abstract class SequenceTranslator {
+  Future<String> translatePair({
+    required String text,
+    required String sourceFlores,
+    required String targetFlores,
+    int maxNewTokens = 256,
+  });
+}
 
 /// True when [text] is very likely already English (Latin + common words).
 /// Used to skip a slow AfriSLM round-trip when the student typed English.
@@ -83,21 +95,8 @@ class TranslationOutcome {
   final String? failure;
 }
 
-/// Wraps the AfriSLM translation engine with cached, validated, single-shot
-/// calls so the tutor pipeline can stay entirely in English while the
-/// student reads and writes in their own language.
-///
-/// Three guarantees, in priority order:
-///
-///  1. **Never invent.** Every candidate is judged by [judgeTranslation]
-///     before it can reach a student. A rejected candidate is retried once
-///     at temperature 0; a second rejection falls back to the original text
-///     and reports the failure rather than showing made-up words.
-///  2. **Never fail the turn.** Every error path returns a
-///     [TranslationOutcome] carrying displayable text. Nothing here throws.
-///  3. **Be fast.** A cache hit skips the model entirely, which matters
-///     enormously: llm_llamacpp reloads the whole GGUF on every request, so
-///     a miss costs a full model load before the first token.
+/// Wraps AfriSLM with cached, validated translation prompts.
+/// ChatNotifier streams Qwen English through this layer; math islands skip it.
 class TranslationPipeline {
   TranslationPipeline(
     this._engine, {
@@ -108,6 +107,12 @@ class TranslationPipeline {
 
   final InferenceEngine _engine;
   final TranslationStore? _store;
+
+  /// Session cache that does not depend on Drift. The documents directory
+  /// is missing in some desktop/dev launches, which makes every store
+  /// lookup fail and forced a full GGUF reload on every identical string.
+  static const _memoryCap = 256;
+  final Map<String, String> _memory = {};
 
   /// Identifies the GGUF that produces these translations. Part of every
   /// cache key so a re-quantized or upgraded model never serves rows the
@@ -122,13 +127,17 @@ class TranslationPipeline {
   /// it was tuned on. We previously sent a bare "Translate to Swahili.
   /// Output the translation only." with no system turn at all, which is off
   /// that distribution and is where invented text and commentary creep in.
-  String _systemPrompt(String from, String to) => PinnedPromptCache.intern(
+  String _systemPrompt(String from, String to) {
+    final base =
         'You are a professional $from to $to translator. Your goal is to '
         'accurately convey the meaning and nuances of the original $from text '
         'while adhering to $to grammar, vocabulary, and cultural '
         'sensitivities. Produce only the $to translation, without any '
-        'additional explanations or commentary.',
-      );
+        'additional explanations or commentary.';
+    final style = chatTranslateStyle(to);
+    if (style == null) return PinnedPromptCache.intern(base);
+    return PinnedPromptCache.intern('$base $style');
+  }
 
   String _userPrompt(String from, String to, String text) =>
       'Please translate the following $from text into $to: $text.\n\n'
@@ -196,16 +205,21 @@ class TranslationPipeline {
     for (var attempt = 0; attempt < 2; attempt++) {
       final strict = attempt == 0;
       try {
-        final raw = await _engine.generate(
+        final String raw;
+        raw = await _engine.generate(
           prompt: _userPrompt(fromName, toName, source),
           systemPrompt: _systemPrompt(fromName, toName),
           maxTokens: _tokenBudget(source),
           temperature: kTranslateTemperature,
-          // Only stream the first attempt: a retry would replay tokens over
-          // a bubble that already has text in it.
           onToken: strict ? onToken : null,
         );
         final candidate = cleanTranslationOutput(raw);
+        if (candidate.isEmpty) {
+          debugPrint(
+            'TRANSLATION RAW emptied ($direction $cacheLangCode): '
+            '[${raw.replaceAll('\n', r'\n')}]',
+          );
+        }
         final rejection = judgeTranslation(
           source: source,
           candidate: candidate,
@@ -233,9 +247,6 @@ class TranslationPipeline {
           'TRANSLATION ERROR (attempt ${attempt + 1}, $direction '
           '$cacheLangCode): $e',
         );
-        // A load-shaped engine failure will not fix itself on a retry — the
-        // engine latches those itself and fails fast, so a second attempt
-        // costs milliseconds. Keep the loop simple and let it try.
       }
     }
 
@@ -245,10 +256,14 @@ class TranslationPipeline {
   }
 
   Future<String?> _cacheLookup(String key, String source) async {
+    final mem = _memory[key];
+    if (mem != null) return mem;
     final store = _store;
     if (store == null) return null;
     try {
-      return await store.lookup(key, source);
+      final hit = await store.lookup(key, source);
+      if (hit != null) _memoryPut(key, hit);
+      return hit;
     } catch (e) {
       debugPrint('TRANSLATION CACHE lookup failed (ignored): $e');
       return null;
@@ -262,6 +277,7 @@ class TranslationPipeline {
     required String source,
     required String translated,
   }) async {
+    _memoryPut(key, translated);
     final store = _store;
     if (store == null) return;
     try {
@@ -278,11 +294,20 @@ class TranslationPipeline {
     }
   }
 
+  void _memoryPut(String key, String value) {
+    _memory.remove(key);
+    _memory[key] = value;
+    if (_memory.length > _memoryCap) {
+      _memory.remove(_memory.keys.first);
+    }
+  }
+
   /// Local-language student text → English, for the tutor.
   Future<TranslationOutcome> toEnglishDetailed(
     String text,
-    String fromLanguageCode,
-  ) async {
+    String fromLanguageCode, {
+    TokenCallback? onToken,
+  }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty || fromLanguageCode == 'en') {
       return TranslationOutcome.passthrough(text);
@@ -292,17 +317,34 @@ class TranslationPipeline {
     if (looksLikeEnglish(trimmed)) {
       return TranslationOutcome.passthrough(text);
     }
-    return _translate(
-      text: trimmed,
-      fromName: languagePromptName(fromLanguageCode),
+    final islands = protectMathIslands(trimmed);
+    final source = islands.text.trim().isEmpty ? trimmed : islands.text;
+    final out = await _translate(
+      text: source,
+      fromName: chatTranslatePromptName(fromLanguageCode),
       toName: 'English',
       toCode: 'en',
       direction: 'to_en',
       cacheLangCode: fromLanguageCode,
+      onToken: onToken,
+    );
+    if (!out.translated) return out;
+    final restored = islands.restore(out.text);
+    if (onToken != null && restored != out.text) {
+      await emitToken(onToken, restored);
+    }
+    return TranslationOutcome(
+      text: restored,
+      translated: true,
+      fromCache: out.fromCache,
     );
   }
 
   /// English tutor text → the student's learning language.
+  ///
+  /// Whole-text first (cache-friendly). If that is rejected or the engine
+  /// stalls, each sentence is translated on its own so one failure cannot
+  /// blank the rest of the reply.
   Future<TranslationOutcome> fromEnglishDetailed(
     String text,
     String toLanguageCode, {
@@ -312,15 +354,77 @@ class TranslationPipeline {
     if (trimmed.isEmpty || toLanguageCode == 'en') {
       return TranslationOutcome.passthrough(text);
     }
-    return _translate(
-      text: trimmed,
+    final islands = protectMathIslands(trimmed);
+    if (islands.isPureMath) {
+      return TranslationOutcome(
+        text: repairUnclosedMathDelimiters(trimmed),
+        translated: true,
+      );
+    }
+    final source = islands.text.trim().isEmpty ? trimmed : islands.text;
+    final whole = await _translate(
+      text: source,
       fromName: 'English',
-      toName: languagePromptName(toLanguageCode),
+      toName: chatTranslatePromptName(toLanguageCode),
       toCode: toLanguageCode,
       direction: 'from_en',
       cacheLangCode: toLanguageCode,
       onToken: onToken,
     );
+    if (whole.translated) {
+      return TranslationOutcome(
+        text: islands.restore(whole.text),
+        translated: true,
+        fromCache: whole.fromCache,
+      );
+    }
+    final recovered = await _translatePiecewise(
+      source,
+      toLanguageCode,
+    );
+    if (recovered.translated) {
+      final restored = islands.restore(recovered.text);
+      await emitToken(onToken, restored);
+      return TranslationOutcome(text: restored, translated: true);
+    }
+    return whole;
+  }
+
+  Future<TranslationOutcome> _translatePiecewise(
+    String text,
+    String toLanguageCode,
+  ) async {
+    final units = splitTranslationUnits(text);
+    if (units.length <= 1) {
+      return TranslationOutcome.passthrough(text);
+    }
+    final pieces = <String>[];
+    var ok = 0;
+    for (final unit in units) {
+      final outcome = await _translate(
+        text: unit,
+        fromName: 'English',
+        toName: chatTranslatePromptName(toLanguageCode),
+        toCode: toLanguageCode,
+        direction: 'from_en',
+        cacheLangCode: toLanguageCode,
+      );
+      if (outcome.translated) {
+        ok++;
+        pieces.add(outcome.text);
+      } else {
+        pieces.add(outcome.text);
+      }
+    }
+    if (ok == 0) {
+      return TranslationOutcome(
+        text: text,
+        translated: false,
+        failure: 'every sentence failed to translate',
+      );
+    }
+    final joined = pieces.join(' ').trim();
+    return TranslationOutcome(text: joined, translated: true);
   }
 
   /// Text-only wrapper. Prefer [toEnglishDetailed] where the caller can act

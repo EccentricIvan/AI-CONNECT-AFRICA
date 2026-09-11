@@ -13,7 +13,16 @@ import '../model/model_manager.dart' show ModelInfo, ModelStatus;
 /// [LlamaCppEngineImpl] loads this file in-process via llama.cpp on every
 /// supported platform. One on-disk name regardless of platform or quant.
 class AfriSlmModelManager {
-  static const modelFileName = 'translate-afrislm.gguf';
+  static const modelFileName = 'afrislm-0.8b-q8_0.gguf';
+
+  /// USB / older quants accepted so a Q4 copy still loads.
+  static const alternateFileNames = [
+    'TranslatePsy-AfriSLM-0.8B-Q8_0-imat.gguf',
+    'afrislm-0.8b-q5_k_m.gguf',
+    'afrislm-0.8b-q4_k_m.gguf',
+    'TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf',
+    'translate-afrislm.gguf',
+  ];
   static const _markerFileName = 'translate-afrislm.install.json';
   // AfriSLM 0.8B Q4 is roughly 500MB-1GB; reject obvious truncations.
   static const _minSizeBytes = 300 * 1024 * 1024; // 300 MB
@@ -21,19 +30,14 @@ class AfriSlmModelManager {
   /// Canonical install target — where [installFromFile] and
   /// [downloadModel] write the file.
   Future<String> modelFilePath() async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final appFiles = await getApplicationDocumentsDirectory();
-      return p.join(appFiles.path, 'models', modelFileName);
-    }
-    final docs = await getApplicationDocumentsDirectory();
-    return p.join(docs.path, 'OTIC', modelFileName);
+    return canonicalModelInstallPath(modelFileName);
   }
 
   /// All locations checked for an already-present model file, in order.
   /// Mirrors ModelManager: canonical install path first, then a
   /// bundled-next-to-the-executable fallback so a self-contained release
   /// zip (exe + models/translate-afrislm.gguf) is picked up automatically.
-  Future<List<String>> _candidatePaths() async {
+  Future<List<String>> _candidatePathsFor(String fileName) async {
     final paths = <String>[];
     if (defaultTargetPlatform == TargetPlatform.android) {
       try {
@@ -43,21 +47,34 @@ class AfriSlmModelManager {
             p.join(
               ext.parent.parent.parent.parent.path,
               'OTIC',
-              modelFileName,
+              fileName,
             ),
           );
         }
       } catch (_) {}
-      paths.add(await modelFilePath());
+      try {
+        final appFiles = await getApplicationDocumentsDirectory();
+        paths.add(p.join(appFiles.path, 'models', fileName));
+      } catch (_) {}
     } else {
-      return modelCandidateFiles(modelFileName);
+      return modelCandidateFiles(fileName);
     }
     return paths;
+  }
+
+  Future<List<String>> _candidatePaths() async {
+    final names = [modelFileName, ...alternateFileNames];
+    final out = <String>[];
+    for (final name in names) {
+      out.addAll(await _candidatePathsFor(name));
+    }
+    return out;
   }
 
   Future<ModelInfo> checkModel() async {
     final candidates = await _candidatePaths();
     debugPrint('TRANSLATE MODEL candidates:\n  ${candidates.join('\n  ')}');
+    ModelInfo? truncated;
     for (final path in candidates) {
       final file = File(path);
       try {
@@ -67,11 +84,16 @@ class AfriSlmModelManager {
       }
       final size = await file.length();
       if (size < _minSizeBytes) {
-        return ModelInfo(status: ModelStatus.corrupted, path: path, sizeBytes: size);
+        truncated ??= ModelInfo(
+          status: ModelStatus.corrupted,
+          path: path,
+          sizeBytes: size,
+        );
+        continue;
       }
       return ModelInfo(status: ModelStatus.ready, path: path, sizeBytes: size);
     }
-    return const ModelInfo(status: ModelStatus.notInstalled);
+    return truncated ?? const ModelInfo(status: ModelStatus.notInstalled);
   }
 
   /// Copies a user-picked GGUF file into the expected location. Mirrors
@@ -222,8 +244,7 @@ class AfriSlmModelManager {
   }
 
   Future<File> _markerFile() async {
-    final docs = await getApplicationDocumentsDirectory();
-    return File(p.join(docs.path, 'OTIC', _markerFileName));
+    return File(await canonicalModelInstallPath(_markerFileName));
   }
 
   Future<void> _writeMarker({

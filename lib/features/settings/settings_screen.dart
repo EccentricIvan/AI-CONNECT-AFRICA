@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../ai_core/cloud/cloud_api_settings.dart';
 import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/translate/chat_languages.dart';
 import '../../ai_core/translate/supported_languages.dart';
 import '../../core/app_info_provider.dart';
 import 'fetch_packages_tile.dart';
@@ -136,10 +137,10 @@ appBar: StudioAppBar(
                         : 'Chat uses ${languageName(language)}',
                   ),
                   trailing: DropdownButton<String>(
-                    value: language,
+                    value: coerceChatLanguage(language),
                     underline: const SizedBox.shrink(),
                     items: [
-                      for (final lang in supportedLanguages)
+                      for (final lang in chatLanguages)
                         DropdownMenuItem(value: lang.code, child: Text(lang.name)),
                     ],
                     onChanged: (code) {

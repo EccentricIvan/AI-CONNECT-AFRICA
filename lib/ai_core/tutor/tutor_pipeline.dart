@@ -3,6 +3,8 @@ import 'dart:async';
 import '../inference/inference_engine.dart';
 import '../inference/runtime_config.dart';
 import '../../curriculum/curriculum_provider.dart';
+import 'conversation_memory.dart';
+import 'programming_topic.dart';
 import 'school_math.dart';
 import 'tutor_contract.dart';
 import 'tutor_response.dart';
@@ -16,16 +18,25 @@ import 'tutor_response.dart';
 /// prompt so the model teaches from accurate material.
 class TutorPipeline {
   TutorPipeline({
-    required this._engine,
-    this._curriculum,
-  });
+    required InferenceEngine engine,
+    CurriculumService? curriculum,
+    this.systemPrompt = kTutorContract,
+    this.maxTokens = kMaxNewTokens,
+    this.codingCoach = false,
+  })  : _engine = engine,
+        _curriculum = curriculum;
 
   final InferenceEngine _engine;
   final CurriculumService? _curriculum;
+  final String systemPrompt;
+  final int maxTokens;
+  final bool codingCoach;
+
+  CurriculumService? get curriculum => _curriculum;
   TutorStage _nextStage = TutorStage.answer;
   String _currentTopic = '';
   CurriculumMatch? _activeMatch;
-  final List<_Turn> _history = [];
+  final ConversationMemory _memory = ConversationMemory();
   SchoolMathSolution? _activeMath;
   SchoolMathSolution? _awaitingMath;
   bool _practiceMiss = false;
@@ -39,9 +50,15 @@ class TutorPipeline {
     required String studentMessage,
     TokenCallback? onToken,
     String? safetyNote,
+    String languageCode = 'en',
+    bool useCurriculum = true,
   }) async {
-    final continuing = _isContinuingThread(studentMessage);
-    final topic = _detectTopic(studentMessage);
+    assert(languageCode.isNotEmpty);
+    if (_memory.isCorrection(studentMessage)) {
+      _memory.noteCorrection();
+    }
+    final continuing = _memory.isContinuing(studentMessage);
+    final topic = continuing ? _currentTopic : _detectTopic(studentMessage);
     final switched = !continuing &&
         topic.isNotEmpty &&
         _currentTopic.isNotEmpty &&
@@ -50,16 +67,23 @@ class TutorPipeline {
       _currentTopic = topic;
       _nextStage = TutorStage.answer;
       _activeMatch = null;
+      _memory.clear();
       await _engine.resetSession();
     } else if (_currentTopic.isEmpty && topic.isNotEmpty) {
       _currentTopic = topic;
     }
 
-    final matched = _curriculum?.findBestMatchDetailed(studentMessage);
-    if (matched != null) {
-      _activeMatch = matched;
-    } else if (switched) {
+    if (!useCurriculum) {
       _activeMatch = null;
+    } else {
+      final matched = queryLooksLikeMath(studentMessage)
+          ? null
+          : _curriculum?.findBestMatchDetailed(studentMessage);
+      if (matched != null) {
+        _activeMatch = matched;
+      } else if (switched) {
+        _activeMatch = null;
+      }
     }
 
     final stage = _nextStage;
@@ -73,25 +97,33 @@ class TutorPipeline {
       if (mathReply.math == null) {
         onToken?.call(mathReply.text);
       }
-      _remember(studentMessage, mathReply.text, math: mathReply.math);
+      _remember(
+        studentMessage,
+        mathReply.text,
+        verified: mathReply.math != null ? [mathReply.math!.answer] : const [],
+      );
       _advanceStage();
       return mathReply;
     }
 
-    final notes = _activeMatch != null
-        ? _curriculum?.buildTutorNotes(_activeMatch!)
+    final notes = useCurriculum && _activeMatch != null
+        ? (codingCoach ||
+                isProgrammingSubjectName(_activeMatch?.subjectName)
+            ? _curriculum?.buildProgrammingTutorNotes(_activeMatch!)
+            : _curriculum?.buildTutorNotes(_activeMatch!))
         : null;
     final prompt = _buildPrompt(
       studentMessage,
       safetyNote: safetyNote,
       curriculumNotes: notes,
+      useCurriculum: useCurriculum,
     );
 
     final buffer = StringBuffer();
     final text = await _engine.generate(
       prompt: prompt,
-      systemPrompt: kTutorContract,
-      maxTokens: kMaxNewTokens,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
       temperature: kTutorTemperature,
       onToken: (token) async {
         buffer.write(token);
@@ -99,7 +131,7 @@ class TutorPipeline {
       },
     );
 
-    _remember(studentMessage, text);
+    _remember(studentMessage, text, verified: _verifiedFromCurriculum());
 
     final followUp = _followUpForStage(stage);
     _advanceStage();
@@ -109,6 +141,7 @@ class TutorPipeline {
       text: text,
       followUpPrompt: followUp,
       topic: _currentTopic,
+      lesson: _activeMatch?.lesson,
     );
   }
 
@@ -122,108 +155,72 @@ class TutorPipeline {
     String studentMessage, {
     String? safetyNote,
     String? curriculumNotes,
+    bool useCurriculum = true,
   }) {
-    final q = studentMessage.length > 240
-        ? '${studentMessage.substring(0, 240)}…'
-        : studentMessage;
+    final raw = studentMessage.trim();
+    final cap = codingCoach ? 1200 : 280;
+    final q = _memory.resolveCurrent(
+      raw.length > cap ? '${raw.substring(0, cap)}…' : raw,
+    );
 
-    final notes = (curriculumNotes == null || curriculumNotes.isEmpty)
-        ? 'CURRICULUM: none matched — do not invent a syllabus. Teach at a general school level.'
-        : 'CURRICULUM:\n$curriculumNotes';
-
-    // Contract is pinned as [systemPrompt] / LiteRT systemInstruction —
-    // do not prepend it again or the model re-reads the header every turn.
+    final String notes;
+    if (!useCurriculum) {
+      notes = 'CURRICULUM: bypassed.\nINSTRUCTION: $kOpenWorldInstruction';
+    } else if (curriculumNotes == null || curriculumNotes.isEmpty) {
+      notes =
+          'CURRICULUM: none matched — do not invent a syllabus. Teach at a general school level.';
+    } else {
+      notes =
+          'CURRICULUM:\n$curriculumNotes\nINSTRUCTION: $kCurriculumOnlyInstruction';
+    }
+    final replyShape = codingCoach
+        ? 'REPLY LANGUAGE: English. Put code in fenced Markdown blocks. '
+            'Do not use LaTeX for code. One short chat beat, then a question.'
+        : 'REPLY LANGUAGE: English. Write the whole reply in English. Keep formulas in LaTeX (\$...\$ or \$\$...\$\$).';
     return '''$notes
-${safetyNote != null ? '$safetyNote\n' : ''}${_threadBlock()}CURRENT QUESTION: $q
+$replyShape
+${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock()}CURRENT: $q
 Tutor:''';
   }
 
-  void _remember(String studentMessage, String tutorText, {SchoolMathSolution? math}) {
-    _history.add(_Turn(
-      role: 'student',
-      text: studentMessage,
-      recap: _clip(studentMessage, 120),
-    ));
-    _history.add(_Turn(
-      role: 'tutor',
-      text: tutorText,
-      recap: _tutorRecap(tutorText, math),
-    ));
-    if (_history.length > 6) _history.removeRange(0, _history.length - 6);
+  void _remember(
+    String studentMessage,
+    String tutorText, {
+    List<String> verified = const [],
+  }) {
+    _memory.remember(
+      student: studentMessage,
+      tutor: tutorText,
+      verified: verified,
+    );
   }
 
-  String _threadBlock() {
-    if (_history.isEmpty) return '';
-    final b = StringBuffer();
-    b.writeln('THREAD (understanding only — do not copy):');
-    for (final t in _history) {
-      final line = t.recap.isNotEmpty ? t.recap : _clip(t.text, 80);
-      if (t.role == 'student') {
-        b.writeln('Student asked: $line');
-      } else {
-        b.writeln('You already taught: $line');
-      }
-    }
-    b.writeln('Build on that. Write a new reply for CURRENT QUESTION.');
-    return b.toString();
-  }
-
-  String _tutorRecap(String text, SchoolMathSolution? math) {
-    if (math != null) {
-      return '${math.answer} — method already shown; do not repeat those steps unless asked';
-    }
-    final answer = RegExp(
-      r'Answer:\s*(.+)',
-      caseSensitive: false,
-    ).firstMatch(text);
-    if (answer != null) {
-      return _clip(answer.group(1)!.trim(), 90);
-    }
-    final one = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    return _clip(one, 90);
-  }
-
-  String _clip(String s, int max) {
-    final t = s.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (t.length <= max) return t;
-    return '${t.substring(0, max)}…';
-  }
-
-  bool _isContinuingThread(String message) {
-    if (_history.isEmpty) return false;
-    if (_isClarifyingFollowUp(message)) return true;
-    final t = message.trim().toLowerCase();
-    final words = t.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return false;
-    if (RegExp(
-      r'^(what about|how about|and if|so if|so then|then if|'
-      r'compared to|the same|same for|why (do|does|did|is|would)|'
-      r'how (does|do|did|is|would) that|does that|is that|and then|'
-      r'tell me more|another example|what else|go deeper|and also)\b',
-    ).hasMatch(t)) {
-      return true;
-    }
-    if (words.length <= 12 &&
-        RegExp(
-          r'\b(that|this|those|these|it|they|them|instead|'
-          r'the answer|the result|the method|the steps)\b',
-        ).hasMatch(t)) {
-      return true;
-    }
-    return false;
-  }
-
-  bool _isClarifyingFollowUp(String message) {
-    final t = message.trim().toLowerCase().replaceAll(RegExp(r'[?.!]'), '');
-    if (t.isEmpty || t.split(RegExp(r'\s+')).length > 10) return false;
-    return RegExp(
-      r'^(why|how|huh|ok|okay|yes|no|thanks|more|simpler|again|'
-      r'please explain|explain more|what do you mean|'
-      r"i don'?t understand|continue|an example|example)$",
-    ).hasMatch(t);
+  List<String> _verifiedFromCurriculum() {
+    final lesson = _activeMatch?.lesson;
+    if (lesson == null) return const [];
+    return lesson.keyTerms.entries
+        .take(4)
+        .map((e) => '${e.key}: ${e.value}')
+        .toList();
   }
 
   String _followUpForStage(TutorStage stage) {
+    if (codingCoach) {
+      switch (stage) {
+        case TutorStage.answer:
+          return 'Try changing one value in the example and tell me what happens.';
+        case TutorStage.clarify:
+          return 'In your own words, what does that line of code do?';
+        case TutorStage.practice:
+          return 'Paste your attempt — I will check it.';
+        case TutorStage.apply:
+          return 'Where would you use this in a real program?';
+        case TutorStage.create:
+          return 'Write a tiny program that uses this idea.';
+        case TutorStage.reflect:
+          return 'What is one thing you can now do in code that you could not before?';
+      }
+    }
     switch (stage) {
       case TutorStage.answer:
         return 'Do you understand so far, or shall I explain it differently?';
@@ -285,10 +282,11 @@ Tutor:''';
   /// strength/weakness. Best-effort — falls back to an empty summary if
   /// generation fails or produces something unparseable.
   Future<SessionAnalysis> analyzeSession() async {
-    if (_history.isEmpty) return const SessionAnalysis(summary: '');
+    if (_memory.isEmpty) return const SessionAnalysis(summary: '');
 
-    final recent =
-        _history.length > 6 ? _history.sublist(_history.length - 6) : _history;
+    final recent = _memory.turns.length > 6
+        ? _memory.turns.sublist(_memory.turns.length - 6)
+        : _memory.turns;
     final convo = recent
         .map((t) => '${t.role == 'tutor' ? 'Tutor' : 'Student'}: ${t.text}')
         .join('\n');
@@ -338,7 +336,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
     _nextStage = TutorStage.answer;
     _currentTopic = '';
     _activeMatch = null;
-    _history.clear();
+    _memory.clear();
     _activeMath = null;
     _awaitingMath = null;
     _practiceMiss = false;
@@ -367,6 +365,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
         followUpPrompt: 'Try it, then tell me your answer.',
         topic: _currentTopic.isEmpty ? 'mathematics' : _currentTopic,
         mathCoach: true,
+        lesson: _activeMatch?.lesson,
       );
     }
 
@@ -378,7 +377,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
 
     if (!isMathCoachingFollowUp(studentMessage)) {
       if (solveSchoolMath(studentMessage) == null &&
-          !_isContinuingThread(studentMessage)) {
+          !_memory.isContinuing(studentMessage)) {
         _clearMath();
       }
       return null;
@@ -394,6 +393,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
         followUpPrompt: 'Try it, then tell me your answer.',
         topic: 'mathematics',
         mathCoach: true,
+        lesson: _activeMatch?.lesson,
       );
     }
 
@@ -425,6 +425,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
         topic: 'mathematics',
         math: target,
         mathCoach: true,
+        lesson: _activeMatch?.lesson,
       );
     }
 
@@ -435,6 +436,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
       followUpPrompt: 'Have another go, or ask me to show the full steps.',
       topic: 'mathematics',
       mathCoach: true,
+      lesson: _activeMatch?.lesson,
     );
   }
 
@@ -448,6 +450,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
       topic: _currentTopic.isEmpty ? 'mathematics' : _currentTopic,
       math: solved,
       mathCoach: true,
+      lesson: _activeMatch?.lesson,
     );
   }
 }
@@ -457,11 +460,4 @@ class SessionAnalysis {
   final String summary;
   final String? strength;
   final String? weakness;
-}
-
-class _Turn {
-  _Turn({required this.role, required this.text, this.recap = ''});
-  final String role;
-  final String text;
-  final String recap;
 }

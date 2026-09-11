@@ -1,6 +1,4 @@
-# Keep rules for flutter_gemma / MediaPipe LLM inference.
-# MediaPipe references optional proto classes that aren't bundled; R8 must
-# not fail on them. Generated from build/.../missing_rules.txt.
+# Keep llama.cpp / ggml JNI symbols.
 -dontwarn com.google.mediapipe.proto.CalculatorProfileProto$CalculatorProfile
 -dontwarn com.google.mediapipe.proto.GraphTemplateProto$CalculatorGraphTemplate
 -dontwarn org.bouncycastle.jsse.BCSSLParameters

@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'engine_scheduler.dart';
 import 'litert_lm_engine.dart';
+import 'llama_cpp_engine.dart';
 
 /// Token-by-token streaming callback.
 ///
 /// May return a [Future] so the brain loop can await outbound AfriSLM
-/// after a clause flush (sequential swap — see [EngineScheduler]).
+/// after a clause flush when both hops share one GGUF.
 typedef TokenCallback = FutureOr<void> Function(String token);
 
 /// Awaits [onToken] when it returns a [Future].
@@ -14,13 +16,12 @@ Future<void> emitToken(TokenCallback? onToken, String token) async {
   await Future.sync(() => onToken(token));
 }
 
-/// Unified interface for all local inference backends.
-/// - Chat (Android/Windows/Linux) → LiteRtLmEngineImpl (flutter_gemma_litertlm, Qwen3-0.6B)
-/// - Translate (desktop/Android)  → LlamaCppEngineImpl (in-process llama.cpp, AfriSLM GGUF)
-/// - Dev/Test                     → MockEngine (instant canned responses)
-///
-/// Native FFI lives in those two plugins — see `native_runtime.dart`.
-/// Do not add onnxruntime_flutter or a second llama.cpp package beside them.
+/// Unified inference interface.
+/// - Reason (Qwen 0.6B GGUF)         → [LlamaCppEngineImpl] (`EngineLane.reason`)
+/// - Program (Qwen 1.5B Coder GGUF)  → [LlamaCppEngineImpl] (`EngineLane.program`)
+/// - Translate (AfriSLM GGUF)        → [LlamaCppEngineImpl] (`EngineLane.translate`)
+/// - Fallback (Qwen3-0.6B `.litertlm`) → [LiteRtLmEngineImpl]
+/// - Dev/Test                        → [MockEngine]
 abstract class InferenceEngine {
   bool get isReady;
   String get backendLabel;
@@ -33,9 +34,7 @@ abstract class InferenceEngine {
 
   /// Generate a response, streaming tokens via [onToken].
   ///
-  /// [systemPrompt] is pinned when the runtime can keep it in KV
-  /// ([LiteRtLmEngineImpl] via `createChat(systemInstruction:)`) or sent as
-  /// a real system turn ([LlamaCppEngineImpl] / AfriSLM).
+  /// [systemPrompt] is interned and sent as a system turn.
   Future<String> generate({
     required String prompt,
     int maxTokens = 512,
@@ -44,8 +43,35 @@ abstract class InferenceEngine {
     String? systemPrompt,
   });
 
-  /// Drop a pinned chat session (tutor "New session") so the next
-  /// generate re-pins [systemPrompt] without leftover turns.
+  /// Token stream over [generate]. Errors close the stream with that error.
+  Stream<String> streamGenerate({
+    required String prompt,
+    int maxTokens = 512,
+    double temperature = 0.7,
+    String? systemPrompt,
+  }) {
+    late final StreamController<String> controller;
+    controller = StreamController<String>(
+      onListen: () {
+        generate(
+          prompt: prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          systemPrompt: systemPrompt,
+          onToken: (token) {
+            if (!controller.isClosed) controller.add(token);
+          },
+        ).then((_) {
+          if (!controller.isClosed) controller.close();
+        }).catchError((Object e, StackTrace st) {
+          if (!controller.isClosed) controller.addError(e, st);
+        });
+      },
+    );
+    return controller.stream;
+  }
+
+  /// Drop a pinned chat session (tutor "New session").
   Future<void> resetSession() async {}
 
   /// Release native resources.
@@ -59,9 +85,7 @@ class ModelLoadException implements Exception {
   String toString() => 'ModelLoadException: $message';
 }
 
-/// Returns the chat engine — LiteRT-LM runs Qwen3-0.6B identically on
-/// Android, Windows, and Linux, so there's no per-platform branch here
-/// anymore (web is short-circuited earlier, in ai_provider.dart).
+/// Reasoning engine — LiteRT-LM Qwen3-0.6B (`.litertlm`).
 InferenceEngine createPlatformEngine() {
   return LiteRtLmEngineImpl();
 }

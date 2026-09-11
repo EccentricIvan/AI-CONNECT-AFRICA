@@ -1,23 +1,32 @@
 import 'dart:async';
 
-/// One native decode at a time.
+/// Per-engine native decode lanes.
 ///
-/// Qwen (LiteRT) and AfriSLM (llama.cpp) must not prefill in the same
-/// millisecond window on a 4 GB phone. The brain loop awaits each flushed
-/// clause's translation ([OutboundTranslateStream.addEnglish]), and that
-/// translation takes this lock. LiteRT's `await for` then stops pulling
-/// tokens, so the GGUF can load, decode, and free before the next Qwen
-/// token is consumed.
+/// Qwen (reason) and AfriSLM (translate) must not share a lane: outbound
+/// translation has to run while Qwen is still emitting English tokens.
+/// Two [LlamaCppEngineImpl] instances plus two lanes is the overlap.
+///
+/// A single shared GGUF uses [reason] for both hops and stays sequential.
+class EngineLane {
+  static const reason = 'reason';
+  static const program = 'program';
+  static const translate = 'translate';
+}
+
+/// Serializes jobs that share a native runtime.
 class EngineScheduler {
   EngineScheduler._();
   static final EngineScheduler instance = EngineScheduler._();
 
-  Future<void> _tail = Future.value();
+  final Map<String, Future<void>> _tails = {};
 
-  Future<T> exclusive<T>(Future<T> Function() job) async {
-    final previous = _tail;
+  Future<T> exclusive<T>(
+    Future<T> Function() job, {
+    String lane = EngineLane.reason,
+  }) async {
+    final previous = _tails[lane] ?? Future<void>.value();
     final done = Completer<void>();
-    _tail = done.future;
+    _tails[lane] = done.future;
     try {
       try {
         await previous;

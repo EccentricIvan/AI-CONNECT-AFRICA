@@ -8,6 +8,7 @@ import 'package:ai_connect_africa/ai_core/translate/translation_pipeline.dart';
 /// to the engine without needing a real model.
 class _RecordingEngine extends InferenceEngine {
   final List<String> prompts = [];
+  final List<String?> systemPrompts = [];
   String nextResponse = 'translated text';
 
   @override
@@ -28,6 +29,7 @@ class _RecordingEngine extends InferenceEngine {
     String? systemPrompt,
   }) async {
     prompts.add(prompt);
+    systemPrompts.add(systemPrompt);
     return nextResponse;
   }
 
@@ -78,7 +80,27 @@ void main() {
 
       expect(engine.prompts.single, contains('Luganda'));
       expect(engine.prompts.single, contains('How are you?'));
+      expect(engine.prompts.single, contains('Translation:'));
+      expect(engine.prompts.single, isNot(contains('/no_think')));
       expect(result, 'Oli otya?');
+    });
+
+    test('Luganda, Kinyarwanda and Swahili each get their own translator',
+        () async {
+      final engine = _RecordingEngine()..nextResponse = 'okuli';
+      final pipeline = TranslationPipeline(engine);
+
+      await pipeline.fromEnglish('Write the equation', 'lg');
+      await pipeline.fromEnglish('Write the equation', 'rw');
+      await pipeline.fromEnglish('Write the equation', 'sw');
+
+      expect(engine.prompts[0], contains('Luganda'));
+      expect(engine.prompts[1], contains('Kinyarwanda'));
+      expect(engine.prompts[2], contains('Swahili'));
+      expect(engine.systemPrompts[0], contains('natural Luganda'));
+      expect(engine.systemPrompts[1], contains('natural Kinyarwanda'));
+      expect(engine.systemPrompts[1], isNot(contains('Luganda')));
+      expect(engine.systemPrompts[2], contains('natural Kiswahili'));
     });
 
     test('fromEnglish is a no-op when the target is English', () async {

@@ -40,8 +40,50 @@ class _ScriptedEngine extends InferenceEngine {
   Future<void> dispose() async {}
 }
 
-/// Engine that always throws — stands in for a machine where the llama.cpp
-/// native library never came up.
+class _ByPromptEngine extends InferenceEngine {
+  int calls = 0;
+
+  @override
+  bool get isReady => true;
+
+  @override
+  String get backendLabel => 'ByPrompt';
+
+  @override
+  Future<void> loadModel(String modelPath) async {}
+
+  @override
+  Future<String> generate({
+    required String prompt,
+    int maxTokens = 512,
+    double temperature = 0.7,
+    TokenCallback? onToken,
+    String? systemPrompt,
+  }) async {
+    calls++;
+    // Whole-reply echo (rejected). Each sentence on its own is translated.
+    if (prompt.contains('The leaf takes') &&
+        prompt.contains('Photosynthesis is how')) {
+      const echo =
+          'Photosynthesis is how a plant makes food from sunlight. '
+          'The leaf takes in carbon dioxide.';
+      onToken?.call(echo);
+      return echo;
+    }
+    if (prompt.contains('The leaf takes')) {
+      const out = 'Jani huchukua dioksidi kabonia.';
+      onToken?.call(out);
+      return out;
+    }
+    const out =
+        'Photosynthesis ni namna mmea unavyotengeneza chakula kutokana na jua.';
+    onToken?.call(out);
+    return out;
+  }
+
+  @override
+  Future<void> dispose() async {}
+}
 class _BrokenEngine extends InferenceEngine {
   int calls = 0;
 
@@ -209,6 +251,18 @@ void main() {
       expect(second.text, 'Habari zako');
     });
 
+    test('a repeat hits in-memory cache with no store', () async {
+      final engine = _ScriptedEngine(['Habari yako']);
+      final pipeline = TranslationPipeline(engine, modelTag: 't');
+
+      final first = await pipeline.fromEnglishDetailed('How are you', 'sw');
+      final second = await pipeline.fromEnglishDetailed('How are you', 'sw');
+
+      expect(first.fromCache, isFalse);
+      expect(second.fromCache, isTrue);
+      expect(engine.calls, 1);
+    });
+
     test('a broken cache does not break translation', () async {
       final engine = _ScriptedEngine(['Habari yako']);
       final pipeline =
@@ -303,6 +357,21 @@ void main() {
 
       expect(engine.calls, 0);
       expect(out.text, 'What is the way to explain this for my class');
+    });
+
+    test('a rejected whole reply is recovered sentence by sentence', () async {
+      const source =
+          'Photosynthesis is how a plant makes food from sunlight. '
+          'The leaf takes in carbon dioxide.';
+      final engine = _ByPromptEngine();
+      final pipeline = TranslationPipeline(engine, modelTag: 't');
+
+      final out = await pipeline.fromEnglishDetailed(source, 'sw');
+
+      expect(out.translated, isTrue);
+      expect(out.text, contains('Jani'));
+      expect(out.text, isNot(equals(source)));
+      expect(engine.calls, greaterThan(2));
     });
   });
 }

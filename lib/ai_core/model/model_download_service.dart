@@ -77,7 +77,7 @@ class CancellationToken {
 ///    bytes are written, so verification costs no second pass over 642 MB and
 ///    no extra memory.
 /// 3. **`.part` then rename.** A killed download must never leave a truncated
-///    file at a path model discovery would find and hand to llama.cpp, which
+///    file at a path model discovery would find, which
 ///    fails in confusing ways rather than obvious ones.
 class ModelDownloadService {
   // ignore: prefer_initializing_formals

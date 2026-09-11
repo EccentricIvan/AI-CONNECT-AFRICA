@@ -41,99 +41,103 @@ class ModelInfo {
   bool get isReady => status == ModelStatus.ready;
 }
 
-/// Locates the chat model (.litertlm) on the device — currently Qwen3-0.6B.
+/// Locates the Qwen3-0.6B tutor brain.
 ///
-/// LiteRT-LM runs this file identically on Android, Windows, and Linux, so
-/// there is a single canonical on-disk filename [chatModelFileName] instead
-/// of a per-platform name — only the containing folder differs. Kept
-/// model-agnostic (not e.g. "qwen3-chat.litertlm") since swapping the
-/// backing model is just a ModelType change in litert_lm_engine.dart.
-///
-/// Expected locations (checked in order):
-///   Android          → <externalStorage>/OTIC/chat-model.litertlm
-///                       → <appFiles>/models/chat-model.litertlm
-///   Windows / Linux  → <appDocuments>\OTIC\chat-model.litertlm
+/// Canonical file: [qwenGgufFileName] (`qwen-0.6b-instruct.gguf`).
+/// That GGUF is the general reasoning brain. LiteRT (`chat-model.litertlm`)
+/// is only a fallback if the GGUF is missing.
 class ModelManager {
+  /// General tutor brain — Qwen 0.6B Instruct GGUF.
+  static const qwenGgufFileName = 'qwen-0.6b-instruct.gguf';
+
+  /// LiteRT copy used by the Android APK bundle and as a GGUF fallback.
   static const chatModelFileName = 'chat-model.litertlm';
 
+  /// Alternate names: other GGUF dumps, then the LiteRT file.
+  static const alternateChatFileNames = [
+    qwenGgufFileName,
+    'Qwen3-0.6B-Q4_K_M.gguf',
+    'Qwen3-0.6B-Instruct-Q4_K_M.gguf',
+    'qwen3-0.6b-instruct.gguf',
+    'qwen-0.6b.gguf',
+    'chat-model.gguf',
+    chatModelFileName,
+  ];
+
   /// Marks a [ModelInfo.path] that is not a filesystem path at all but the
-  /// model sitting inside the APK's own `assets/models/` folder. LiteRT-LM
-  /// reads that asset in place (flutter_gemma's BundledSourceHandler only
-  /// records metadata — "no copying required, uses native path directly"),
-  /// so on Android the fat APK stores the chat model exactly once instead of
-  /// also extracting a second copy into app storage.
+  /// model sitting inside the APK's own `assets/models/` folder.
   static const bundledAssetPrefix = 'bundled:';
 
   /// Path value handed to the engine when the chat model is served straight
   /// out of the APK.
   static const bundledChatModelPath = '$bundledAssetPrefix$chatModelFileName';
-  // Minimum sane file size — reject obvious truncations. Smallest supported
-  // quant (Qwen3-0.6B dynamic int4) is ~330 MB; leave margin below that.
+  // Smallest supported AfriSLM GGUF (Q4_K_M) is ~500 MB; reject truncations.
   static const _minSizeBytes = 250 * 1024 * 1024; // 250 MB
 
   Future<ModelInfo> checkModel() async {
-    final candidates = await _candidatePaths();
-    debugPrint('CHAT MODEL candidates:\n  ${candidates.join('\n  ')}');
-    for (final path in candidates) {
-      final file = File(path);
-      try {
-        if (!await file.exists()) continue;
-      } catch (_) {
-        continue;
-      }
-      final size = await file.length();
-      if (size < _minSizeBytes) {
+    final names = [...alternateChatFileNames];
+    ModelInfo? truncated;
+    for (final name in names) {
+      final candidates = await _candidatePathsFor(name);
+      debugPrint('CHAT MODEL ($name) candidates:\n  ${candidates.join('\n  ')}');
+      for (final path in candidates) {
+        final file = File(path);
+        try {
+          if (!await file.exists()) continue;
+        } catch (_) {
+          continue;
+        }
+        final size = await file.length();
+        if (size < _minSizeBytes) {
+          truncated ??= ModelInfo(
+            status: ModelStatus.corrupted,
+            path: path,
+            sizeBytes: size,
+            platform: _platformLabel,
+          );
+          continue;
+        }
         return ModelInfo(
-          status: ModelStatus.corrupted,
+          status: ModelStatus.ready,
           path: path,
           sizeBytes: size,
           platform: _platformLabel,
         );
       }
-      return ModelInfo(
-        status: ModelStatus.ready,
-        path: path,
-        sizeBytes: size,
-        platform: _platformLabel,
-      );
     }
-    return const ModelInfo(status: ModelStatus.notInstalled);
+    return truncated ?? const ModelInfo(status: ModelStatus.notInstalled);
   }
 
-  Future<List<String>> _candidatePaths() async {
-    final paths = <String>[];
-
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      // External storage (USB-accessible)
-      try {
-        final ext = await getExternalStorageDirectory();
-        if (ext != null) {
-          paths.add(
-            p.join(
-              ext.parent.parent.parent.parent.path,
-              'OTIC',
-              chatModelFileName,
-            ),
-          );
-        }
-      } catch (_) {}
-      // App-internal files dir
-      final appFiles = await getApplicationDocumentsDirectory();
-      paths.add(p.join(appFiles.path, 'models', chatModelFileName));
-    } else {
-      return modelCandidateFiles(chatModelFileName);
+  Future<List<String>> _candidatePathsFor(String fileName) async {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return modelCandidateFiles(fileName);
     }
+
+    final paths = <String>[];
+    paths.add(await canonicalModelInstallPath(fileName));
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) {
+        paths.add(
+          p.join(
+            ext.parent.parent.parent.parent.path,
+            'OTIC',
+            fileName,
+          ),
+        );
+      }
+    } catch (_) {}
     return paths;
   }
 
   String get _platformLabel {
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return 'Android (LiteRT-LM)';
+        return 'Android (llama.cpp · Qwen 0.6B)';
       case TargetPlatform.windows:
-        return 'Windows (LiteRT-LM)';
+        return 'Windows (llama.cpp · Qwen 0.6B)';
       case TargetPlatform.linux:
-        return 'Linux (LiteRT-LM)';
+        return 'Linux (llama.cpp · Qwen 0.6B)';
       default:
         return 'Unknown';
     }
@@ -141,12 +145,7 @@ class ModelManager {
 
   /// Destination used when the user installs a model through the app.
   Future<String> installTargetPath() async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      final appFiles = await getApplicationDocumentsDirectory();
-      return p.join(appFiles.path, 'models', chatModelFileName);
-    }
-    final docs = await getApplicationDocumentsDirectory();
-    return p.join(docs.path, 'OTIC', chatModelFileName);
+    return canonicalModelInstallPath(qwenGgufFileName, ensureDirectory: true);
   }
 
   /// Copies a user-picked model file into the expected location.
@@ -164,9 +163,10 @@ class ModelManager {
     }
 
     final ext = p.extension(sourcePath).toLowerCase();
-    if (ext != '.litertlm') {
+    if (ext != '.litertlm' && ext != '.gguf') {
       throw const ModelInstallException(
-        'Wrong file type. This device needs a .litertlm model file.',
+        'Wrong file type. The tutor brain is qwen-0.6b-instruct.gguf '
+        '(or a Qwen instruct .gguf).',
       );
     }
 
@@ -215,9 +215,12 @@ class ModelManager {
   Future<String> installInstructions() async {
     return 'Transfer the model file to this device, then choose it with '
         'Install from file.\n\n'
-        'Model: Qwen3-0.6B .litertlm file (~330-590 MB depending on quant)\n'
-        'Source: Download from Hugging Face '
-        '(litert-community/Qwen3-0.6B) on a device with internet — '
-        'Apache-2.0, no license click-through needed.';
+        'Tutor brain: Qwen 0.6B GGUF\n'
+        '  models\\qwen-0.6b-instruct.gguf\n'
+        '  Documents\\OTIC\\qwen-0.6b-instruct.gguf\n\n'
+        'Programming brain: Qwen 1.5B Coder GGUF\n'
+        '  models\\qwen2.5-coder-1.5b-instruct.gguf\n\n'
+        'Translator: AfriSLM 0.8B GGUF\n'
+        '  models\\afrislm-0.8b-q4_k_m.gguf';
   }
 }

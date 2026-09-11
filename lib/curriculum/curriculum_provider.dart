@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../ai_core/tutor/school_math.dart';
 import 'curriculum_models.dart';
 
 class CurriculumService {
@@ -76,13 +77,22 @@ class CurriculumService {
 
   Lesson? findBestMatch(String query) => findBestMatchDetailed(query)?.lesson;
 
-  CurriculumMatch? findBestMatchDetailed(String query) {
-    final words = query
+  static String _normalizeForMatch(String text) {
+    return text
         .toLowerCase()
-        .split(RegExp(r'\s+'))
-        .where((w) => w.length > 3)
-        .toList();
-    if (words.isEmpty) return null;
+        .replaceAll('≤', '<=')
+        .replaceAll('≥', '>=')
+        .replaceAll(RegExp(r'[^\w\s=<>]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  CurriculumMatch? findBestMatchDetailed(String query) {
+    if (queryLooksLikeMath(query)) return null;
+    final qLower = query.toLowerCase();
+    final qNorm = _normalizeForMatch(query);
+    final words = qNorm.split(' ').where((w) => w.length > 3).toList();
+    if (words.isEmpty && qNorm.isEmpty) return null;
 
     CurriculumMatch? best;
     int bestScore = 0;
@@ -93,14 +103,23 @@ class CurriculumService {
           int score = 0;
           final titleLower = lesson.title.toLowerCase();
 
+          if (titleLower.length >= 4 && qLower.contains(titleLower)) {
+            score += 20;
+          }
           for (final word in words) {
             if (_containsWord(titleLower, word)) score += 5;
-            for (final term in lesson.keyTerms.keys) {
-              final termLower = term.toLowerCase();
-              if (termLower == word || _containsWord(termLower, word)) {
-                score += 3;
-              }
+          }
+          for (final term in lesson.keyTerms.keys) {
+            final termLower = term.toLowerCase();
+            if (termLower.length <= 3) continue;
+            if (_containsWord(qLower, termLower) ||
+                _containsWord(qNorm, termLower)) {
+              score += 3;
             }
+          }
+          for (final item in lesson.quiz) {
+            final quizNorm = _normalizeForMatch(item.question);
+            if (quizNorm.isNotEmpty && qNorm == quizNorm) score += 12;
           }
 
           if (score > bestScore) {
@@ -115,7 +134,8 @@ class CurriculumService {
       }
     }
 
-    if (bestScore >= 8) return best;
+    // Two key terms (3+3) or a title word + key term (5+3) is enough.
+    if (bestScore >= 6) return best;
     return null;
   }
 
@@ -137,6 +157,35 @@ class CurriculumService {
     if (lesson.examples.isNotEmpty) {
       final ex = lesson.examples.first;
       buf.writeln('Example: ${ex.length > 140 ? '${ex.substring(0, 140)}…' : ex}');
+    }
+    return buf.toString().trim();
+  }
+
+  /// Tighter notes for the coding chatbot: definitions, one example,
+  /// and one practice question so the 1.5B stays on this lesson.
+  String buildProgrammingTutorNotes(CurriculumMatch match) {
+    final lesson = match.lesson;
+    final buf = StringBuffer()
+      ..writeln('Subject: ${match.subjectName}')
+      ..writeln('Lesson: ${match.unitTitle} / ${lesson.title}')
+      ..writeln('CHAT: teach this lesson one beat at a time.');
+    if (lesson.keyTerms.isNotEmpty) {
+      final terms = lesson.keyTerms.entries
+          .take(4)
+          .map((e) => '${e.key}: ${e.value}')
+          .join('; ');
+      buf.writeln('Definitions: $terms');
+    }
+    final content = lesson.content.length > 420
+        ? '${lesson.content.substring(0, 420)}…'
+        : lesson.content;
+    buf.writeln(content);
+    for (final ex in lesson.examples.take(2)) {
+      final line = ex.length > 160 ? '${ex.substring(0, 160)}…' : ex;
+      buf.writeln('Example: $line');
+    }
+    if (lesson.quiz.isNotEmpty) {
+      buf.writeln('Practice: ${lesson.quiz.first.question}');
     }
     return buf.toString().trim();
   }

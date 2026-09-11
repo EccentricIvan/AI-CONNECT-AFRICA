@@ -8,8 +8,8 @@ import 'app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // LiteRT-LM runs the Qwen3-0.6B chat model on Android, Windows, and Linux —
-  // one engine, one .litertlm file format, no separate desktop server.
+  // Qwen 0.6B GGUF is the general brain (llama.cpp). 1.5B Coder is
+  // programming. AfriSLM translates. LiteRT stays registered as fallback.
   if (!kIsWeb) {
     try {
       await FlutterGemma.initialize(
@@ -20,5 +20,6 @@ void main() async {
     }
   }
 
+  debugPrint('Qwen 0.6B brain + Qwen 1.5B coder + AfriSLM translator');
   runApp(const ProviderScope(child: OticApp()));
 }

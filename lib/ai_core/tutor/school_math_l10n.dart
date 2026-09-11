@@ -1,7 +1,10 @@
+import '../../l10n/app_locale.dart';
 import 'school_math.dart';
 
 /// Nouns / method names that stay in English inside a local-language step.
-const kMathEnglishTerms = <String>[
+/// AfriSLM still generates the surrounding sentence; these slots are restored
+/// so formulas and science words are not rewritten.
+const kTeachingEnglishTerms = <String>[
   'PEMDAS',
   'BODMAS',
   'fraction',
@@ -14,10 +17,28 @@ const kMathEnglishTerms = <String>[
   'area',
   'rectangle',
   'formula',
+  'photosynthesis',
+  'chlorophyll',
+  'chloroplast',
+  'chloroplasts',
+  'thylakoid',
+  'glucose',
+  'oxygen',
+  'carbon dioxide',
+  'ATP',
+  'NADPH',
+  'Calvin',
+  'mitochondria',
+  'nucleus',
+  'cytoplasm',
+  'enzyme',
 ];
 
+/// @nodoc
+const kMathEnglishTerms = kTeachingEnglishTerms;
+
 final _termPattern = RegExp(
-  '\\b(${kMathEnglishTerms.map(RegExp.escape).join('|')})\\b',
+  '\\b(${kTeachingEnglishTerms.map(RegExp.escape).join('|')})\\b',
   caseSensitive: false,
 );
 
@@ -43,7 +64,7 @@ class ProtectedProse {
 }
 
 /// Pin terms, constants, and names so AfriSLM cannot rewrite them.
-ProtectedProse protectMathProse(String english) {
+ProtectedProse protectTeachingProse(String english) {
   final slots = <String>[];
   var text = english.replaceAllMapped(_constPattern, (m) {
     final i = slots.length;
@@ -58,32 +79,51 @@ ProtectedProse protectMathProse(String english) {
   return ProtectedProse(text, slots);
 }
 
-/// Translate step titles and "why" lines. Formulas, calculations, and the
-/// numeric [SchoolMathSolution.answer] are never sent to the translator.
+/// Pin terms, constants, and names so AfriSLM cannot rewrite them.
+ProtectedProse protectMathProse(String english) => protectTeachingProse(english);
+
+/// Translate step titles and "why" lines through AfriSLM. Formulas,
+/// calculations, and the numeric [SchoolMathSolution.answer] stay as
+/// computed — they are not canned language strings.
+///
+/// [onProgress] fires after the English card is ready and again after each
+/// generated title/why so the student sees the systematic layout immediately.
 Future<SchoolMathSolution> localizeSchoolMath(
   SchoolMathSolution math, {
+  String langCode = 'en',
   required Future<String> Function(String english) translate,
+  void Function(SchoolMathSolution partial)? onProgress,
 }) async {
+  if (langCode == 'en') {
+    onProgress?.call(math);
+    return math;
+  }
+
+  onProgress?.call(math);
   final cache = <String, String>{};
 
   Future<String> one(String english) async {
     final trimmed = english.trim();
     if (trimmed.isEmpty) return english;
+    if (hasUiString(langCode, trimmed)) {
+      return uiString(langCode, trimmed) ?? trimmed;
+    }
     final hit = cache[trimmed];
     if (hit != null) return hit;
-    final protected = protectMathProse(trimmed);
+    final protected = protectTeachingProse(trimmed);
     final raw = (await translate(protected.text)).trim();
     final out = raw.isEmpty ? trimmed : protected.restore(raw);
-    cache[trimmed] = out;
+    if (out.trim() != trimmed) cache[trimmed] = out;
     return out;
   }
 
-  final steps = <MathStep>[];
-  for (final step in math.steps) {
-    steps.add(step.copyWith(
-      title: await one(step.title),
-      why: await one(step.why),
-    ));
+  final steps = List<MathStep>.from(math.steps);
+  for (var i = 0; i < steps.length; i++) {
+    steps[i] = steps[i].copyWith(
+      title: await one(steps[i].title),
+      why: await one(steps[i].why),
+    );
+    onProgress?.call(math.copyWith(steps: List<MathStep>.from(steps)));
   }
 
   return math.copyWith(

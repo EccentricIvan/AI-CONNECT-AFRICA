@@ -8,15 +8,54 @@ library;
 String? trySchoolMathPlan(String question) =>
     solveSchoolMath(question)?.fullPlan;
 
+/// `5000g` → `5000 g` so unit regexes that need a word boundary still fire.
+String _splitGluedUnits(String q) {
+  return q.replaceAllMapped(
+    RegExp(r'(\d+(?:\.\d+)?)(kg|cm|mm|km|ml|g|m|l)\b'),
+    (m) => '${m[1]} ${m[2]}',
+  );
+}
+
+/// True when [query] is algebra/arithmetic, not a prose lesson lookup.
+///
+/// Curriculum matching is keyword overlap. Mixed local-language math
+/// ("Shaka agaciro ka x … 4x - 15 = 12x") used to pick unrelated lessons
+/// such as arts "Figurative Painting". Skip the lookup entirely.
+bool queryLooksLikeMath(String query) {
+  final t = query.trim();
+  if (t.isEmpty) return false;
+  if (solveSchoolMath(t) != null) return true;
+  if (t.contains(r'$')) return true;
+  return RegExp(
+    r'(?:\d\s*[a-zA-Z]|\b[a-zA-Z]\b)\s*[+\-*/=×÷^]|'
+    r'[+\-*/=×÷^]\s*(?:\d|\b[a-zA-Z]\b)|'
+    r'\d+\s*[+\-*/=×÷^]\s*\d',
+  ).hasMatch(t);
+}
+
 SchoolMathSolution? solveSchoolMath(String question) {
-  final q = question.trim().toLowerCase().replaceAll(',', '');
+  final q = _splitGluedUnits(
+    question.trim().toLowerCase().replaceAll(',', ''),
+  );
   if (q.isEmpty) return null;
+  // Equations like `2x+3=11` survive any wrapping language ("Nnyonnyola
+  // ekibonerezo kino: 2x + 3 = 11"). Parse them first so chat can skip
+  // AfriSLM inbound and still show a worked solution.
+  if (_hasLinearEquation(q)) return _parseLinear(q);
   return _parseConversion(q) ??
       _parsePercent(q) ??
       _parseFractionOf(q) ??
       _parseLinear(q) ??
       _parseRectangle(q) ??
       _parseArithmetic(q);
+}
+
+bool _hasLinearEquation(String q) {
+  final compact = q.replaceAll(' ', '');
+  return RegExp(
+        r'(?:[+-]?\d*(?:\.\d+)?)[x×](?:[+-]\d+(?:\.\d+)?)?=[+-]?\d',
+      ).hasMatch(compact) ||
+      RegExp(r'x[+-]\d+(?:\.\d+)?=[+-]?\d').hasMatch(compact);
 }
 
 class MathStep {
@@ -204,6 +243,7 @@ _Unit? _findUnit(String text, {int afterIndex = 0, String? skip}) {
     'meters': 'm',
     'metre': 'm',
     'meter': 'm',
+    'kilogram': 'kg',
     'grams': 'g',
     'gram': 'g',
     'litres': 'l',
@@ -336,7 +376,7 @@ SchoolMathSolution? _parsePercent(String q) {
           formula: '$p% = $p / 100',
         ),
         const MathStep(
-          title: 'Set up the “percent of” formula',
+          title: 'Set up the "percent of" formula',
           why: 'Of means multiply.',
           formula: 'value = (percent / 100) × base',
         ),
@@ -408,7 +448,11 @@ SchoolMathSolution? _parsePercent(String q) {
 // ── Fraction of ──────────────────────────────────────────────────────────────
 
 SchoolMathSolution? _parseFractionOf(String q) {
-  final m = RegExp(r'(\d+)\s*/\s*(\d+)\s+of\s+(\d+(?:\.\d+)?)').firstMatch(q);
+  // "of" plus the short connectors AfriSLM languages actually use
+  // ("3/4 ku 80", "3/4 ya 80") so the solver does not wait on inbound.
+  final m = RegExp(
+    r'(\d+)\s*/\s*(\d+)\s+(?:of|ku|ya|ye|za|wa|ka)\s+(\d+(?:\.\d+)?)',
+  ).firstMatch(q);
   if (m == null) return null;
   final nume = double.parse(m.group(1)!);
   final den = double.parse(m.group(2)!);
@@ -424,7 +468,7 @@ SchoolMathSolution? _parseFractionOf(String q) {
     steps: [
       MathStep(
         title: 'Read the fraction as a multiplier',
-        why: '“Of” means multiply by the fraction.',
+        why: '"Of" means multiply by the fraction.',
         formula: 'value = ($nume / $den) × ${fmtNum(base)}',
       ),
       MathStep(
@@ -526,7 +570,7 @@ SchoolMathSolution? _linear(String aRaw, String sign, String bRaw, String cRaw) 
       ),
       MathStep(
         title: 'Divide to isolate x',
-        why: 'Divide both sides by the coefficient of x.',
+        why: 'Divide both sides by $aS.',
         formula: 'x = ${fmtNum(rhs)} / $aS',
       ),
       MathStep(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,6 +22,7 @@ class OticApp extends ConsumerStatefulWidget {
 
 class _OticAppState extends ConsumerState<OticApp> {
   bool _ready = false;
+  bool _didWarmTranslate = false;
 
   @override
   void initState() {
@@ -31,6 +34,14 @@ class _OticAppState extends ConsumerState<OticApp> {
     // Small delay to let Flutter render the splash first
     await Future.delayed(const Duration(milliseconds: 100));
     setState(() => _ready = true);
+  }
+
+  Future<void> _warmTranslationPipeline() async {
+    try {
+      await ref.read(translationPipelineProvider.future);
+    } catch (e) {
+      debugPrint('ensureTranslationPipeline failed: $e');
+    }
   }
 
   @override
@@ -48,6 +59,15 @@ class _OticAppState extends ConsumerState<OticApp> {
     final router = ref.watch(appRouterProvider);
     // Same value the translation engine routes on — see appLanguageProvider.
     final languageCode = ref.watch(appLanguageProvider);
+    ref.listen<String>(appLanguageProvider, (prev, next) {
+      if (next != 'en') unawaited(_warmTranslationPipeline());
+    });
+    if (!_didWarmTranslate) {
+      _didWarmTranslate = true;
+      if (languageCode != 'en') {
+        unawaited(_warmTranslationPipeline());
+      }
+    }
     return MaterialApp.router(
       title: 'AI Connect Africa',
       theme: AppTheme.light,

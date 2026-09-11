@@ -35,6 +35,41 @@ void main() {
       expect(cleanTranslationOutput('Habari yako'), 'Habari yako');
     });
 
+    test('strips an echoed /no_think control marker', () {
+      // Observed from both backends in the 3-clause benchmark: the marker
+      // comes from our own user prompt and must never reach a student.
+      expect(
+        cleanTranslationOutput('Maji husafiri juu kutoka mizizi. /no_think'),
+        'Maji husafiri juu kutoka mizizi.',
+      );
+      expect(
+        cleanTranslationOutput('/no_think\nHabari yako'),
+        'Habari yako',
+      );
+    });
+
+    test('a marker-only reply cleans to empty and is rejected, not cached', () {
+      // Stripping runs before judging, so this is the path where a cleaned
+      // candidate could reach _cacheSave as a "successful" empty translation.
+      final cleaned = cleanTranslationOutput('/no_think');
+      expect(cleaned, isEmpty);
+      expect(
+        judgeTranslation(
+          source: 'Water travels up from the roots.',
+          candidate: cleaned,
+          toCode: 'sw',
+        ),
+        TranslationRejection.empty,
+      );
+    });
+
+    test('leaves a slash that is not the control marker alone', () {
+      // 19 orthographies we cannot reason about — the pattern must match the
+      // literal /no_think marker, nothing near it.
+      expect(cleanTranslationOutput('Ni 50/50 kati yao'), 'Ni 50/50 kati yao');
+      expect(cleanTranslationOutput('Habari / no think'), 'Habari / no think');
+    });
+
     test('does not strip an internal quote pair', () {
       expect(
         cleanTranslationOutput('Neno "mimea" linamaanisha plants'),
@@ -196,6 +231,17 @@ void main() {
       );
     });
 
+    test('rejects Hebrew / mixed-script gibberish for Kinyarwanda', () {
+      expect(
+        judgeTranslation(
+          source: 'Do you understand so far?',
+          candidate: 'all põse sorry me know tenceara השי Let questions ?',
+          toCode: 'rw',
+        ),
+        TranslationRejection.garbledScript,
+      );
+    });
+
     test('the English check is skipped on a retry', () {
       // Same candidate as above, but with strictEnglishCheck off it must be
       // accepted — a second rejection would cost the student the
@@ -245,6 +291,22 @@ void main() {
       final a = modelTagFor(path: r'C:\OTIC\translate-afrislm.gguf', sizeBytes: 10);
       final b = modelTagFor(path: '/home/pi/OTIC/translate-afrislm.gguf', sizeBytes: 10);
       expect(a, b);
+    });
+  });
+
+  group('splitTranslationUnits', () {
+    test('keeps a short title in one piece', () {
+      expect(splitTranslationUnits('Write the equation'), ['Write the equation']);
+    });
+
+    test('splits a two-sentence tutor reply', () {
+      const text =
+          'Photosynthesis is how a plant makes food from sunlight. '
+          'The leaf takes in carbon dioxide.';
+      final units = splitTranslationUnits(text);
+      expect(units, hasLength(2));
+      expect(units.first, contains('Photosynthesis'));
+      expect(units.last, contains('leaf'));
     });
   });
 }

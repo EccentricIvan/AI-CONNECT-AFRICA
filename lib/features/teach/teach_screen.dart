@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/translate/chat_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
@@ -70,12 +71,13 @@ class _TeachNotifier extends AutoDisposeNotifier<_TeachState> {
 
     try {
       final engine = await ref.read(engineLoadedProvider.future);
-      final englishExplanation = await localizeOutgoing(ref, state.explanation);
+      final lang = await studentLanguageCode(ref);
+      final langName = chatTranslatePromptName(lang);
       final prompt =
           '''A student explained "${state.topic}" as follows:
-"$englishExplanation"
+"${state.explanation}"
 
-Score this explanation out of 100. Your response MUST follow this exact format:
+Score this explanation out of 100. Reply in $langName. Your response MUST follow this exact format:
 SCORE: [number 0-100]
 STRENGTHS: [one sentence about what they got right]
 IMPROVE: [one sentence about what to strengthen]
@@ -102,18 +104,11 @@ Rate the explanation now:''';
         if (badges.isNotEmpty) badge = badges.first.name;
       }
 
-      final blob = await localizeIncoming(
-        ref,
-        '${parsed['strengths'] ?? 'Good attempt!'}\n---\n'
-        '${parsed['improve'] ?? 'Keep practising.'}\n---\n'
-        '${parsed['overall'] ?? 'Great effort!'}',
-      );
-      final parts = blob.split(RegExp(r'\n---\n'));
       state = state.copyWith(
         score: score,
-        strengths: parts.isNotEmpty ? parts[0].trim() : 'Good attempt!',
-        improve: parts.length > 1 ? parts[1].trim() : 'Keep practising.',
-        overall: parts.length > 2 ? parts[2].trim() : 'Great effort!',
+        strengths: parsed['strengths'] ?? 'Good attempt!',
+        improve: parsed['improve'] ?? 'Keep practising.',
+        overall: parsed['overall'] ?? 'Great effort!',
         isEvaluating: false,
         newBadge: badge,
       );

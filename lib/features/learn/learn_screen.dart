@@ -1,21 +1,21 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/tutor/programming_topic.dart';
 import '../../ai_core/tutor/school_math.dart';
 import '../../ai_core/tutor/tutor_response.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_models.dart';
-import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../l10n/ui_registry.dart';
 import '../../shared/widgets/curriculum_diagram.dart';
 import '../../shared/widgets/generating_indicator.dart';
 import '../../shared/widgets/responsive.dart';
+import '../../shared/widgets/science_rich_text.dart';
 import '../../shared/widgets/worked_solution.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../../voice/voice_locales.dart';
 import '../../voice/voice_provider.dart';
 import '../../voice/voice_service.dart';
 
@@ -47,8 +47,15 @@ class _ChatEntry {
 }
 
 class LearnScreen extends ConsumerStatefulWidget {
-  const LearnScreen({super.key, this.initialTopic});
+  const LearnScreen({
+    super.key,
+    this.initialTopic,
+    this.section = ChatSection.learn,
+    this.programmingSubject = false,
+  });
   final String? initialTopic;
+  final ChatSection section;
+  final bool programmingSubject;
 
   @override
   ConsumerState<LearnScreen> createState() => _LearnScreenState();
@@ -63,19 +70,22 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
   void initState() {
     super.initState();
     _voice = ref.read(voiceServiceProvider);
-    if (widget.initialTopic != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _sendText(widget.initialTopic!);
-      });
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(chatProvider.notifier).setSection(widget.section);
+      ref.read(chatProvider.notifier).setProgrammingSubject(
+            widget.programmingSubject ||
+                looksLikeProgramming(widget.initialTopic ?? ''),
+          );
+      if (widget.initialTopic != null) {
+        final topic = widget.initialTopic!;
+        _sendText(
+          widget.programmingSubject
+              ? codingLessonChatOpener(topic)
+              : topic,
+        );
+      }
+    });
   }
-
-  // Lesson cards keyed by the exact user message text that matched them, so
-  // they can be inserted right after that question in the render below —
-  // rather than kept in a separate list that has to be merged with the chat
-  // provider's messages (which broke ordering once 2+ turns were in flight:
-  // both questions landed together, followed by both answers).
-  final Map<String, Lesson> _lessonForMessage = {};
 
   void _send() {
     final text = _controller.text.trim();
@@ -83,24 +93,22 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
     _sendText(text);
   }
 
+  void _onCoachChip(String text) {
+    if (text == kCodingChipCheckCode ||
+        text.startsWith('Here is my code. Check it')) {
+      const prefix = '```python\n';
+      _controller.text = '$prefix\n```';
+      _controller.selection = const TextSelection.collapsed(offset: prefix.length);
+      return;
+    }
+    _sendText(text);
+  }
+
   Future<void> _sendText(String text) async {
     if (ref.read(chatProvider).valueOrNull?.isGenerating ?? false) return;
     _controller.clear();
-    ref.read(chatProvider.notifier).send(text);
+    ref.read(chatProvider.notifier).send(text, section: widget.section);
     _scrollToBottom();
-    unawaited(_attachLessonCard(text));
-  }
-
-  Future<void> _attachLessonCard(String text) async {
-    // Match against the student's text as typed. A second AfriSLM call here
-    // raced the chat translation and doubled wait time. English topic words
-    // still match; the tutor already searches curriculum on the English
-    // version of the question.
-    final curriculum = ref.read(curriculumServiceProvider);
-    final lesson = curriculum.findBestMatch(text);
-    if (lesson != null && mounted) {
-      setState(() => _lessonForMessage[text] = lesson);
-    }
   }
 
   void _scrollToBottom() {
@@ -127,6 +135,9 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
 
     ref.read(voiceListeningProvider.notifier).state = true;
     final started = await voice.startListening(
+      localeId: sttLocaleCandidates(ref.read(appLanguageProvider))
+          .first
+          .replaceAll('-', '_'),
       onResult: (text, isFinal) {
         if (text.isNotEmpty) {
           _controller.text = text;
@@ -152,7 +163,25 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
 
   Future<void> _readAloud(String text) async {
     final voice = ref.read(voiceServiceProvider);
-    await voice.speak(text);
+    await voice.speak(text, languageCode: ref.read(appLanguageProvider));
+  }
+
+  String _speakable(_ChatEntry entry) {
+    if (entry.math != null) {
+      final b = StringBuffer();
+      final intro = entry.text.trim();
+      if (intro.isNotEmpty && !intro.startsWith('Step')) {
+        b.writeln(intro);
+      }
+      for (final s in entry.math!.steps) {
+        b.writeln('${s.title}. ${s.why}');
+        if (s.formula != null && s.formula!.isNotEmpty) b.writeln(s.formula);
+        if (s.calc != null && s.calc!.isNotEmpty) b.writeln(s.calc);
+      }
+      b.write(entry.math!.answer);
+      return b.toString().trim();
+    }
+    return entry.text;
   }
 
   @override
@@ -169,54 +198,23 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
     // Re-resolve chrome + chat I/O the same frame the picker moves.
     ref.watch(appLanguageProvider);
     final chat = ref.watch(chatProvider);
-    final aiStatus = ref.watch(aiStatusProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
-        title: tr(context, 'AI Chat'),
-        subtitle: tr(context, 'Ask anything, learn together'),
+        title: tr(
+          context,
+          widget.programmingSubject ? 'Coding chat' : 'AI Chat',
+        ),
+        subtitle: tr(
+          context,
+          widget.programmingSubject
+              ? 'Talk through the curriculum, then try the code'
+              : 'Ask anything, learn together',
+        ),
         icon: Icons.auto_awesome_rounded,
         iconColor: const Color(0xFF7B6CF6),
         actions: [
-          aiStatus.when(
-            data: (status) => Chip(
-              avatar: Icon(
-                status.isDemo ? Icons.info_outline : Icons.memory,
-                size: 14,
-                color: status.isDemo
-                    ? const Color(0xFFB86E00)
-                    : AppColors.teachColor,
-              ),
-              label: Text(
-                status.isDemo
-                    ? tr(context, 'Demo')
-                    : (status.backendLabel ?? tr(context, 'AI')),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: status.isDemo
-                      ? const Color(0xFFB86E00)
-                      : AppColors.teachColor,
-                ),
-              ),
-              backgroundColor: status.isDemo
-                  ? const Color(0xFFFFF8E7)
-                  : AppColors.teachColor.withValues(alpha: 0.08),
-              side: BorderSide(
-                color: status.isDemo
-                    ? const Color(0xFFE8D4A8)
-                    : AppColors.teachColor.withValues(alpha: 0.3),
-              ),
-              padding: EdgeInsets.zero,
-              visualDensity: VisualDensity.compact,
-            ),
-            loading: () => const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
           StudioHeaderIconButton(
             icon: Icons.refresh_rounded,
             tooltip: tr(context, UiRegistry.newSession),
@@ -234,6 +232,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                 data: (state) {
                   if (state.messages.isEmpty) {
                     return _EmptyState(
+                      coding: widget.programmingSubject,
                       onTopic: (t) {
                         _controller.text = t;
                         _send();
@@ -257,11 +256,8 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       mathCoach: msg.mathCoach,
                       translationFailure: msg.translationFailure,
                     ));
-                    if (msg.isUser) {
-                      final lesson = _lessonForMessage[msg.text];
-                      if (lesson != null) {
-                        allItems.add(_ChatEntry(text: '', isUser: false, lesson: lesson));
-                      }
+                    if (msg.isUser && msg.lesson != null) {
+                      allItems.add(_ChatEntry(text: '', isUser: false, lesson: msg.lesson));
                     }
                   }
 
@@ -273,14 +269,33 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                     itemCount: allItems.length + (showGenerating ? 1 : 0),
                     itemBuilder: (context, i) {
                       if (i >= allItems.length) {
-                        if (state.streamingText.isNotEmpty) {
-                          return _TutorBubble(
-                            text: state.streamingText,
-                            stage: null,
-                            followUp: null,
-                          );
-                        }
-                        return const GeneratingIndicator();
+                        return StreamBuilder<String>(
+                          stream: state.turnTokens,
+                          builder: (context, snapshot) {
+                            final text = (snapshot.data != null &&
+                                    snapshot.data!.isNotEmpty)
+                                ? snapshot.data!
+                                : state.streamingText;
+                            if (state.streamingMath != null) {
+                              return _TutorBubble(
+                                text: text,
+                                stage: null,
+                                followUp: null,
+                                math: state.streamingMath,
+                                codingCoach: widget.programmingSubject,
+                              );
+                            }
+                            if (text.isNotEmpty) {
+                              return _TutorBubble(
+                                text: text,
+                                stage: null,
+                                followUp: null,
+                                codingCoach: widget.programmingSubject,
+                              );
+                            }
+                            return const GeneratingIndicator();
+                          },
+                        );
                       }
 
                       final entry = allItems[i];
@@ -305,13 +320,23 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                         stage: entry.stage,
                         followUp: entry.followUp == null
                             ? null
-                            : tr(context, entry.followUp!),
+                            : (hasUiString(
+                                    ref.read(appLanguageProvider),
+                                    entry.followUp!,
+                                  )
+                                ? tr(context, entry.followUp!)
+                                : entry.followUp),
                         math: entry.math,
                         mathCoach: entry.mathCoach,
+                        codingCoach: widget.programmingSubject ||
+                            entry.text.contains('```'),
                         translationFailure: entry.translationFailure,
-                        onChip: _sendText,
-                        onReadAloud: entry.text.isNotEmpty ? () => _readAloud(entry.text) : null,
-                        isSpeaking: ref.watch(voiceSpeakingProvider) == entry.text,
+                        onChip: _onCoachChip,
+                        onReadAloud: _speakable(entry).isNotEmpty
+                            ? () => _readAloud(_speakable(entry))
+                            : null,
+                        isSpeaking:
+                            ref.watch(voiceSpeakingProvider) == _speakable(entry),
                       );
                     },
                   );
@@ -337,6 +362,8 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
               isLoading: chat.valueOrNull?.isGenerating ?? false,
               isListening: ref.watch(voiceListeningProvider),
               onMicPressed: _toggleListening,
+              showMic: true,
+              coding: widget.programmingSubject,
             ),
           ],
         ),
@@ -411,8 +438,9 @@ class _UserBubble extends StatelessWidget {
             bottomRight: Radius.circular(18),
           ),
         ),
-        child: Text(
-          text,
+        child: ScienceRichText(
+          text: text,
+          color: Colors.white,
           style: const TextStyle(color: Colors.white, height: 1.5),
         ),
       ),
@@ -427,6 +455,7 @@ class _TutorBubble extends StatelessWidget {
     required this.followUp,
     this.math,
     this.mathCoach = false,
+    this.codingCoach = false,
     this.onChip,
     this.onReadAloud,
     this.isSpeaking = false,
@@ -438,6 +467,7 @@ class _TutorBubble extends StatelessWidget {
   final String? followUp;
   final SchoolMathSolution? math;
   final bool mathCoach;
+  final bool codingCoach;
   final void Function(String text)? onChip;
   final VoidCallback? onReadAloud;
   final bool isSpeaking;
@@ -466,7 +496,10 @@ class _TutorBubble extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    tr(context, _label(stage!)),
+                    tr(
+                      context,
+                      codingCoach ? _codingLabel(stage!) : _label(stage!),
+                    ),
                     style: TextStyle(
                       fontSize: 11,
                       color: Theme.of(context).hintColor,
@@ -518,16 +551,18 @@ class _TutorBubble extends StatelessWidget {
                           !text.trimLeft().startsWith('Step'))
                         Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: Text(
-                            text,
+                          child: ScienceRichText(
+                            text: text,
+                            color: cs.onSurface,
                             style: TextStyle(color: cs.onSurface, height: 1.6),
                           ),
                         ),
                       WorkedSolutionView(solution: math!),
                     ],
                   )
-                : Text(
-                    text,
+                : ScienceRichText(
+                    text: text,
+                    color: cs.onSurface,
                     style: TextStyle(
                       color: cs.onSurface,
                       height: 1.6,
@@ -566,7 +601,39 @@ class _TutorBubble extends StatelessWidget {
                 ],
               ),
             ),
-          if (onReadAloud != null && text.isNotEmpty)
+          if (onChip != null && codingCoach)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4, left: 2),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ActionChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(tr(context, kCodingChipTryExample)),
+                    onPressed: () => onChip!(
+                      'I tried the example. Explain what each line does.',
+                    ),
+                  ),
+                  ActionChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(tr(context, kCodingChipCheckCode)),
+                    onPressed: () => onChip!(kCodingChipCheckCode),
+                  ),
+                  ActionChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(tr(context, kCodingChipPractice)),
+                    onPressed: () => onChip!(kCodingChipPractice),
+                  ),
+                  ActionChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(tr(context, kCodingChipNext)),
+                    onPressed: () => onChip!(kCodingChipNext),
+                  ),
+                ],
+              ),
+            ),
+          if (onReadAloud != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12, left: 2),
               child: TextButton.icon(
@@ -587,6 +654,23 @@ class _TutorBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _codingLabel(TutorStage s) {
+    switch (s) {
+      case TutorStage.answer:
+        return 'Coding tutor - Teach';
+      case TutorStage.clarify:
+        return 'Coding tutor - Check';
+      case TutorStage.practice:
+        return 'Coding tutor - Practice';
+      case TutorStage.apply:
+        return 'Coding tutor - Apply';
+      case TutorStage.create:
+        return 'Coding tutor - Build';
+      case TutorStage.reflect:
+        return 'Coding tutor - Reflect';
+    }
   }
 
   String _label(TutorStage s) {
@@ -616,6 +700,8 @@ class _InputBar extends StatelessWidget {
     required this.isLoading,
     required this.isListening,
     required this.onMicPressed,
+    this.showMic = true,
+    this.coding = false,
   });
 
   final TextEditingController controller;
@@ -623,6 +709,8 @@ class _InputBar extends StatelessWidget {
   final bool isLoading;
   final bool isListening;
   final VoidCallback onMicPressed;
+  final bool showMic;
+  final bool coding;
 
   @override
   Widget build(BuildContext context) {
@@ -634,14 +722,15 @@ class _InputBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
       child: Row(
         children: [
-          IconButton(
-            onPressed: isLoading ? null : onMicPressed,
-            icon: Icon(isListening ? Icons.mic : Icons.mic_none_outlined),
-            color: isListening ? AppColors.primary : null,
-            tooltip: isListening
-                ? tr(context, 'Stop dictation')
-                : tr(context, 'Speak your question'),
-          ),
+          if (showMic)
+            IconButton(
+              onPressed: isLoading ? null : onMicPressed,
+              icon: Icon(isListening ? Icons.mic : Icons.mic_none_outlined),
+              color: isListening ? AppColors.primary : null,
+              tooltip: isListening
+                  ? tr(context, 'Stop dictation')
+                  : tr(context, 'Speak your question'),
+            ),
           Expanded(
             child: TextField(
               controller: controller,
@@ -649,7 +738,12 @@ class _InputBar extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: isListening
                     ? tr(context, UiRegistry.listening)
-                    : tr(context, UiRegistry.askPlaceholder),
+                    : tr(
+                        context,
+                        coding
+                            ? 'Ask about this lesson or paste your code…'
+                            : UiRegistry.askPlaceholder,
+                      ),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,
@@ -687,10 +781,19 @@ class _InputBar extends StatelessWidget {
 // ── Empty / starter state ─────────────────────────────────────────────────────
 
 class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onTopic});
+  const _EmptyState({required this.onTopic, this.coding = false});
   final void Function(String) onTopic;
+  final bool coding;
 
   static const _starter = 'Ask me anything';
+  static const _codingLessons = [
+    'Variables and Data Types',
+    'If/Else Decisions',
+    'Loops',
+    'Functions',
+    'What is HTML and Web Pages',
+    'Introduction to CSS',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -725,7 +828,7 @@ class _EmptyState extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            tr(context, 'AI Chat'),
+            tr(context, coding ? 'Coding chat' : 'AI Chat'),
             style: Theme.of(context).textTheme.headlineSmall,
             textAlign: TextAlign.center,
           ),
@@ -733,40 +836,56 @@ class _EmptyState extends StatelessWidget {
           Text(
             tr(
               context,
-              'Ask questions, get explanations, and explore any topic with your AI tutor.',
+              coding
+                  ? 'Pick a curriculum lesson. We will chat about it, try a tiny example, then you can paste your code.'
+                  : 'Ask questions, get explanations, and explore any topic with your AI tutor.',
             ),
             textAlign: TextAlign.center,
             style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
           ),
           const SizedBox(height: 28),
-          InkWell(
-            onTap: () => onTopic(_starter),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.primary.withValues(alpha: 0.15),
-                    AppColors.practiceColor.withValues(alpha: 0.08),
+          if (coding) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final title in _codingLessons)
+                  ActionChip(
+                    label: Text(tr(context, title)),
+                    onPressed: () => onTopic(codingLessonChatOpener(title)),
+                  ),
+              ],
+            ),
+          ] else
+            InkWell(
+              onTap: () => onTopic(_starter),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.primary.withValues(alpha: 0.15),
+                      AppColors.practiceColor.withValues(alpha: 0.08),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
+                    const SizedBox(width: 8),
+                    Text(
+                      tr(context, 'Start a conversation'),
+                      style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary),
+                    ),
                   ],
                 ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    tr(context, 'Start a conversation'),
-                    style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary),
-                  ),
-                ],
               ),
             ),
-          ),
         ],
       ),
     );

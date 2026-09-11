@@ -3,26 +3,39 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../cloud/cloud_api_settings.dart';
-import '../inference/dual_model_stream.dart';
+import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
+import '../inference/litert_lm_engine.dart';
 import '../inference/llama_cpp_engine.dart';
 import '../inference/mock_engine.dart';
 import '../inference/openai_compatible_engine.dart';
 import '../model/bundled_model_bootstrap.dart';
+import '../model/dual_gguf_plan.dart';
 import '../model/model_manager.dart';
+import '../model/programming_model_manager.dart';
 import '../translate/afrislm_model_manager.dart';
 import '../translate/drift_translation_store.dart';
+import '../translate/follow_up_glossary.dart';
 import '../translate/translation_pipeline.dart';
 import '../translate/translation_quality.dart';
+import '../tutor/programming_topic.dart';
 import '../tutor/tutor_pipeline.dart';
 import '../tutor/tutor_response.dart';
 import '../tutor/school_math.dart';
 import '../tutor/school_math_l10n.dart';
+import '../science/science_text.dart';
+import '../../curriculum/curriculum_models.dart';
 import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../safety/emotional_safety.dart';
+import '../../services/afrislm_translation_service.dart';
+import '../../services/chat_inference_pipeline.dart';
+import '../../services/qwen_reasoning_service.dart';
+
+/// Learn uses curriculum RAG. Wholesome chat (nav `/chat`) does not.
+enum ChatSection { learn, wholesomeChat }
 
 // ── Model status ────────────────────────────────────────────────────────────
 
@@ -60,22 +73,11 @@ final bundledModelsBootstrapProvider =
 });
 
 final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
-  // LiteRT-LM runs the same .litertlm chat model on Android, Windows, and
-  // Linux — only the browser build has nowhere to run a local model at all.
   if (kIsWeb) {
     return const ModelInfo(status: ModelStatus.notInstalled);
   }
   try {
-    final bootstrap = await ref.watch(bundledModelsBootstrapProvider.future);
-    // Served straight from the APK - there is no file on disk to stat, and
-    // deliberately so: extracting one would store the same ~600 MB twice.
-    if (bootstrap.chatBundledInApk) {
-      return const ModelInfo(
-        status: ModelStatus.ready,
-        path: ModelManager.bundledChatModelPath,
-        platform: 'Android (LiteRT-LM, in APK)',
-      );
-    }
+    await ref.watch(bundledModelsBootstrapProvider.future);
     return ref.watch(modelManagerProvider).checkModel();
   } catch (e, st) {
     debugPrint('modelInfoProvider failed: $e\n$st');
@@ -83,88 +85,183 @@ final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
   }
 });
 
-// ── Engine lifecycle ─────────────────────────────────────────────────────────
+/// Qwen (brain) + AfriSLM (translator) as two llama.cpp instances.
+///
+/// [shared] is only true when both roles accidentally point at the same
+/// GGUF file — then hops stay sequential to avoid a nested native lock.
+/// AfriSLM is never loaded as the tutor brain.
+/// Qwen 0.6B (general) + optional Qwen 1.5B Coder + AfriSLM translator.
+///
+/// AfriSLM is never loaded as the tutor brain. The 1.5B file is loaded on
+/// the first programming turn so non-coding students do not pay that RAM.
+class DualModelRuntime {
+  DualModelRuntime({
+    required this.reasoner,
+    this.translator,
+    this.shared = false,
+    this.programmingPath,
+    InferenceEngine? programming,
+  }) : _programming = programming;
 
-final engineLoadedProvider = FutureProvider<InferenceEngine>((ref) async {
-  // Rebuild when cloud API settings are saved.
+  final InferenceEngine reasoner;
+  final InferenceEngine? translator;
+  final bool shared;
+  final String? programmingPath;
+  InferenceEngine? _programming;
+
+  InferenceEngine? get programming => _programming;
+
+  Future<InferenceEngine?> ensureProgramming() async {
+    if (_programming != null) return _programming;
+    final path = programmingPath;
+    if (path == null || path.isEmpty) return null;
+    final engine = LlamaCppEngineImpl(
+      schedulerLane: EngineLane.program,
+      backendLabel: 'llama.cpp · Qwen 1.5B Coder',
+    );
+    await engine.loadModel(path);
+    _programming = engine;
+    return engine;
+  }
+}
+
+final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
   ref.watch(cloudApiReloadTickProvider);
 
-  Future<InferenceEngine> demo(DemoReason reason) async {
+  Future<DualModelRuntime> demo(DemoReason reason) async {
     final mock = MockEngine(demoReason: reason);
     await mock.loadModel('');
-    return mock;
+    return DualModelRuntime(reasoner: mock);
   }
 
   try {
-    return await _loadEngine(ref, demo);
+    CloudApiConfig cloud;
+    try {
+      cloud = await ref.watch(cloudApiSettingsProvider.future);
+    } catch (e) {
+      debugPrint('cloudApiSettingsProvider failed: $e');
+      cloud = const CloudApiConfig();
+    }
+    if (cloud.isConfigured) {
+      try {
+        final engine = OpenAiCompatibleEngine(cloud);
+        await engine.loadModel('');
+        ref.onDispose(engine.dispose);
+        return DualModelRuntime(reasoner: engine);
+      } catch (_) {}
+    }
+
+    if (kIsWeb) return demo(DemoReason.web);
+
+    await ref.watch(bundledModelsBootstrapProvider.future);
+    final qwenInfo = await ref.watch(modelInfoProvider.future);
+    final translateInfo = await ref.watch(translateModelInfoProvider.future);
+    final programmingInfo = await ref.watch(programmingModelInfoProvider.future);
+    final plan = planDualGgufs(qwenInfo, translateInfo, programmingInfo);
+
+    if (!plan.canTutor) {
+      debugPrint(
+        'QWEN BRAIN missing. Place qwen-0.6b-instruct.gguf in models/. '
+        'AfriSLM is translator-only.',
+      );
+      return demo(DemoReason.modelNotInstalled);
+    }
+
+    final qwenPath = plan.qwenPath!;
+    final InferenceEngine reasoner;
+    if (qwenPath.toLowerCase().endsWith('.litertlm')) {
+      reasoner = LiteRtLmEngineImpl();
+    } else {
+      reasoner = LlamaCppEngineImpl(
+        schedulerLane: EngineLane.reason,
+        backendLabel: 'llama.cpp · Qwen 0.6B',
+      );
+    }
+    await reasoner.loadModel(qwenPath);
+    debugPrint(
+      'QWEN BRAIN loaded ${qwenPath.toLowerCase().endsWith('.gguf') ? 'llama.cpp GGUF' : 'LiteRT'} '
+      'at $qwenPath',
+    );
+
+    InferenceEngine? translator;
+    var shared = false;
+    if (plan.canTranslate) {
+      if (plan.sameFile) {
+        debugPrint(
+          'TRANSLATION using the Qwen file (same path). '
+          'Install AfriSLM separately for a real translator.',
+        );
+        translator = reasoner;
+        shared = true;
+      } else {
+        final engine = LlamaCppEngineImpl(
+          schedulerLane: EngineLane.translate,
+          backendLabel: 'llama.cpp · AfriSLM 0.8B',
+        );
+        await engine.loadModel(plan.afrislmPath!);
+        translator = engine;
+      }
+    } else {
+      debugPrint('TRANSLATION OFF: no AfriSLM GGUF. English-only tutor.');
+    }
+
+    if (plan.canProgram) {
+      debugPrint('PROGRAMMING BRAIN ready at ${plan.programmingPath}');
+    } else {
+      debugPrint(
+        'PROGRAMMING BRAIN missing. Place '
+        'qwen2.5-coder-1.5b-instruct.gguf in models/. '
+        'Learn will keep using Qwen 0.6B for coding until then.',
+      );
+    }
+
+    final runtime = DualModelRuntime(
+      reasoner: reasoner,
+      translator: translator,
+      shared: shared,
+      programmingPath: plan.programmingPath,
+    );
+    ref.onDispose(() async {
+      await reasoner.dispose();
+      if (translator != null && !identical(translator, reasoner)) {
+        await translator.dispose();
+      }
+      await runtime.programming?.dispose();
+    });
+    return runtime;
   } catch (e, st) {
-    debugPrint('engineLoadedProvider failed: $e\n$st');
+    debugPrint('dualModelRuntimeProvider failed: $e\n$st');
     return demo(DemoReason.loadFailed);
   }
 });
 
-Future<InferenceEngine> _loadEngine(
-  Ref ref,
-  Future<InferenceEngine> Function(DemoReason reason) demo,
-) async {
-  // Prefer cloud API when the student enables it and pastes a key.
-  CloudApiConfig cloud;
-  try {
-    cloud = await ref.watch(cloudApiSettingsProvider.future);
-  } catch (e) {
-    debugPrint('cloudApiSettingsProvider failed: $e');
-    cloud = const CloudApiConfig();
-  }
-  if (cloud.isConfigured) {
-    try {
-      final engine = OpenAiCompatibleEngine(cloud);
-      await engine.loadModel('');
-      ref.onDispose(engine.dispose);
-      return engine;
-    } catch (_) {
-      // Fall through to local / demo backends.
-    }
-  }
+// ── Engine lifecycle ─────────────────────────────────────────────────────────
 
+final engineLoadedProvider = FutureProvider<InferenceEngine>((ref) async {
+  return (await ref.watch(dualModelRuntimeProvider.future)).reasoner;
+});
+
+final programmingModelManagerProvider =
+    Provider<ProgrammingModelManager>((_) => ProgrammingModelManager());
+
+final programmingModelInfoProvider = FutureProvider<ModelInfo>((ref) async {
   if (kIsWeb) {
-    return demo(DemoReason.web);
+    return const ModelInfo(status: ModelStatus.notInstalled);
   }
-
-  // Android/Windows/Linux: on-device Qwen3-0.6B via LiteRT-LM (flutter_gemma).
-  final modelInfo = await ref.watch(modelInfoProvider.future);
-  if (!modelInfo.isReady) {
-    return demo(DemoReason.modelNotInstalled);
-  }
-
   try {
-    final engine = createPlatformEngine();
-    await engine.loadModel(modelInfo.path!);
-    ref.onDispose(engine.dispose);
-    return engine;
+    await ref.watch(bundledModelsBootstrapProvider.future);
+    return ref.watch(programmingModelManagerProvider).checkModel();
   } catch (e, st) {
-    debugPrint('engineLoadedProvider: local model load failed: $e\n$st');
-    // Reading the model in place out of the APK is the memory-cheap path
-    // but depends on the native runtime accepting an asset file
-    // descriptor. If it refuses, fall back to a real file - that costs a
-    // second ~600 MB on disk, so it only happens after an in-place load
-    // has actually failed.
-    if (modelInfo.path == ModelManager.bundledChatModelPath) {
-      try {
-        final path = await BundledModelBootstrap(
-          chatManager: ref.watch(modelManagerProvider),
-          translateManager: ref.watch(translateModelManagerProvider),
-        ).materializeChatModel();
-        final engine = createPlatformEngine();
-        await engine.loadModel(path);
-        ref.onDispose(engine.dispose);
-        return engine;
-      } catch (_) {
-        // Fall through to demo mode below.
-      }
-    }
-    return demo(DemoReason.loadFailed);
+    debugPrint('programmingModelInfoProvider failed: $e\n$st');
+    return const ModelInfo(status: ModelStatus.notInstalled);
   }
-}
+});
+
+/// 1.5B Coder when installed, otherwise the 0.6B general brain.
+final programmingEngineProvider = FutureProvider<InferenceEngine>((ref) async {
+  final runtime = await ref.watch(dualModelRuntimeProvider.future);
+  return await runtime.ensureProgramming() ?? runtime.reasoner;
+});
 
 // ── Translation (AfriSLM) ────────────────────────────────────────────────────
 
@@ -186,27 +283,11 @@ final translateModelInfoProvider = FutureProvider<ModelInfo>((ref) async {
 /// never something that blocks the chat itself.
 final translateEngineLoadedProvider = FutureProvider<InferenceEngine?>((ref) async {
   if (kIsWeb) return null;
-
-  final modelInfo = await ref.watch(translateModelInfoProvider.future);
-  if (!modelInfo.isReady) {
-    // Silent until now, and the likeliest reason replies come back in
-    // English: the GGUF is still the one model extracted on first launch.
-    debugPrint(
-      'TRANSLATION OFF: translate model not ready '
-      '(status=${modelInfo.status}, path=${modelInfo.path}).',
-    );
-    return null;
+  final dual = await ref.watch(dualModelRuntimeProvider.future);
+  if (dual.translator == null) {
+    debugPrint('TRANSLATION OFF: no AfriSLM GGUF loaded.');
   }
-
-  try {
-    final engine = LlamaCppEngineImpl();
-    await engine.loadModel(modelInfo.path!);
-    ref.onDispose(engine.dispose);
-    return engine;
-  } catch (e, st) {
-    debugPrint('translateEngineLoadedProvider: llama.cpp load failed: $e\n$st');
-    return null;
-  }
+  return dual.translator;
 });
 
 final translationPipelineProvider = FutureProvider<TranslationPipeline?>((ref) async {
@@ -393,6 +474,28 @@ Future<(String, String)> localizeIncomingPair(
   return (r.text, f.text);
 }
 
+/// Warm AfriSLM so the first non-English turn is not blocked on model load.
+Future<TranslationPipeline?> ensureTranslationPipeline(Ref ref) async {
+  try {
+    return await ref.read(translationPipelineProvider.future);
+  } catch (e) {
+    debugPrint('ensureTranslationPipeline failed: $e');
+    return null;
+  }
+}
+
+/// Batch-translate path titles. English sessions pass through unchanged.
+Future<List<String>> localizeMany(Ref ref, List<String> strings) async {
+  if (strings.isEmpty) return strings;
+  final lang = await studentLanguageCode(ref);
+  if (lang == 'en') return strings;
+  final out = <String>[];
+  for (final s in strings) {
+    out.add(await localizeIncoming(ref, s, langCode: lang));
+  }
+  return out;
+}
+
 /// User-facing AI runtime status (real model vs demo).
 class AiStatus {
   const AiStatus({
@@ -441,9 +544,34 @@ final aiStatusProvider = Provider<AsyncValue<AiStatus>>((ref) {
 final tutorPipelineProvider = FutureProvider<TutorPipeline>((ref) async {
   final engine = await ref.watch(engineLoadedProvider.future);
   final curriculum = ref.watch(curriculumServiceProvider);
-  // Load curriculum in background — don't block startup
   curriculum.loadAll();
   return TutorPipeline(engine: engine, curriculum: curriculum);
+});
+
+final qwenReasoningServiceProvider = FutureProvider<QwenReasoningService>((ref) async {
+  final engine = await ref.watch(engineLoadedProvider.future);
+  return QwenReasoningService(engine);
+});
+
+final afrislmTranslationServiceProvider =
+    FutureProvider<AfriSlmTranslationService?>((ref) async {
+  final pipeline = await ref.watch(translationPipelineProvider.future);
+  if (pipeline == null) return null;
+  final engine = await ref.watch(translateEngineLoadedProvider.future);
+  return AfriSlmTranslationService(pipeline, engine: engine);
+});
+
+final chatInferencePipelineProvider = FutureProvider<ChatInferencePipeline>((ref) async {
+  final runtime = await ref.watch(dualModelRuntimeProvider.future);
+  final reasoner = await ref.watch(qwenReasoningServiceProvider.future);
+  final tutor = await ref.watch(tutorPipelineProvider.future);
+  final translator = await ref.watch(afrislmTranslationServiceProvider.future);
+  return ChatInferencePipeline(
+    reasoner: reasoner,
+    tutor: tutor,
+    translator: translator,
+    loadProgrammingEngine: runtime.ensureProgramming,
+  );
 });
 
 // ── Chat state ───────────────────────────────────────────────────────────────
@@ -453,25 +581,35 @@ class ChatState {
     this.messages = const [],
     this.isGenerating = false,
     this.streamingText = '',
+    this.streamingMath,
+    this.turnTokens = const Stream.empty(),
     this.errorMessage,
   });
 
   final List<ChatMessage> messages;
   final bool isGenerating;
   final String streamingText;
+  final SchoolMathSolution? streamingMath;
+  final Stream<String> turnTokens;
   final String? errorMessage;
 
   ChatState copyWith({
     List<ChatMessage>? messages,
     bool? isGenerating,
     String? streamingText,
+    SchoolMathSolution? streamingMath,
+    Stream<String>? turnTokens,
     String? errorMessage,
     bool clearError = false,
+    bool clearStreamingMath = false,
   }) {
     return ChatState(
       messages: messages ?? this.messages,
       isGenerating: isGenerating ?? this.isGenerating,
       streamingText: streamingText ?? this.streamingText,
+      streamingMath:
+          clearStreamingMath ? null : (streamingMath ?? this.streamingMath),
+      turnTokens: turnTokens ?? this.turnTokens,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
@@ -488,6 +626,7 @@ class ChatMessage {
     this.translationFailure,
     this.math,
     this.mathCoach = false,
+    this.lesson,
   });
 
   final String text;
@@ -515,9 +654,30 @@ class ChatMessage {
   /// cannot scramble the arithmetic.
   final SchoolMathSolution? math;
   final bool mathCoach;
+
+  /// Curriculum lesson matched on this user question (Learn mode).
+  final Lesson? lesson;
+
+  ChatMessage copyWith({Lesson? lesson}) {
+    return ChatMessage(
+      text: text,
+      isUser: isUser,
+      stage: stage,
+      followUp: followUp,
+      isError: isError,
+      translatedLanguage: translatedLanguage,
+      translationFailure: translationFailure,
+      math: math,
+      mathCoach: mathCoach,
+      lesson: lesson ?? this.lesson,
+    );
+  }
 }
 
 class ChatNotifier extends AsyncNotifier<ChatState> {
+  ChatSection _section = ChatSection.learn;
+  bool _programmingSubject = false;
+
   @override
   Future<ChatState> build() async {
     return const ChatState();
@@ -525,39 +685,50 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
 
   static const _safetyEngine = EmotionalSafetyEngine();
 
+  void setSection(ChatSection section) => _section = section;
+
+  void setProgrammingSubject(bool value) => _programmingSubject = value;
+
   void clearError() {
     final current = state.valueOrNull;
     if (current == null) return;
     state = AsyncData(current.copyWith(clearError: true));
   }
 
-  Future<void> send(String message) async {
+  Future<void> send(String message, {ChatSection? section}) async {
     final current = state.valueOrNull ?? const ChatState();
-    // Don't let a second question queue up before the first is answered —
-    // the pipeline's first await (below) can still be pending on the very
-    // first message of a session, leaving a window where the send button
-    // hasn't disabled yet.
     if (current.isGenerating) return;
+    final useCurriculum =
+        (section ?? _section) == ChatSection.learn;
 
-    // Own the thread locally. A 2+ minute dual-model turn can outlive a
-    // ChatNotifier rebuild (AsyncNotifier.build() returns an empty
-    // ChatState), and re-reading state.messages at the end then drops the
-    // student's bubble — that is what the live Swahili e2e just showed.
     final thread = <ChatMessage>[
       ...current.messages,
       ChatMessage(text: message, isUser: true),
     ];
+    final tokenCtrl = StreamController<String>.broadcast();
     state = AsyncData(current.copyWith(
       messages: List<ChatMessage>.from(thread),
       isGenerating: true,
       streamingText: '',
+      turnTokens: tokenCtrl.stream,
       clearError: true,
+      clearStreamingMath: true,
     ));
 
-    final TutorPipeline pipeline;
+    void pushUi(String cumulative) {
+      if (!tokenCtrl.isClosed) tokenCtrl.add(cumulative);
+      final cur = state.valueOrNull;
+      if (cur == null || !cur.isGenerating) return;
+      state = AsyncData(cur.copyWith(streamingText: cumulative));
+    }
+
+    final ChatInferencePipeline cascade;
     try {
-      pipeline = await ref.read(tutorPipelineProvider.future);
+      cascade = await ref.read(chatInferencePipelineProvider.future);
+      cascade.preferProgramming = _programmingSubject ||
+          looksLikeProgramming(message);
     } catch (e) {
+      await tokenCtrl.close();
       thread.add(ChatMessage(
         text: _friendlyAiError(e),
         isUser: false,
@@ -572,46 +743,26 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       return;
     }
 
-    // Resolved before generation, not after: it decides whether the raw
-    // English tokens may be shown at all, and it pins the outbound
-    // AfriSLM language for this turn so a mid-stream picker flip cannot
-    // tear the reply across two locales.
     final lang = await studentLanguageCode(ref);
 
-    var streamBuf = '';
-    var lastFlush = DateTime.fromMillisecondsSinceEpoch(0);
-    void flushStream({bool force = false}) {
-      final now = DateTime.now();
-      if (!force && now.difference(lastFlush).inMilliseconds < 40) return;
-      lastFlush = now;
-      final cur = state.valueOrNull;
-      if (cur == null || !cur.isGenerating) return;
-      state = AsyncData(cur.copyWith(streamingText: streamBuf));
+    String englishForSafety = message;
+    if (lang != 'en' &&
+        !queryLooksLikeMath(message) &&
+        !isMathPassThrough(message)) {
+      englishForSafety = toEnglishFollowUp(message, langCode: lang) ??
+          await localizeOutgoing(ref, message, langCode: lang);
     }
 
-    OutboundTranslateStream? outbound;
-    StreamSubscription<String>? outboundSub;
-
-    // Behind-the-scenes translation: the tutor pipeline (topic detection,
-    // curriculum matching, stage tracking) always runs in English. If the
-    // student writes in another language, translate their message to
-    // English here and translate the reply back below — best-effort, so a
-    // translation hiccup degrades to "answer in English" rather than
-    // failing the whole turn. Follow-up prompts are static UI strings
-    // (instant) so they are not sent through the translation model.
-    final englishMessage = await localizeOutgoing(ref, message, langCode: lang);
-
-    // Emotional safety check — crisis messages never reach the model
-    final safety = _safetyEngine.check(englishMessage);
+    final safety = _safetyEngine.check(englishForSafety);
     if (safety.bypassTutor) {
-      thread.add(ChatMessage(
-        text: await localizeIncoming(
-          ref,
-          safety.supportMessage!,
-          langCode: lang,
-        ),
-        isUser: false,
-      ));
+      final support = await localizeIncoming(
+        ref,
+        safety.supportMessage!,
+        langCode: lang,
+      );
+      pushUi(support);
+      await tokenCtrl.close();
+      thread.add(ChatMessage(text: support, isUser: false));
       state = AsyncData(state.requireValue.copyWith(
         messages: List<ChatMessage>.from(thread),
         isGenerating: false,
@@ -620,69 +771,41 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       return;
     }
 
-    // English students see Qwen tokens live. Everyone else sees AfriSLM
-    // clauses as they flush — never the English draft. Without a
-    // translation engine we keep the old silent buffer so English cannot
-    // flash in a Swahili session.
-    if (lang != 'en') {
-      final translate = await ref.read(translationPipelineProvider.future);
-      if (translate != null) {
-        outbound = OutboundTranslateStream(
-          translate: (english) async {
-            final outcome =
-                await translate.fromEnglishDetailed(english, lang);
-            if (!outcome.translated) {
-              throw StateError(outcome.failure ?? 'not translated');
-            }
-            return outcome.text;
-          },
-        );
-        outboundSub = outbound.chunks.listen((_) {
-          streamBuf = outbound!.translatedSoFar;
-          flushStream(force: true);
-        });
-      }
-    }
-
-    Future<void> onTok(String token) async {
-      if (outbound != null) {
-        // Await the clause flush so AfriSLM runs while LiteRT's
-        // `await for` is paused (sequential swap).
-        await outbound.addEnglish(token);
-        return;
-      }
-      if (lang == 'en') {
-        streamBuf += token;
-        flushStream();
-      }
-    }
-
     try {
-      final response = await pipeline.respond(
-        studentMessage: englishMessage,
+      final turn = await cascade.completeTurn(
+        userText: message,
+        languageCode: lang,
+        useCurriculum: useCurriculum,
         safetyNote: safety.tutorNote,
-        onToken: onTok,
+        pretranslatedEnglish: queryLooksLikeMath(message) ||
+                isMathPassThrough(message) ||
+                lang == 'en'
+            ? null
+            : englishForSafety,
+        onUiToken: pushUi,
       );
 
-      var reply = streamBuf.trim().isNotEmpty ? streamBuf : response.text;
-      if (lang == 'en') flushStream(force: true);
-
-      var followUp = response.followUpPrompt;
-      String? translatedLanguage;
-      String? translationFailure;
-      var math = response.math;
-
-      if (lang != 'en' && math != null) {
-        if (outbound != null) {
-          await outbound.finish();
-          await outboundSub?.cancel();
-          outboundSub = null;
+      if (turn.response.lesson != null) {
+        final lastUserIdx = thread.lastIndexWhere((m) => m.isUser);
+        if (lastUserIdx >= 0) {
+          thread[lastUserIdx] = thread[lastUserIdx].copyWith(
+            lesson: turn.response.lesson,
+          );
         }
-        // Worked steps: translate titles/"why" only. Never send formulas
-        // or the numeric answer through AfriSLM.
+      }
+
+      var reply = turn.displayText;
+      var followUp = turn.response.followUpPrompt;
+      var math = turn.response.math;
+      var translatedLanguage = turn.translatedLanguage;
+      var translationFailure = turn.translationFailure;
+
+      if (math != null) {
+        state = AsyncData(state.requireValue.copyWith(streamingMath: math));
         try {
           math = await localizeSchoolMath(
             math,
+            langCode: lang,
             translate: (english) async {
               final o = await localizeIncomingDetailed(
                 ref,
@@ -691,122 +814,52 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
               );
               return o.translated ? o.text : english;
             },
+            onProgress: (partial) {
+              final cur = state.valueOrNull;
+              if (cur == null || !cur.isGenerating) return;
+              state = AsyncData(cur.copyWith(streamingMath: partial));
+            },
           );
-          translatedLanguage = lang;
+          if (lang != 'en') translatedLanguage = lang;
         } catch (e) {
           debugPrint('TRANSLATION FAILED for math steps (en -> $lang): $e');
         }
-        if (response.text.trimLeft().startsWith('Step')) {
+        if (turn.response.text.trimLeft().startsWith('Step')) {
           reply = '';
-        } else if (response.text.trim().isNotEmpty) {
-          final intro = await localizeIncomingDetailed(
-            ref,
-            response.text,
-            langCode: lang,
-          );
-          reply = intro.text;
-          if (intro.translated) translatedLanguage = lang;
         }
-        if (followUp.isNotEmpty && !hasUiString(lang, followUp)) {
-          followUp = (await localizeIncomingDetailed(
-            ref,
-            followUp,
-            langCode: lang,
-          )).text;
-        }
-      } else if (outbound != null) {
-        // Clauses already hit AfriSLM as Qwen tokens arrived. Finish the
-        // tail (no trailing punctuation) and do not re-translate the
-        // whole paragraph — that would double the GGUF load.
-        //
-        // Engines that skip onToken (scripted tests, some LiteRT paths)
-        // still return the full English from generate(). Feed that once
-        // so AfriSLM is not skipped.
-        if (!outbound.sawEnglish && response.text.trim().isNotEmpty) {
-          await outbound.addEnglish(response.text);
-        }
-        reply = await outbound.finish();
-        streamBuf = reply;
-        await outboundSub?.cancel();
-        outboundSub = null;
-        if (reply.isEmpty) {
-          reply = response.text;
-          translationFailure = 'translation failed';
-        } else {
-          translatedLanguage = lang;
-          flushStream(force: true);
-        }
-        if (followUp.isNotEmpty && !hasUiString(lang, followUp)) {
-          final fu = await localizeIncomingDetailed(
-            ref,
-            followUp,
-            langCode: lang,
-          );
-          followUp = fu.text;
-        }
-      } else if (lang != 'en') {
-        // Math replies used to be excluded here, which left every
-        // school-math answer in English. The worked steps and formulas are
-        // rendered separately by WorkedSolution and stay language-neutral;
-        // it is the prose around them that has to be translated.
-        try {
-          // Follow-ups are usually static strings that the l10n tables
-          // already cover, and a table lookup is both instant and better
-          // than a 0.8B model. Only the interpolated ones (for example
-          // "Your turn - try this: ...") miss, and those go to the model
-          // alongside the reply in a single call.
-          final TranslationOutcome replyOutcome;
-          if (followUp.isNotEmpty && !hasUiString(lang, followUp)) {
-            final pair = await localizeIncomingPairDetailed(
-              ref,
-              reply,
-              followUp,
-              langCode: lang,
-            );
-            replyOutcome = pair.$1;
-            reply = pair.$1.text;
-            followUp = pair.$2.text;
-          } else {
-            replyOutcome =
-                await localizeIncomingDetailed(ref, reply, langCode: lang);
-            reply = replyOutcome.text;
-          }
-          // Record what actually happened rather than assuming success. A
-          // failure here means the student is about to read English, and
-          // the UI has to be able to say so.
-          if (replyOutcome.translated) {
-            translatedLanguage = lang;
-          } else {
-            translationFailure = replyOutcome.failure ?? 'translation failed';
-          }
-        } catch (e) {
-          debugPrint('TRANSLATION FAILED for chat reply (en -> $lang): $e');
-          translationFailure = '$e';
-        }
+      }
+
+      if (followUp.isNotEmpty) {
+        followUp = _chromeFollowUp(followUp, lang);
       }
 
       thread.add(ChatMessage(
         text: reply,
         isUser: false,
-        stage: response.stage,
+        stage: turn.response.stage,
         followUp: followUp,
         translatedLanguage: translatedLanguage,
         translationFailure: translationFailure,
         math: math,
-        mathCoach: response.mathCoach,
+        mathCoach: turn.response.mathCoach,
       ));
 
+      await tokenCtrl.close();
       state = AsyncData(state.requireValue.copyWith(
         messages: List<ChatMessage>.from(thread),
         isGenerating: false,
         streamingText: '',
         clearError: true,
+        clearStreamingMath: true,
       ));
 
-      // Persist session summary after the student already sees the reply.
-      unawaited(_saveSessionSnapshot(pipeline, response, thread.length));
+      unawaited(_saveSessionSnapshot(
+        await ref.read(tutorPipelineProvider.future),
+        turn.response,
+        thread.length,
+      ));
     } catch (e) {
-      await outboundSub?.cancel();
+      await tokenCtrl.close();
       final friendly = _friendlyAiError(e);
       thread.add(ChatMessage(text: friendly, isUser: false, isError: true));
       state = AsyncData(state.requireValue.copyWith(
@@ -847,6 +900,8 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
   }
 
   void reset() {
+    _programmingSubject = false;
+    ref.read(chatInferencePipelineProvider).valueOrNull?.reset();
     ref.read(tutorPipelineProvider).valueOrNull?.reset();
     unawaited(
       ref.read(engineLoadedProvider).valueOrNull?.resetSession() ??
@@ -854,6 +909,37 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
     );
     state = const AsyncData(ChatState());
   }
+}
+
+String _chromeFollowUp(String followUp, String lang) {
+  if (lang == 'en' || followUp.isEmpty) return followUp;
+  const keys = [
+    'Your turn — try this:',
+    'Give it a try and tell me your answer.',
+    'Try it, then tell me your answer.',
+    'Have another go, or ask me to show the full steps.',
+    'Want another problem like this?',
+    'Take your time — there are no wrong answers here.',
+    'Do you understand so far, or shall I explain it differently?',
+    'Can you think of another real-life example like this?',
+    'Share what you made or describe your idea.',
+    'Great work! Ready to explore the next topic?',
+    'Try changing one value in the example and tell me what happens.',
+    'In your own words, what does that line of code do?',
+    'Paste your attempt — I will check it.',
+    'Where would you use this in a real program?',
+    'Write a tiny program that uses this idea.',
+    'What is one thing you can now do in code that you could not before?',
+  ];
+  for (final key in keys) {
+    if (!hasUiString(lang, key)) continue;
+    final localized = uiString(lang, key)!;
+    if (followUp == key) return localized;
+    if (followUp.startsWith(key)) {
+      return '$localized${followUp.substring(key.length)}';
+    }
+  }
+  return followUp;
 }
 
 String _friendlyAiError(Object e) {
@@ -874,3 +960,9 @@ String _friendlyAiError(Object e) {
 }
 
 final chatProvider = AsyncNotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
+
+/// Cumulative localized tokens for the in-flight bubble ([StreamBuilder]).
+final chatUiTokenStreamProvider = StreamProvider<String>((ref) {
+  final tokens = ref.watch(chatProvider).valueOrNull?.turnTokens;
+  return tokens ?? const Stream<String>.empty();
+});

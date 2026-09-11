@@ -24,8 +24,7 @@
   Local folder of unquantized HF weights (config.json + *.safetensors).
 
 .PARAMETER OutFile
-  Destination .gguf. Defaults to dist\models\translate-afrislm.gguf, which is
-  where build_release_with_models.ps1 expects it.
+  Destination .gguf. Defaults to assets\models\afrislm-0.8b-q5_k_m.gguf.
 
 .PARAMETER Quant
   llama-quantize type. Q4_K_M is the default: best quality per byte at 4 bits.
@@ -49,7 +48,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
-if (-not $OutFile) { $OutFile = Join-Path $repoRoot 'dist\models\translate-afrislm.gguf' }
+if (-not $OutFile) { $OutFile = Join-Path $repoRoot 'assets\models\afrislm-0.8b-q5_k_m.gguf' }
 
 if (-not (Test-Path $SourceDir)) { throw "SourceDir not found: $SourceDir" }
 if (-not (Test-Path (Join-Path $SourceDir 'config.json'))) {

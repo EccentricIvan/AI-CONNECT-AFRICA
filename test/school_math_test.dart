@@ -18,6 +18,12 @@ void main() {
     expect(s?.answer, '2.5 m');
   });
 
+  test('5000g to kilograms with glued unit', () {
+    final s = solveSchoolMath('Convert 5000g to kilograms.');
+    expect(s?.numericAnswer, 5);
+    expect(s?.answer, contains('5'));
+  });
+
   test('15% of 80', () {
     final s = solveSchoolMath('what is 15% of 80');
     expect(s?.numericAnswer, 12);
@@ -33,6 +39,23 @@ void main() {
     final s = solveSchoolMath('solve 2x + 3 = 11');
     expect(s?.numericAnswer, 4);
     expect(s?.answer, 'x = 4');
+  });
+
+  test('Kinyarwanda wrapping still parses 2x + 3 = 11', () {
+    final s = solveSchoolMath('Shaka agaciro ka x: 2x + 3 = 11');
+    expect(s?.numericAnswer, 4);
+    expect(s?.answer, 'x = 4');
+    expect(s?.steps.first.formula, contains('2x'));
+  });
+
+  test('Kinyarwanda 4x - 15 = 12x is still algebra, not curriculum', () {
+    const q = 'Shaka agaciro ka x mu muringanizo 4x - 15 = 12x';
+    expect(queryLooksLikeMath(q), isTrue);
+  });
+
+  test('Luganda 3/4 ku 80 does not need English of', () {
+    final s = solveSchoolMath('Nsoma fractions. 3/4 ku 80 kiri kitya?');
+    expect(s?.numericAnswer, 60);
   });
 
   test('PEMDAS 3 + 4 * 5', () {

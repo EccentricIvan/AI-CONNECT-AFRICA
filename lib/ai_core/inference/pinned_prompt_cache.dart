@@ -1,11 +1,8 @@
 /// Interns structural system prompts so every turn reuses the same
 /// [String] instance.
 ///
-/// LiteRT-LM pins [kTutorContract] through `createChat(systemInstruction:)`.
-/// llama.cpp's helper isolate still frees the GGUF after each request, so
-/// a native prefix-KV cannot survive across calls — the interned string
-/// plus the Drift translation cache is what skips re-reading headers for
-/// repeated clauses.
+/// llama.cpp still rebuilds the prompt each request; interned strings plus
+/// the Drift translation cache skip re-reading identical clauses.
 class PinnedPromptCache {
   PinnedPromptCache._();
 
