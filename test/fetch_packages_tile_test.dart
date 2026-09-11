@@ -55,7 +55,9 @@ void main() {
     );
 
     expect(find.text('Fetch packages'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Fetch'), findsNWidgets(2));
+    // Chat is the only fetchable package: NLLB INT8 ONNX (~1.1 GB) ships on
+    // disk / USB and is never downloaded from the model-pack release.
+    expect(find.widgetWithText(FilledButton, 'Fetch'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsNothing);
   });
 
@@ -67,12 +69,14 @@ void main() {
       translate: AsyncData(_missing()),
     );
 
-    // Chat is installed, translation is not: one tick, one button.
+    // The chat model is installed, so its row shows a tick and no button.
+    // A missing NLLB bundle is not a fetchable package and must not put a
+    // dead-end download button on this tile.
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Fetch'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Fetch'), findsNothing);
   });
 
-  testWidgets('reports all packages installed when both are ready',
+  testWidgets('reports all packages installed when the chat model is ready',
       (tester) async {
     await _pump(
       tester,
@@ -81,7 +85,7 @@ void main() {
     );
 
     expect(find.text('All packages installed.'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Fetch'), findsNothing);
   });
 
@@ -98,7 +102,7 @@ void main() {
     // both models.
     expect(find.text('All packages installed.'), findsOneWidget);
     expect(
-      find.textContaining('Download the AI models'),
+      find.textContaining('Download tutor'),
       findsNothing,
       reason: 'a pending lookup must not render as a missing model',
     );

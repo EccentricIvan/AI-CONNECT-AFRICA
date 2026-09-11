@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../ai_core/tutor/school_math.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import 'science_rich_text.dart';
 
 /// MathGPT-style named steps with formulas in their own block.
 class WorkedSolutionView extends StatelessWidget {
@@ -148,14 +149,17 @@ class _FormulaBox extends StatelessWidget {
             : Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontFamily: 'monospace',
-          fontSize: 13.5,
-          height: 1.4,
-          fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
-          color: Theme.of(context).colorScheme.onSurface,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: ScienceRichText(
+          text: text,
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 13.5,
+            height: 1.4,
+            fontWeight: emphasize ? FontWeight.w700 : FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
       ),
     );

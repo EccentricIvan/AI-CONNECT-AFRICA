@@ -57,6 +57,7 @@ android/key.properties
 *.litertlm
 *.task
 data/models/
+/models/
 
 # Workstation AutoAWQ output (tools/quantize_awq.py). Convert onward to
 # GGUF / LiteRT; do not load these folders in the Flutter app.

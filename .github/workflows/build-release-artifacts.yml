@@ -81,8 +81,7 @@ jobs:
           gh release download model-pack \
             --repo "$GITHUB_REPOSITORY" \
             --dir android/app/src/main/assets/models \
-            --pattern 'chat-model.litertlm' \
-            --pattern 'translate-afrislm.gguf'
+            --pattern 'chat-model.litertlm'
           ls -lh android/app/src/main/assets/models
 
       - name: Build APK

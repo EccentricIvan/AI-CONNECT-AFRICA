@@ -160,7 +160,7 @@ class WebsiteBuilderNotifier extends AutoDisposeNotifier<BuilderState> {
 
     state = state.copyWith(aiBusyBlockId: blockId);
     try {
-      final engine = await ref.read(engineLoadedProvider.future);
+      final engine = await ref.read(programmingEngineProvider.future);
       final site = state.doc.title;
 
       final instruction = switch (block.type) {

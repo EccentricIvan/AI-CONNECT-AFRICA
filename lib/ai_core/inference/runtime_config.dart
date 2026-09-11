@@ -1,30 +1,22 @@
 /// On-device dual-SLM budget and generation knobs.
 ///
 /// Both engines stay mapped, not copied:
-///   * Chat brain — Qwen3-0.6B via LiteRT-LM (``.litertlm``, ~330–590 MB)
-///   * Translation — AfriSLM 0.8B Q4 via llama.cpp (``.gguf``, ~500–650 MB)
+///   * Reasoning — Qwen-0.6B-Instruct GGUF via llama.cpp
+///   * Translation — TranslatePsy-AfriSLM 0.8B GGUF via llama.cpp
 ///
-/// Active RAM stays under **1.2 GB** because:
-///   1. Weights are memory-mapped.
-///   2. [EngineScheduler] lets only one native decode run at a time.
-///      Qwen's Dart loop *awaits* each flushed clause through AfriSLM, so
-///      LiteRT stops pulling tokens while the GGUF is mapped.
-///   3. [kMaxNewTokens] caps KV-cache growth.
-///   4. Greedy decode ([kDoSample] = false) skips nucleus sampling graphs.
-///   5. Tutor [kTutorContract] is pinned once via LiteRT `systemInstruction`.
-///   6. AfriSLM system prompts are interned; the Drift cache skips a reload
-///      when the same clause has been translated already.
-///
-/// FFI: LiteRT-LM + llm_llamacpp only. Do not add PyTorch/ONNX beside them.
+/// Decode is greedy: [kTutorTemperature] 0.1, [kDoSample] false, [kTopK] 1
+/// so the sampler skips nucleus graphs. Qwen's conversational KV is English
+/// only. AfriSLM never stores tutor history.
 library;
 
-/// Greedy decode. `0.0` is fully deterministic (`do_sample: false`).
-const double kTutorTemperature = 0.0;
+/// Greedy-leaning decode. `0.1` with [kTopK] = 1 is effectively argmax.
+const double kTutorTemperature = 0.1;
 
-/// AfriSLM model-card setting.
-const double kTranslateTemperature = 0.0;
+/// AfriSLM model-card setting — same greedy path.
+const double kTranslateTemperature = 0.1;
 
-/// Hardcoded `do_sample: false`.
+/// Hardcoded `do_sample: false`. llama.cpp has no separate flag; top-k 1
+/// plus this temperature is the equivalent.
 const bool kDoSample = false;
 
 /// Nucleus disabled — the full distribution is unused because [kTopK] is 1.
@@ -36,8 +28,11 @@ const int kTopK = 1;
 /// Fixed seed so two identical prompts decode the same way.
 const int kRandomSeed = 0;
 
-/// Hard cap on tutor decode length.
+/// Hard cap on tutor decode length (0.6B general reasoning).
 const int kMaxNewTokens = 150;
+
+/// Coding replies need room for a short fenced snippet plus the explanation.
+const int kProgrammingMaxTokens = 400;
 
 /// Forward English into AfriSLM at this many characters if no punctuation.
 const int kTranslateFlushChars = 50;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/tutor/programming_topic.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_models.dart';
 import '../../curriculum/curriculum_provider.dart';
@@ -203,7 +204,9 @@ class _PracticeTabState extends ConsumerState<_PracticeTab> {
       final mastery =
           progress.where((p) => p.topic == topic).fold(0, (_, p) => p.level);
 
-      final engine = await ref.read(engineLoadedProvider.future);
+      final engine = looksLikeProgramming(topic)
+          ? await ref.read(programmingEngineProvider.future)
+          : await ref.read(engineLoadedProvider.future);
       final generator = QuizGenerator(engine: engine);
       for (var i = 0; i < 3; i++) {
         final q = await generator.generate(topic: topic, masteryLevel: mastery);

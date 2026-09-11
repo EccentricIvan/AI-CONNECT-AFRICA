@@ -1,6 +1,10 @@
-import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
+import 'dart:io';
 
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path/path.dart' as p;
+
+import '../ai_core/model/model_locations.dart';
 import 'daos/badge_dao.dart';
 import 'daos/path_dao.dart';
 import 'daos/project_dao.dart';
@@ -70,6 +74,10 @@ class OticDatabase extends _$OticDatabase {
       );
 
   static QueryExecutor _openConnection() {
-    return driftDatabase(name: 'otic_student_db');
+    return LazyDatabase(() async {
+      final dir = await resolveAppStorageDirectory();
+      final file = File(p.join(dir.path, 'otic_student_db.sqlite'));
+      return NativeDatabase.createInBackground(file);
+    });
   }
 }

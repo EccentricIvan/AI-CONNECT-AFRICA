@@ -11,6 +11,10 @@ import kotlin.concurrent.thread
  * Streams large model files out of the APK's [assets] folder into app
  * storage. Flutter's rootBundle.load would hold the whole ~0.5–1 GB file in
  * the Dart heap; AssetManager streaming stays O(buffer) in RAM.
+ *
+ * Asset keys differ by how the file was packaged:
+ *   - Gradle `src/main/assets/models/…` → `models/foo.gguf`
+ *   - Flutter pubspec `assets/models/…` → `flutter_assets/assets/models/foo.gguf`
  */
 class MainActivity : FlutterActivity() {
     private val channelName = "ai_connect_africa/bundled_models"
@@ -26,7 +30,7 @@ class MainActivity : FlutterActivity() {
                             result.error("bad_args", "assetPath required", null)
                             return@setMethodCallHandler
                         }
-                        result.success(assetExists(assetPath))
+                        result.success(resolveAsset(assetPath) != null)
                     }
                     "extractBundledAsset" -> {
                         val assetPath = call.argument<String>("assetPath")
@@ -45,7 +49,11 @@ class MainActivity : FlutterActivity() {
                         )
                         thread(name = "extract-$assetPath") {
                             try {
-                                extractAsset(assetPath, destPath) { progress ->
+                                val resolved = resolveAsset(assetPath)
+                                    ?: throw IllegalStateException(
+                                        "Bundled asset not in APK: $assetPath",
+                                    )
+                                extractAsset(resolved, destPath) { progress ->
                                     runOnUiThread {
                                         channel.invokeMethod(
                                             "extractProgress",
@@ -71,6 +79,21 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /** First APK asset key that actually opens, or null. */
+    private fun resolveAsset(requested: String): String? {
+        val trimmed = requested.trim().trimStart('/')
+        val candidates = linkedSetOf(
+            trimmed,
+            if (trimmed.startsWith("assets/")) trimmed else "assets/$trimmed",
+            "flutter_assets/$trimmed",
+            "flutter_assets/assets/$trimmed",
+        )
+        for (key in candidates) {
+            if (assetExists(key)) return key
+        }
+        return null
     }
 
     private fun assetExists(assetPath: String): Boolean {

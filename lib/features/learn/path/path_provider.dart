@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../ai_core/providers/ai_provider.dart';
+import '../../../ai_core/tutor/programming_topic.dart';
 import '../../../db/providers/db_provider.dart';
 import '../../../db/otic_database.dart';
 import '../../../gamification/badge_service.dart';
@@ -51,7 +52,9 @@ class PathNotifier extends AsyncNotifier<List<LearningPath>> {
     final student = await ref.read(activeStudentProvider.future);
     if (student == null) throw StateError('No student profile');
 
-    final engine = await ref.read(engineLoadedProvider.future);
+    final engine = looksLikeProgramming(topic)
+        ? await ref.read(programmingEngineProvider.future)
+        : await ref.read(engineLoadedProvider.future);
     final db = ref.read(dbProvider);
     final generator = PathGenerator(engine: engine);
 
@@ -66,14 +69,15 @@ class PathNotifier extends AsyncNotifier<List<LearningPath>> {
       student: student,
       currentMasteryLevel: mastery,
     );
+    final localized = await _localizePath(ref, parsed);
 
     await db.pathDao.upsertPath(LearningPathsCompanion.insert(
       studentId: student.id,
       topic: topic,
-      title: parsed.title,
-      description: parsed.description,
-      unitsJson: Value(parsed.unitsToJson()),
-      totalLessons: Value(parsed.totalLessons),
+      title: localized.title,
+      description: localized.description,
+      unitsJson: Value(localized.unitsToJson()),
+      totalLessons: Value(localized.totalLessons),
       completedLessons: const Value(0),
       generatedAt: Value(DateTime.now()),
       lastAccessedAt: Value(DateTime.now()),
@@ -81,7 +85,7 @@ class PathNotifier extends AsyncNotifier<List<LearningPath>> {
 
     ref.invalidate(studentPathsProvider);
     ref.invalidate(pathByTopicProvider(topic));
-    return parsed;
+    return localized;
   }
 
   /// Mark a lesson complete and advance the pointer.
@@ -141,6 +145,37 @@ class PathNotifier extends AsyncNotifier<List<LearningPath>> {
       ref.invalidate(activeStudentProvider);
     }
   }
+}
+
+Future<ParsedPath> _localizePath(Ref ref, ParsedPath path) async {
+  final strings = <String>[
+    path.title,
+    path.description,
+    for (final unit in path.units) ...[
+      unit.title,
+      for (final lesson in unit.lessons) lesson.title,
+    ],
+  ];
+  final out = await localizeMany(ref, strings);
+  var i = 0;
+  final title = out[i++];
+  final description = out[i++];
+  final units = [
+    for (final unit in path.units)
+      PathUnit(
+        title: out[i++],
+        lessons: [
+          for (final lesson in unit.lessons)
+            PathLesson(title: out[i++], isCompleted: lesson.isCompleted),
+        ],
+      ),
+  ];
+  return ParsedPath(
+    topic: path.topic,
+    title: title,
+    description: description,
+    units: units,
+  );
 }
 
 final pathNotifierProvider =

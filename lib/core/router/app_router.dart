@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/tutor/programming_topic.dart';
 import '../../app.dart';
 import '../../db/providers/db_provider.dart';
 import '../../features/achievements/achievements_screen.dart';
@@ -88,13 +90,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/chat', builder: (_, state) {
             final topic = state.uri.queryParameters['topic'];
+            final sectionParam = state.uri.queryParameters['section'];
+            final subject = state.uri.queryParameters['subject'];
+            final section = topic != null || sectionParam == 'learn'
+                ? ChatSection.learn
+                : ChatSection.wholesomeChat;
+            final programming = isProgrammingSubjectId(subject) ||
+                looksLikeProgramming(topic ?? '');
             // Skip ModelGate on web only — the browser build can't run a
-            // local model at all. Android/Windows/Linux all need the same
-            // .litertlm chat model installed.
+            // local model at all. Android/Windows/Linux need the AfriSLM GGUF.
             if (kIsWeb) {
-              return LearnScreen(initialTopic: topic);
+              return LearnScreen(
+                initialTopic: topic,
+                section: section,
+                programmingSubject: programming,
+              );
             }
-            return ModelGate(child: LearnScreen(initialTopic: topic));
+            return ModelGate(
+              child: LearnScreen(
+                initialTopic: topic,
+                section: section,
+                programmingSubject: programming,
+              ),
+            );
           }),
           GoRoute(
             path: '/path/:topic',

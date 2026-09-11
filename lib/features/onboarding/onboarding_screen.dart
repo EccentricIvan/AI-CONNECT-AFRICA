@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../ai_core/translate/chat_languages.dart';
 import '../../ai_core/translate/supported_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
@@ -43,8 +44,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _nameController.text = existing.name;
         _age = existing.age;
         _grade = existing.grade;
-        _language = existing.language;
+        _language = coerceChatLanguage(existing.language);
         _learningStyle = existing.learningStyle;
+      } else {
+        final already = ref.read(appLanguageProvider);
+        if (already != 'en') _language = coerceChatLanguage(already);
       }
     }
   }
@@ -297,12 +301,12 @@ class _NamePage extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            initialValue: language,
+            initialValue: coerceChatLanguage(language),
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.language),
             ),
             items: [
-              for (final lang in supportedLanguages)
+              for (final lang in chatLanguages)
                 DropdownMenuItem(value: lang.code, child: Text(lang.name)),
             ],
             onChanged: (code) {

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
+import '../../shared/widgets/localized_text.dart';
 import '../../shared/widgets/studio_page.dart';
 
 class SubjectsScreen extends ConsumerWidget {
@@ -57,7 +58,7 @@ class SubjectsScreen extends ConsumerWidget {
                 'Browse courses and keep building skills one lesson at a time.',
               ),
               ctaLabel: tr(context, 'Open AI Chat'),
-              onCta: () => context.go('/chat'),
+              onCta: () => context.go('/chat?section=learn'),
             ),
             const SizedBox(height: 20),
             StudioSectionHeader(title: tr(context, 'All subjects')),
@@ -163,7 +164,7 @@ class _SubjectCard extends StatelessWidget {
                         radius: 13,
                       ),
                       const Spacer(),
-                      Text(
+                      LocalizedText(
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -179,7 +180,11 @@ class _SubjectCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              '$lessonCount lessons',
+                              trFill(
+                                context,
+                                '{count} lessons',
+                                {'count': '$lessonCount'},
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

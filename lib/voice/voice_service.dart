@@ -3,6 +3,8 @@ import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'voice_locales.dart';
+
 /// Offline-friendly voice I/O using the device's built-in TTS and STT engines.
 /// On Android, STT uses on-device recognition when available (no audio stored).
 class VoiceService {
@@ -46,7 +48,7 @@ class VoiceService {
     return _sttReady;
   }
 
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {String languageCode = 'en'}) async {
     final cleaned = text.trim();
     if (cleaned.isEmpty) return;
 
@@ -56,6 +58,16 @@ class VoiceService {
     }
 
     await stopSpeaking();
+    try {
+      final langs = await _tts.getLanguages;
+      final tags = langs is List
+          ? langs.map((e) => '$e')
+          : const <String>[];
+      final tag = resolveLocale(languageCode, tags) ?? 'en-US';
+      await _tts.setLanguage(tag);
+    } catch (_) {
+      await _tts.setLanguage('en-US');
+    }
     _setSpeaking(cleaned);
     await _tts.stop();
     await _tts.speak(cleaned);
@@ -86,14 +98,11 @@ class VoiceService {
       await _stt.stop();
     }
 
-    final locales = await _stt.locales();
-    final locale = localeId.isNotEmpty
-        ? localeId
-        : (locales.isNotEmpty ? locales.first.localeId : '');
+    final locale = localeId.isNotEmpty ? localeId : 'en_US';
 
     await _stt.listen(
-      localeId: locale,
       listenOptions: SpeechListenOptions(
+        localeId: locale,
         listenMode: ListenMode.dictation,
         partialResults: true,
         cancelOnError: true,

@@ -291,7 +291,8 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () => context.push(
-                      '/chat?topic=${Uri.encodeComponent(lesson.title)}',
+                      '/chat?topic=${Uri.encodeComponent(lesson.title)}'
+                      '&subject=${Uri.encodeComponent(widget.subjectId)}',
                     ),
                     icon: const Icon(Icons.psychology, size: 18),
                     label: Text(tr(context, 'Ask AI about this lesson')),

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/model/model_manager.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../settings/fetch_packages_tile.dart';
 
 class ModelNotInstalledScreen extends ConsumerStatefulWidget {
   const ModelNotInstalledScreen({
@@ -41,7 +42,7 @@ class _ModelNotInstalledScreenState
     setState(() => _error = null);
 
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Select the chat model (.litertlm) file',
+      dialogTitle: 'Select the Qwen tutor model (.litertlm)',
       type: FileType.any,
     );
     final path = result?.files.single.path;
@@ -125,10 +126,11 @@ class _ModelNotInstalledScreenState
                     widget.info.status == ModelStatus.corrupted
                         ? 'A model file was found but appears corrupted or '
                               'incomplete. Please reinstall it below.'
-                        : 'The app needs the chat model file to '
-                              'work. No internet is needed — get the file from '
-                              'a USB drive or your school server, then install '
-                              'it below.',
+                        : 'Download the tutor and translation models once '
+                              '(internet required for that step). They are saved '
+                              'on this device, then chat works offline in your '
+                              'learning language. You can also copy the files '
+                              'from a USB drive.',
                     style: Theme.of(context).textTheme.bodyLarge,
                     textAlign: TextAlign.center,
                   ),
@@ -152,7 +154,9 @@ class _ModelNotInstalledScreenState
                       ),
                     ),
                   ],
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
+                  const FetchPackagesTile(),
+                  const SizedBox(height: 8),
                   if (_installing) ...[
                     _InstallProgress(progress: _progress),
                   ] else ...[

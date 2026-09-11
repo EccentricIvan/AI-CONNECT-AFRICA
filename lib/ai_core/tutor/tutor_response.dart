@@ -1,3 +1,4 @@
+import '../../curriculum/curriculum_models.dart';
 import 'school_math.dart';
 
 /// A single stage in the tutor pipeline.
@@ -20,6 +21,7 @@ class TutorResponse {
     this.isStreaming = false,
     this.math,
     this.mathCoach = false,
+    this.lesson,
   });
 
   /// Which pipeline stage this response belongs to.
@@ -43,6 +45,9 @@ class TutorResponse {
   /// Show hint / show-steps chips (solver is coaching this turn).
   final bool mathCoach;
 
+  /// Curriculum lesson matched on the English question this turn.
+  final Lesson? lesson;
+
   TutorResponse copyWith({String? text, bool? isStreaming, SchoolMathSolution? math}) {
     return TutorResponse(
       stage: stage,
@@ -52,6 +57,7 @@ class TutorResponse {
       isStreaming: isStreaming ?? this.isStreaming,
       math: math ?? this.math,
       mathCoach: mathCoach,
+      lesson: lesson,
     );
   }
 

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../ai_core/tutor/programming_topic.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
+import '../../shared/widgets/localized_text.dart';
 import '../../shared/widgets/studio_page.dart';
 
 class UnitsScreen extends ConsumerWidget {
@@ -44,8 +46,30 @@ class UnitsScreen extends ConsumerWidget {
           ),
           body: ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: subject.units.length,
-            itemBuilder: (context, unitIndex) {
+            itemCount: subject.units.length +
+                (isProgrammingSubjectId(subjectId) ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (isProgrammingSubjectId(subjectId) && index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.push(
+                      '/chat?topic=${Uri.encodeComponent(subject.name)}'
+                      '&subject=${Uri.encodeComponent(subjectId)}',
+                    ),
+                    icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                    label: Text(tr(context, 'Chat about this subject')),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                    ),
+                  ),
+                );
+              }
+              final unitIndex =
+                  isProgrammingSubjectId(subjectId) ? index - 1 : index;
               final unit = subject.units[unitIndex];
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -61,7 +85,7 @@ class UnitsScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
                           ),
-                          child: Text(
+                          child: LocalizedText(
                             unit.title,
                             style: const TextStyle(
                               fontSize: 16,
@@ -73,7 +97,11 @@ class UnitsScreen extends ConsumerWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            '${unit.lessons.length} topics',
+                            trFill(
+                              context,
+                              '{count} topics',
+                              {'count': '${unit.lessons.length}'},
+                            ),
                             style: TextStyle(
                               fontSize: 13,
                               color: Theme.of(context).hintColor,
@@ -122,7 +150,7 @@ class UnitsScreen extends ConsumerWidget {
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
+                                child: LocalizedText(
                                   lesson.title,
                                   style: TextStyle(
                                     fontSize: 14,

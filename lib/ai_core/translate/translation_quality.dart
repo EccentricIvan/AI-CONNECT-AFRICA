@@ -36,6 +36,10 @@ enum TranslationRejection {
 
   /// Target is a non-English language but the output still reads English.
   stillEnglish,
+
+  /// Mixed / wrong scripts (Hebrew, CJK, …) for a Latin African target —
+  /// typical of a broken tokenizer / decode path.
+  garbledScript,
 }
 
 extension TranslationRejectionLabel on TranslationRejection {
@@ -53,6 +57,8 @@ extension TranslationRejectionLabel on TranslationRejection {
         return 'output implausibly long';
       case TranslationRejection.stillEnglish:
         return 'output still reads as English';
+      case TranslationRejection.garbledScript:
+        return 'output has unexpected scripts';
     }
   }
 }
@@ -93,6 +99,16 @@ String cleanTranslationOutput(String raw) {
   if (closeTag != null) {
     result = result.substring(closeTag.end);
   }
+  // `/no_think` is a Qwen thinking switch. AfriSLM is a Qwen3.5 fine-tune and
+  // used to echo it when the translation user prompt included the marker.
+  // The prompt no longer sends it (model-card format), but leftover echoes
+  // must still never reach a student. Matched literally, not as a family of
+  // near-spellings: this strips text in 19 languages whose orthography we
+  // cannot reason about, so a fuzzy pattern would silently eat real
+  // characters with no test to catch it.
+  result = result
+      .replaceAll(RegExp(r'/no_think', caseSensitive: false), '')
+      .replaceAll(RegExp(r'[ \t]+\n'), '\n');
   result = result.replaceFirst(_leadingLabels, '').trim();
   // Surrounding quotes the model sometimes adds around the whole output.
   if (result.length > 1) {
@@ -164,6 +180,10 @@ TranslationRejection? judgeTranslation({
 
   if (hasRepetitionLoop(text)) return TranslationRejection.repetitionLoop;
 
+  if (toCode != 'en' && _hasUnexpectedScript(text)) {
+    return TranslationRejection.garbledScript;
+  }
+
   final srcWords = _wordCount(source);
   final outWords = _wordCount(text);
   // African languages in this vocabulary tokenize less efficiently than
@@ -182,6 +202,16 @@ TranslationRejection? judgeTranslation({
   return null;
 }
 
+/// True when output carries scripts our East African Latin targets never use.
+/// Hebrew / Arabic / CJK in a Kinyarwanda bubble means the decoder path is
+/// wrong — better to fall back to English than show gibberish.
+bool _hasUnexpectedScript(String text) {
+  return RegExp(
+    r'[\u0590-\u05FF\u0600-\u06FF\u0700-\u074F'
+    r'\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]',
+  ).hasMatch(text);
+}
+
 /// Same marker approach as `looksLikeEnglish`, applied to model *output*.
 /// Kept separate so tuning one never silently changes the other, and set one
 /// hit stricter because a correct translation may legitimately carry an
@@ -198,6 +228,37 @@ bool _readsAsEnglish(String text) {
     if (padded.contains(m)) hits++;
   }
   return hits >= 4;
+}
+
+/// Split a tutor reply into units AfriSLM can finish. One stalled or
+/// rejected blob must not sink the whole turn — each sentence is its own
+/// generate, and successful pieces are kept.
+List<String> splitTranslationUnits(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return const [];
+  if (t.length < 72) return [t];
+  final out = <String>[];
+  var s = t;
+  while (s.isNotEmpty) {
+    final sentence = RegExp(r'^[\s\S]*?[.!?…]["”)]*(?:\s+|$)').firstMatch(s);
+    if (sentence != null && RegExp(r'[.!?…]').hasMatch(sentence.group(0)!)) {
+      final raw = sentence.group(0)!;
+      final chunk = raw.trim();
+      if (chunk.isNotEmpty) out.add(chunk);
+      s = s.substring(raw.length).trimLeft();
+      continue;
+    }
+    final nl = s.indexOf('\n');
+    if (nl >= 0) {
+      final left = s.substring(0, nl).trim();
+      if (left.isNotEmpty) out.add(left);
+      s = s.substring(nl + 1).trimLeft();
+      continue;
+    }
+    out.add(s.trim());
+    break;
+  }
+  return out.isEmpty ? [t] : out;
 }
 
 /// Human-readable model identity for the cache key. Two different GGUFs — a
