@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai_core/inference/runtime_config.dart';
+import '../../ai_core/inference/sanitize_llm_response.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../l10n/language_provider.dart';
 import '../../ai_core/tutor/school_math.dart';
@@ -77,14 +78,12 @@ Tutor:''';
         temperature: kTutorTemperature,
         onToken: (token) {
           if (!mounted) return;
-          setState(() => _text += token);
+          setState(() => _text = sanitizeLLMResponse(_text + token));
         },
       );
-      var shown = _text.trim().isNotEmpty ? _text : raw;
-      shown = shown.replaceAll(
-        RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
-        '',
-      ).trim();
+      final shown = sanitizeLLMResponse(
+        _text.trim().isNotEmpty ? _text : raw,
+      );
       if (mounted) setState(() => _text = shown);
     } catch (_) {
       if (mounted) {

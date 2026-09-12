@@ -3,6 +3,7 @@ import '../translate/translation_pipeline.dart';
 import '../tutor/tutor_contract.dart';
 import 'inference_engine.dart';
 import 'runtime_config.dart';
+import 'sanitize_llm_response.dart';
 
 class LocalizedReply {
   const LocalizedReply({
@@ -39,11 +40,13 @@ Future<LocalizedReply> generateLocalizedReply({
     temperature: temperature,
     onToken: (token) async {
       buf.write(token);
-      onDisplay?.call(repairUnclosedMathDelimiters(buf.toString()));
+      onDisplay?.call(
+        repairUnclosedMathDelimiters(sanitizeLLMResponse(buf.toString())),
+      );
     },
   );
   final painted = repairUnclosedMathDelimiters(
-    buf.toString().isEmpty ? text : buf.toString(),
+    sanitizeLLMResponse(buf.toString().isEmpty ? text : buf.toString()),
   );
   onDisplay?.call(painted);
 

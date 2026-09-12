@@ -1,9 +1,11 @@
-import 'dart:convert';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../core/theme/app_colors.dart';
+import '../../shared/widgets/html_preview.dart';
 import '../../shared/widgets/studio_page.dart';
 
 class _TemplateInfo {
@@ -122,9 +124,12 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
       _controllers[field.key] = TextEditingController(text: field.defaultValue);
     }
 
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white);
+    _webViewController = null;
+    unawaited(() async {
+      final c = await createPreviewWebViewController();
+      if (!mounted) return;
+      setState(() => _webViewController = c);
+    }());
 
     setState(() {
       _selected = template;
@@ -135,15 +140,18 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
   Future<void> _buildSite() async {
     if (_selected == null) return;
 
-    var html = await rootBundle.loadString('assets/templates/${_selected!.id}.html');
+    var html =
+        await rootBundle.loadString('assets/templates/${_selected!.id}.html');
 
     for (final field in _selected!.fields) {
       final value = _controllers[field.key]?.text ?? field.defaultValue;
       html = html.replaceAll('{{${field.key}}}', value);
     }
 
-    final encoded = base64Encode(utf8.encode(html));
-    _webViewController?.loadRequest(Uri.parse('data:text/html;base64,$encoded'));
+    final c = _webViewController;
+    if (c != null) {
+      await loadHtmlPreview(c, html);
+    }
 
     setState(() => _showPreview = true);
   }

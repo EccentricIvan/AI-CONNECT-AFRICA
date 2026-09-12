@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../l10n/app_locale.dart';
+import '../../shared/coding/code_autocorrect.dart';
+import '../../shared/widgets/code_autocorrect_button.dart';
 import '../../shared/widgets/studio_page.dart';
 
 class _PyLesson {
@@ -222,6 +226,7 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
   bool _showHint = false;
   String _output = '';
   bool _hasRun = false;
+  bool _autocorrectBusy = false;
 
   @override
   void initState() {
@@ -347,6 +352,47 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
     _tabController.animateTo(0);
   }
 
+  Future<void> _autocorrect() async {
+    if (_autocorrectBusy) return;
+    final before = _codeController.text;
+    if (before.trim().isEmpty) return;
+    setState(() => _autocorrectBusy = true);
+    try {
+      final engine = await ref.read(programmingEngineProvider.future);
+      final fixed = await autocorrectCode(
+        source: before,
+        kind: CodeAutocorrectKind.python,
+        engine: engine,
+      );
+      if (!mounted) return;
+      if (fixed != before) {
+        _codeController.value = TextEditingValue(
+          text: fixed,
+          selection: TextSelection.collapsed(offset: fixed.length),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, 'Autocorrect applied'))),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, 'No changes needed'))),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      final fixed = applyHeuristicAutocorrect(
+        before,
+        CodeAutocorrectKind.python,
+      );
+      _codeController.text = fixed;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'Applied quick local fixes'))),
+      );
+    } finally {
+      if (mounted) setState(() => _autocorrectBusy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final lesson = _lessons[_currentLesson];
@@ -354,31 +400,38 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(children: [
-          Icon(Icons.terminal, size: 20, color: AppColors.primary),
-          SizedBox(width: 8),
-          Text('Python Lab'),
+        title: Row(children: [
+          const Icon(Icons.terminal, size: 20, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Text(tr(context, 'Python Lab')),
         ]),
         actions: [
+          CodeAutocorrectButton(
+            busy: _autocorrectBusy,
+            onPressed: _autocorrect,
+          ),
           const StudioDrawerButton(),
           IconButton(
             icon: const Icon(Icons.list),
-            tooltip: 'All lessons',
+            tooltip: tr(context, 'All lessons'),
             onPressed: () => _showLessonPicker(context),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [Tab(icon: Icon(Icons.code), text: 'Code'), Tab(icon: Icon(Icons.terminal), text: 'Output')],
+          tabs: [
+            Tab(icon: const Icon(Icons.code), text: tr(context, 'Code')),
+            Tab(icon: const Icon(Icons.terminal), text: tr(context, 'Output')),
+          ],
           indicatorColor: AppColors.primary,
           labelColor: AppColors.primary,
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _runCode,
-        tooltip: 'Run in simulator',
+        tooltip: tr(context, 'Run in simulator'),
         icon: const Icon(Icons.play_arrow),
-        label: const Text('SIMULATE'),
+        label: Text(tr(context, 'SIMULATE')),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
@@ -393,10 +446,13 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE8D4A8)),
             ),
-            child: const Text(
-              'Guided simulator — SIMULATE checks common print() patterns. '
-              'It is not a full Python interpreter.',
-              style: TextStyle(fontSize: 12, height: 1.35),
+            child: Text(
+              tr(
+                context,
+                'Guided simulator — SIMULATE checks common print() patterns. '
+                'It is not a full Python interpreter.',
+              ),
+              style: const TextStyle(fontSize: 12, height: 1.35),
             ),
           ),
           Expanded(

@@ -47,10 +47,29 @@ class ScienceRichText extends StatelessWidget {
               data: formatScienceProse(span.text),
               shrinkWrap: shrinkWrap,
               softLineBreak: true,
-              styleSheet: MarkdownStyleSheet(
+              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
                 p: base,
                 strong: base.copyWith(fontWeight: FontWeight.w700),
                 em: base.copyWith(fontStyle: FontStyle.italic),
+                h1: base.copyWith(
+                  fontSize: (base.fontSize ?? 14) * 1.35,
+                  fontWeight: FontWeight.w700,
+                ),
+                h2: base.copyWith(
+                  fontSize: (base.fontSize ?? 14) * 1.22,
+                  fontWeight: FontWeight.w700,
+                ),
+                h3: base.copyWith(
+                  fontSize: (base.fontSize ?? 14) * 1.1,
+                  fontWeight: FontWeight.w700,
+                ),
+                listBullet: base,
+                listIndent: 24,
+                blockSpacing: 8,
+                pPadding: const EdgeInsets.only(bottom: 6),
+                h1Padding: const EdgeInsets.only(top: 4, bottom: 6),
+                h2Padding: const EdgeInsets.only(top: 4, bottom: 4),
+                h3Padding: const EdgeInsets.only(top: 2, bottom: 4),
                 code: base.copyWith(
                   fontFamily: 'Consolas',
                   fontSize: (base.fontSize ?? 14) * 0.92,

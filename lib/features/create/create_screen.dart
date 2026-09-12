@@ -297,12 +297,55 @@ class _SetupView extends ConsumerWidget {
   const _SetupView({required this.topicController});
   final TextEditingController topicController;
 
-  static const _labs = [
-    ('Build a Website', 'Guided AI chat — primary website builder', Icons.language, AppColors.createColor, '/sitechat'),
-    ('Web Dev Lab', 'HTML/CSS/JS editor with live preview', Icons.code, AppColors.practiceColor, '/weblab'),
-    ('Python Lab', 'Guided lessons + code simulator (not a full Python runtime)', Icons.terminal, AppColors.accentDeep, '/pythonlab'),
-    ('App Dev Lab', 'App concepts curriculum — no IDE build/run yet', Icons.phone_android, AppColors.learnColor, '/applab'),
-  ];
+  static List<({String title, String subtitle, IconData icon, Color color, String route})> _labItems(
+    BuildContext context,
+  ) =>
+      [
+        (
+          title: tr(context, 'Build a Website'),
+          subtitle: tr(
+            context,
+            'Select features → coding model builds → Preview/Code edit',
+          ),
+          icon: Icons.language,
+          color: AppColors.createColor,
+          route: '/sitechat',
+        ),
+        (
+          title: tr(context, 'Build an App'),
+          subtitle: tr(
+            context,
+            'Select features → coding model builds → Preview/Code edit',
+          ),
+          icon: Icons.phone_android,
+          color: AppColors.learnColor,
+          route: '/applab',
+        ),
+        (
+          title: tr(context, 'Web Dev Lab'),
+          subtitle: tr(context, 'HTML/CSS/JS editor with live preview'),
+          icon: Icons.code,
+          color: AppColors.practiceColor,
+          route: '/weblab',
+        ),
+        (
+          title: tr(context, 'Python Lab'),
+          subtitle: tr(
+            context,
+            'Guided lessons + code simulator (not a full Python runtime)',
+          ),
+          icon: Icons.terminal,
+          color: AppColors.accentDeep,
+          route: '/pythonlab',
+        ),
+        (
+          title: tr(context, 'App chat builder'),
+          subtitle: tr(context, 'Guided chat → coding model → Preview/Code'),
+          icon: Icons.widgets,
+          color: AppColors.teachColor,
+          route: '/appchat',
+        ),
+      ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -315,19 +358,19 @@ class _SetupView extends ConsumerWidget {
           children: [
             const SizedBox(height: 8),
             Text(
-              'Start Creating',
+              tr(context, 'Start Creating'),
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 6),
             Text(
-              'Pick a lab and start building something real.',
+              tr(context, 'Pick a lab and start building something real.'),
               style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
             const SizedBox(height: 24),
-            ..._labs.map((lab) => Padding(
+            ..._labItems(context).map((lab) => Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: InkWell(
-                onTap: () => GoRouter.of(context).push(lab.$5),
+                onTap: () => GoRouter.of(context).push(lab.route),
                 borderRadius: BorderRadius.circular(22),
                 child: Container(
                   padding: const EdgeInsets.all(20),
@@ -335,10 +378,10 @@ class _SetupView extends ConsumerWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
-                      colors: [lab.$4.withValues(alpha: 0.12), lab.$4.withValues(alpha: 0.03)],
+                      colors: [lab.color.withValues(alpha: 0.12), lab.color.withValues(alpha: 0.03)],
                     ),
                     borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: lab.$4.withValues(alpha: 0.2)),
+                    border: Border.all(color: lab.color.withValues(alpha: 0.2)),
                   ),
                   child: Row(
                     children: [
@@ -347,12 +390,12 @@ class _SetupView extends ConsumerWidget {
                         height: 52,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [lab.$4.withValues(alpha: 0.3), lab.$4.withValues(alpha: 0.1)],
+                            colors: [lab.color.withValues(alpha: 0.3), lab.color.withValues(alpha: 0.1)],
                           ),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: lab.$4.withValues(alpha: 0.2)),
+                          border: Border.all(color: lab.color.withValues(alpha: 0.2)),
                         ),
-                        child: Icon(lab.$3, color: lab.$4, size: 26),
+                        child: Icon(lab.icon, color: lab.color, size: 26),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -360,7 +403,7 @@ class _SetupView extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              lab.$1,
+                              lab.title,
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 16,
@@ -369,7 +412,7 @@ class _SetupView extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              lab.$2,
+                              lab.subtitle,
                               style: TextStyle(
                                 fontSize: 13,
                                 color: Theme.of(context).colorScheme.onSurfaceVariant,

@@ -24,8 +24,7 @@ class ThinkTagFilter {
   /// True once any real answer text has reached the student this reply.
   bool _sawVisible = false;
 
-  /// Reasoning kept ONLY as a salvage buffer for the case below, capped so a
-  /// runaway span cannot grow without bound.
+  /// Reasoning kept only so a runaway span cannot grow the hold buffer.
   final StringBuffer _thinkText = StringBuffer();
   static const _salvageCap = 2000;
 
@@ -80,19 +79,14 @@ class ThinkTagFilter {
 
   /// Call when the stream ends: releases anything still held.
   ///
-  /// An unterminated `<think>` is normally dropped. The exception is a reply
-  /// that produced NO visible text at all: Qwen3 can spend its whole
-  /// `kMaxNewTokens` budget inside a span it never closes, and dropping that
-  /// rendered the student a completely blank bubble (measured end-to-end: a
-  /// Luganda follow-up generated 150 tokens and displayed nothing). A rough
-  /// answer beats silence, so the reasoning is surfaced in that case.
+  /// An unterminated `<think>` is dropped. Surfacing that span painted the
+  /// model's monologue into the student bubble.
   String flush() {
     if (_inThink) {
-      final salvage = _sawVisible ? '' : _thinkText.toString().trim();
       _held.clear();
       _thinkText.clear();
       _markerTail = '';
-      return salvage.isEmpty ? '' : _withoutMarker(salvage);
+      return '';
     }
     if (_passthrough) {
       // Release whatever was being held back as a possible partial marker.

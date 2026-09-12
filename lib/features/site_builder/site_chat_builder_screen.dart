@@ -1,11 +1,18 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import '../../ai_core/providers/ai_provider.dart';
+import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../core/theme/app_colors.dart';
+import '../../l10n/app_locale.dart';
+import '../../shared/coding/code_autocorrect.dart';
+import '../../shared/widgets/code_autocorrect_button.dart';
+import '../../shared/widgets/html_preview.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../create/dev_l10n.dart';
+import 'site_build_coder.dart';
 
 class _Template {
   const _Template(this.id, this.name, this.icon, this.askFields, this.autoFields);
@@ -193,18 +200,22 @@ class _ChatMsg {
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
-class SiteChatBuilderScreen extends StatefulWidget {
+class SiteChatBuilderScreen extends ConsumerStatefulWidget {
   const SiteChatBuilderScreen({super.key});
 
   @override
-  State<SiteChatBuilderScreen> createState() => _SiteChatBuilderScreenState();
+  ConsumerState<SiteChatBuilderScreen> createState() =>
+      _SiteChatBuilderScreenState();
 }
 
-class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
+class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final _codeController = TextEditingController();
   final List<_ChatMsg> _messages = [];
   final Map<String, String> _answers = {};
+  /// Auto-picked template copy, locked in before Build so the coder sees it.
+  final Map<String, String> _recordedContent = {};
 
   _Template? _template;
   int _fieldIndex = -1;
@@ -212,8 +223,9 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
   bool _choosingColor = false;
   String _colorTheme = '';
   bool _building = false;
-  bool _showPreview = false;
-  WebViewController? _webViewController;
+  bool _showStudio = false;
+  String _buildNote = '';
+  bool _autocorrectBusy = false;
 
   static const _colorThemes = {
     '1': {'name': 'Default', 'primary': null, 'bg': null},
@@ -227,19 +239,30 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
   @override
   void initState() {
     super.initState();
-    _addBot("Hi! I'm going to help you build a website. 🚀\n\nWhat type of site do you want?");
-    _addBot("1️⃣ Bakery / Restaurant\n2️⃣ Hotel / Lodge\n3️⃣ Gym / Fitness\n4️⃣ Salon / Spa\n5️⃣ Church / Ministry\n6️⃣ Real Estate\n7️⃣ Tech Startup\n8️⃣ NGO / Charity\n9️⃣ Personal Portfolio\n🔟 School Website\n\nJust type the number or name!");
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
+  }
+
+  Future<void> _startIntro() async {
+    await _sayBot(
+      "Hi! I'm going to help you build a website. 🚀\n\nWhat type of site do you want?",
+    );
+    await _sayBot(
+      "1️⃣ Bakery / Restaurant\n2️⃣ Hotel / Lodge\n3️⃣ Gym / Fitness\n4️⃣ Salon / Spa\n5️⃣ Church / Ministry\n6️⃣ Real Estate\n7️⃣ Tech Startup\n8️⃣ NGO / Charity\n9️⃣ Personal Portfolio\n🔟 School Website\n\nJust type the number or name!",
+    );
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
+    _codeController.dispose();
     super.dispose();
   }
 
-  void _addBot(String text) {
-    setState(() => _messages.add(_ChatMsg(text, true)));
+  Future<void> _sayBot(String english) async {
+    final shown = await localizeDevBot(ref, english);
+    if (!mounted) return;
+    setState(() => _messages.add(_ChatMsg(shown, true)));
     _scrollDown();
   }
 
@@ -260,26 +283,33 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
     });
   }
 
-  void _onSend() {
+  Future<void> _onSend() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty || _building) return;
     _controller.clear();
     _addUser(text);
 
+    // Numbers/template names match in English; free-text answers stay as typed.
+    final english = await localizeDevStudent(ref, text);
+    if (!mounted) return;
+
     if (_choosingTemplate) {
-      _handleTemplateChoice(text);
+      await _handleTemplateChoice(english);
     } else if (_choosingColor) {
-      _handleColorChoice(text);
+      await _handleColorChoice(english);
     } else if (_fieldIndex >= 0 && _template != null) {
-      _handleFieldAnswer(text);
+      await _handleFieldAnswer(text);
     }
   }
 
-  void _handleColorChoice(String text) {
+  Future<void> _handleColorChoice(String text) async {
     final lower = text.trim();
     String? key;
     for (final k in _colorThemes.keys) {
-      if (lower.contains(k) || lower.toLowerCase().contains(_colorThemes[k]!['name']!.toLowerCase())) {
+      if (lower.contains(k) ||
+          lower
+              .toLowerCase()
+              .contains(_colorThemes[k]!['name']!.toLowerCase())) {
         key = k;
         break;
       }
@@ -291,13 +321,14 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
     _fieldIndex = 0;
 
     final name = _colorThemes[key]!['name'];
-    _addBot("$name theme selected! ✨\n\nNow just ${_template!.askFields.length} quick questions:");
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _askCurrentField();
-    });
+    await _sayBot(
+      "$name theme selected! ✨\n\nNow just ${_template!.askFields.length} quick questions:",
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await _askCurrentField();
   }
 
-  void _handleTemplateChoice(String text) {
+  Future<void> _handleTemplateChoice(String text) async {
     final lower = text.toLowerCase();
     _Template? chosen;
 
@@ -325,7 +356,9 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
     }
 
     if (chosen == null) {
-      _addBot("I didn't catch that. Please type a number (1-10) or the name:\n\n1 Bakery  2 Hotel  3 Gym  4 Salon  5 Church\n6 Real Estate  7 Tech  8 NGO  9 Portfolio  10 School");
+      await _sayBot(
+        "I didn't catch that. Please type a number (1-10) or the name:\n\n1 Bakery  2 Hotel  3 Gym  4 Salon  5 Church\n6 Real Estate  7 Tech  8 NGO  9 Portfolio  10 School",
+      );
       return;
     }
 
@@ -333,76 +366,202 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
     _choosingTemplate = false;
     _choosingColor = true;
 
-    _addBot("Great choice — ${chosen.name}! 🎨\n\nPick a color theme:");
-    Future.delayed(const Duration(milliseconds: 400), () {
-      _addBot("1️⃣ Default (template colors)\n2️⃣ Ocean Blue 🔵\n3️⃣ Forest Green 🟢\n4️⃣ Royal Purple 🟣\n5️⃣ Sunset Orange 🟠\n6️⃣ Rose Pink 🩷\n\nType a number!");
-    });
+    await _sayBot("Great choice — ${chosen.name}! 🎨\n\nPick a color theme:");
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    await _sayBot(
+      "1️⃣ Default (template colors)\n2️⃣ Ocean Blue 🔵\n3️⃣ Forest Green 🟢\n4️⃣ Royal Purple 🟣\n5️⃣ Sunset Orange 🟠\n6️⃣ Rose Pink 🩷\n\nType a number!",
+    );
   }
 
-  void _askCurrentField() {
+  Future<void> _askCurrentField() async {
     if (_template == null || _fieldIndex >= _template!.askFields.length) return;
     final field = _template!.askFields[_fieldIndex];
-    _addBot("${field.question}\n\n💡 ${field.hint}");
+    await _sayBot("${field.question}\n\n💡 ${field.hint}");
   }
 
-  void _handleFieldAnswer(String text) {
+  Future<void> _handleFieldAnswer(String text) async {
     final field = _template!.askFields[_fieldIndex];
-
     final answer = text.trim();
-
     _answers[field.key] = answer;
     _fieldIndex++;
 
     if (_fieldIndex >= _template!.askFields.length) {
-      _addBot("Perfect! All details collected. ✅\n\n🔨 Building your website now...");
-      Future.delayed(const Duration(milliseconds: 800), () {
-        _buildSite();
-      });
+      _recordAutoContent();
+      final recorded = tr(
+        context,
+        'Perfect! All features recorded. ✅ '
+        'Coding model is building your site…',
+      );
+      setState(() => _messages.add(_ChatMsg(recorded, true)));
+      _scrollDown();
+      await _buildSite();
     } else {
-      Future.delayed(const Duration(milliseconds: 400), () {
-        _askCurrentField();
-      });
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await _askCurrentField();
+    }
+  }
+
+  /// Lock auto-picked copy into the intent before the coder runs.
+  void _recordAutoContent() {
+    _recordedContent.clear();
+    if (_template == null) return;
+    for (final entry in _template!.autoFields.entries) {
+      _recordedContent[entry.key] = _pick(entry.value);
+    }
+  }
+
+  SiteBuildIntent _currentIntent() {
+    final theme = _colorThemes[_colorTheme];
+    return SiteBuildIntent(
+      templateId: _template!.id,
+      templateName: _template!.name,
+      themeName: theme?['name'] ?? 'Default',
+      themePrimary: theme?['primary'],
+      answers: Map<String, String>.from(_answers),
+      content: Map<String, String>.from(_recordedContent),
+    );
+  }
+
+  Future<String> _templateFallbackHtml(SiteBuildIntent intent) async {
+    var html =
+        await rootBundle.loadString('assets/templates/${intent.templateId}.html');
+    for (final e in intent.answers.entries) {
+      html = html.replaceAll('{{${e.key}}}', e.value);
+    }
+    for (final e in intent.content.entries) {
+      html = html.replaceAll('{{${e.key}}}', e.value);
+    }
+    if (intent.themePrimary != null) {
+      final colorCSS =
+          '<style>:root{--primary:${intent.themePrimary}} '
+          'header,nav,.btn,[class*=hero]{background:${intent.themePrimary}!important} '
+          '.btn{background:${intent.themePrimary}!important}</style>';
+      html = html.replaceFirst('</head>', '$colorCSS</head>');
+    }
+    return html;
+  }
+
+  void _applyCodeEdits() {
+    // LiveHtmlStudio already mirrors the controller; this keeps a hard refresh hook.
+    setState(() {});
+  }
+
+  Future<void> _autocorrectCode() async {
+    if (_autocorrectBusy) return;
+    final before = _codeController.text;
+    if (before.trim().isEmpty) return;
+    setState(() => _autocorrectBusy = true);
+    try {
+      final engine = await ref.read(programmingEngineProvider.future);
+      final fixed = await autocorrectCode(
+        source: before,
+        kind: CodeAutocorrectKind.html,
+        engine: engine,
+      );
+      if (!mounted) return;
+      _codeController.text = fixed;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            fixed == before ? 'No changes needed' : 'Autocorrect applied',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      _codeController.text =
+          applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
+    } finally {
+      if (mounted) setState(() => _autocorrectBusy = false);
     }
   }
 
   Future<void> _buildSite() async {
-    setState(() => _building = true);
+    if (_template == null) return;
+    if (!mounted) return;
+    setState(() {
+      _building = true;
+      _buildNote = tr(context, 'Loading coding model…');
+    });
 
-    var html = await rootBundle.loadString('assets/templates/${_template!.id}.html');
+    final intent = _currentIntent();
+    final fallback = await _templateFallbackHtml(intent);
+    var html = fallback;
+    var usedCoder = false;
 
-    // Fill asked fields from answers
-    for (final field in _template!.askFields) {
-      final value = _answers[field.key] ?? '';
-      html = html.replaceAll('{{${field.key}}}', value);
+    try {
+      final info = await ref.read(programmingModelInfoProvider.future);
+      if (!mounted) return;
+
+      if (info.status != ModelStatus.ready) {
+        setState(() {
+          _buildNote = tr(
+            context,
+            'Coding model not found — using template shell.',
+          );
+        });
+      } else {
+        setState(() {
+          _buildNote = tr(context, 'Coding model writing your HTML…');
+        });
+        final engine = await ref.read(programmingEngineProvider.future);
+        if (!mounted) return;
+
+        var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
+        final generated = await generateSiteHtmlWithCoder(
+          engine: engine,
+          intent: intent,
+          onToken: (cumulative) {
+            final now = DateTime.now();
+            if (now.difference(lastUi).inMilliseconds < 400) return;
+            lastUi = now;
+            if (!mounted) return;
+            final n = cumulative.length;
+            setState(() {
+              _buildNote = tr(
+                context,
+                'Coding model writing your HTML… ($n chars)',
+              );
+            });
+          },
+        ).timeout(
+          const Duration(minutes: 3),
+          onTimeout: () => null,
+        );
+
+        if (generated != null && generated.length > 200) {
+          html = generated;
+          usedCoder = true;
+        }
+      }
+    } catch (_) {
+      html = fallback;
+      usedCoder = false;
     }
 
-    // Fill auto fields with random picks
-    for (final entry in _template!.autoFields.entries) {
-      final value = _pick(entry.value);
-      html = html.replaceAll('{{${entry.key}}}', value);
-    }
+    if (!mounted) return;
+    _codeController.text = html;
 
-    // Apply color theme override
-    final theme = _colorThemes[_colorTheme];
-    if (theme != null && theme['primary'] != null) {
-      // Inject color override CSS before </head>
-      final colorCSS = '<style>:root{--primary:${theme['primary']}} header,nav,.btn,[class*=hero]{background:${theme['primary']}!important} .btn{background:${theme['primary']}!important}</style>';
-      html = html.replaceFirst('</head>', '$colorCSS</head>');
-    }
-
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white);
-
-    final encoded = base64Encode(utf8.encode(html));
-    await _webViewController!.loadRequest(Uri.parse('data:text/html;base64,$encoded'));
-
-    _addBot("Your website is ready! 🎉 Tap the preview button below to see it.");
+    final ready = usedCoder
+        ? tr(
+            context,
+            'Your website is ready! 🎉 Built by the coding model. '
+            'Toggle Preview / Code to view or edit.',
+          )
+        : tr(
+            context,
+            'Your website is ready! 🎉 '
+            '(Template shell — coding model was slow or incomplete.) '
+            'Toggle Preview / Code to edit.',
+          );
 
     setState(() {
+      _messages.add(_ChatMsg(ready, true));
       _building = false;
-      _showPreview = true;
+      _showStudio = true;
+      _buildNote = '';
     });
+    _scrollDown();
   }
 
   @override
@@ -410,29 +569,21 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(children: [
-          Icon(Icons.language, size: 20, color: AppColors.primary),
-          SizedBox(width: 8),
-          Text('Website Builder'),
+        title: Row(children: [
+          const Icon(Icons.language, size: 20, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Text(tr(context, 'Website Builder')),
         ]),
         actions: [
           const StudioDrawerButton(),
           TextButton(
             onPressed: () => context.push('/website'),
-            child: const Text('Block canvas'),
+            child: Text(tr(context, 'Block canvas')),
           ),
-          if (_showPreview)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Your Website')),
-                    body: WebViewWidget(controller: _webViewController!),
-                  ),
-                ));
-              },
-              icon: const Icon(Icons.visibility, size: 18),
-              label: const Text('Preview'),
+          if (_showStudio)
+            TextButton(
+              onPressed: () => setState(() => _showStudio = false),
+              child: Text(tr(context, 'Back to chat')),
             ),
         ],
       ),
@@ -447,56 +598,86 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
             ),
-            child: const Text(
-              'Primary website flow: chat through a template. '
-              'Use Block canvas for drag-and-drop editing.',
-              style: TextStyle(fontSize: 12, height: 1.35),
-            ),
-          ),
-          // Chat messages
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              itemCount: _messages.length + (_showPreview ? 1 : 0),
-              itemBuilder: (_, i) {
-                if (i == _messages.length && _showPreview) {
-                  return _PreviewCard(
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(title: const Text('Your Website')),
-                          body: WebViewWidget(controller: _webViewController!),
-                        ),
-                      ));
-                    },
-                  );
-                }
-                final msg = _messages[i];
-                return _ChatBubble(text: msg.text, isBot: msg.isBot);
-              },
+            child: Text(
+              tr(
+                context,
+                _showStudio
+                    ? 'Simple Browser preview updates as you edit Code — '
+                        'all inside the app (no external browser).'
+                    : 'Pick a site type and features. Build runs the coding model '
+                        '(Qwen 1.5B), then opens an in-app Code | Preview studio.',
+              ),
+              style: const TextStyle(fontSize: 12, height: 1.35),
             ),
           ),
 
-          // Building indicator
+          if (_showStudio) ...[
+            Expanded(
+              child: LiveHtmlStudio(
+                controller: _codeController,
+                onApply: _applyCodeEdits,
+                toolbar: Row(
+                  children: [
+                    CodeAutocorrectButton(
+                      busy: _autocorrectBusy,
+                      onPressed: _autocorrectCode,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _applyCodeEdits,
+                        icon: const Icon(Icons.play_arrow),
+                        label: Text(tr(context, 'Apply & preview')),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else ...[
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                itemCount: _messages.length,
+                itemBuilder: (_, i) {
+                  final msg = _messages[i];
+                  return _ChatBubble(text: msg.text, isBot: msg.isBot);
+                },
+              ),
+            ),
+          ],
+
           if (_building)
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                   const SizedBox(width: 12),
-                  Text('Building your site...', style: TextStyle(color: Theme.of(context).hintColor)),
+                  Flexible(
+                    child: Text(
+                      _buildNote.isEmpty
+                          ? tr(context, 'Building your site...')
+                          : _buildNote,
+                      style: TextStyle(color: Theme.of(context).hintColor),
+                    ),
+                  ),
                 ],
               ),
             ),
 
-          // Input bar
-          if (!_showPreview)
+          if (!_showStudio && !_building)
             Container(
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+                border: Border(
+                  top: BorderSide(color: Theme.of(context).dividerColor),
+                ),
                 color: Theme.of(context).colorScheme.surface,
               ),
               padding: const EdgeInsets.fromLTRB(16, 10, 12, 16),
@@ -507,7 +688,9 @@ class _SiteChatBuilderScreenState extends State<SiteChatBuilderScreen> {
                       controller: _controller,
                       onSubmitted: (_) => _onSend(),
                       decoration: InputDecoration(
-                        hintText: _choosingTemplate ? 'Type 1, 2, or 3...' : 'Type your answer...',
+                        hintText: _choosingTemplate
+                            ? tr(context, 'Type 1–10 or a site name…')
+                            : tr(context, 'Type your answer...'),
                         border: InputBorder.none,
                       ),
                       textInputAction: TextInputAction.send,
@@ -571,49 +754,3 @@ class _ChatBubble extends StatelessWidget {
   }
 }
 
-// ── Preview card ─────────────────────────────────────────────────────────────
-
-class _PreviewCard extends StatelessWidget {
-  const _PreviewCard({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.teachColor.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.teachColor.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 44, height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.teachColor.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.web, color: AppColors.teachColor),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Your website is ready! 🎉', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.teachColor)),
-                  const SizedBox(height: 2),
-                  Text('Tap to see the live preview', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.teachColor),
-          ],
-        ),
-      ),
-    );
-  }
-}
