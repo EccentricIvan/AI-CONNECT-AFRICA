@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../cloud/cloud_api_settings.dart';
 import 'inference_engine.dart';
+import 'sanitize_llm_response.dart';
 
 /// OpenAI-compatible chat API (OpenAI, Groq, OpenRouter, Azure-style gateways).
 /// Requires internet. API key stays on-device in SharedPreferences.
@@ -72,7 +73,7 @@ class OpenAiCompatibleEngine extends InferenceEngine {
         );
       }
 
-      final buffer = StringBuffer();
+      final cleaner = SanitizedTokenStream();
       await for (final chunk in response.transform(utf8.decoder)) {
         for (final line in chunk.split('\n')) {
           final trimmed = line.trim();
@@ -86,8 +87,8 @@ class OpenAiCompatibleEngine extends InferenceEngine {
             final delta = choices.first['delta'] as Map<String, dynamic>?;
             final token = delta?['content'] as String? ?? '';
             if (token.isNotEmpty) {
-              buffer.write(token);
-              await emitToken(onToken, token);
+              final visible = cleaner.add(token);
+              if (visible.isNotEmpty) await emitToken(onToken, visible);
             }
           } catch (_) {
             // skip malformed SSE chunks
@@ -95,7 +96,9 @@ class OpenAiCompatibleEngine extends InferenceEngine {
         }
       }
 
-      final text = buffer.toString().trim();
+      final tail = cleaner.flush();
+      if (tail.isNotEmpty) await emitToken(onToken, tail);
+      final text = cleaner.text;
       if (text.isEmpty) {
         throw ModelLoadException(
           'Cloud AI returned an empty reply. Check your model name and API key.',

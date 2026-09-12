@@ -280,7 +280,6 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                               return _TutorBubble(
                                 text: text,
                                 stage: null,
-                                followUp: null,
                                 math: state.streamingMath,
                                 codingCoach: widget.programmingSubject,
                               );
@@ -289,7 +288,6 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                               return _TutorBubble(
                                 text: text,
                                 stage: null,
-                                followUp: null,
                                 codingCoach: widget.programmingSubject,
                               );
                             }
@@ -318,14 +316,6 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       return _TutorBubble(
                         text: entry.text,
                         stage: entry.stage,
-                        followUp: entry.followUp == null
-                            ? null
-                            : (hasUiString(
-                                    ref.read(appLanguageProvider),
-                                    entry.followUp!,
-                                  )
-                                ? tr(context, entry.followUp!)
-                                : entry.followUp),
                         math: entry.math,
                         mathCoach: entry.mathCoach,
                         codingCoach: widget.programmingSubject ||
@@ -452,7 +442,6 @@ class _TutorBubble extends StatelessWidget {
   const _TutorBubble({
     required this.text,
     required this.stage,
-    required this.followUp,
     this.math,
     this.mathCoach = false,
     this.codingCoach = false,
@@ -464,7 +453,6 @@ class _TutorBubble extends StatelessWidget {
 
   final String text;
   final TutorStage? stage;
-  final String? followUp;
   final SchoolMathSolution? math;
   final bool mathCoach;
   final bool codingCoach;
@@ -532,7 +520,7 @@ class _TutorBubble extends StatelessWidget {
               maxWidth: MediaQuery.sizeOf(context).width * 0.82,
             ),
             margin: const EdgeInsets.only(bottom: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
             decoration: BoxDecoration(
               color: cs.surface,
               borderRadius: const BorderRadius.only(
@@ -543,24 +531,23 @@ class _TutorBubble extends StatelessWidget {
               ),
               border: Border.all(color: Theme.of(context).dividerColor),
             ),
-            child: math != null
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (text.trim().isNotEmpty &&
-                          !text.trimLeft().startsWith('Step'))
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: ScienceRichText(
-                            text: text,
-                            color: cs.onSurface,
-                            style: TextStyle(color: cs.onSurface, height: 1.6),
-                          ),
-                        ),
-                      WorkedSolutionView(solution: math!),
-                    ],
-                  )
-                : ScienceRichText(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (math != null) ...[
+                  if (text.trim().isNotEmpty &&
+                      !text.trimLeft().startsWith('Step'))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ScienceRichText(
+                        text: text,
+                        color: cs.onSurface,
+                        style: TextStyle(color: cs.onSurface, height: 1.6),
+                      ),
+                    ),
+                  WorkedSolutionView(solution: math!),
+                ] else
+                  ScienceRichText(
                     text: text,
                     color: cs.onSurface,
                     style: TextStyle(
@@ -568,19 +555,32 @@ class _TutorBubble extends StatelessWidget {
                       height: 1.6,
                     ),
                   ),
-          ),
-          if (followUp != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4, left: 4),
-              child: Text(
-                followUp!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Theme.of(context).hintColor,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
+                if (onReadAloud != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: onReadAloud,
+                      icon: Icon(
+                        isSpeaking
+                            ? Icons.stop_circle_outlined
+                            : Icons.volume_up_outlined,
+                        size: 18,
+                      ),
+                      label: Text(
+                        isSpeaking
+                            ? tr(context, 'Stop reading')
+                            : tr(context, 'Read aloud'),
+                      ),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                  ),
+              ],
             ),
+          ),
           if (onChip != null && mathCoach)
             Padding(
               padding: const EdgeInsets.only(bottom: 4, left: 2),
@@ -633,24 +633,7 @@ class _TutorBubble extends StatelessWidget {
                 ],
               ),
             ),
-          if (onReadAloud != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12, left: 2),
-              child: TextButton.icon(
-                onPressed: onReadAloud,
-                icon: Icon(
-                  isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
-                  size: 18,
-                ),
-                label: Text(isSpeaking ? tr(context, 'Stop reading') : tr(context, 'Read aloud')),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
-              ),
-            )
-          else
-            const SizedBox(height: 12),
+          const SizedBox(height: 8),
         ],
       ),
     );

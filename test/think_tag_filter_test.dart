@@ -71,13 +71,10 @@ void main() {
       expect(filter.add('make food.'), 'make food.');
     });
 
-    test('salvages an unterminated span when nothing else was produced', () {
-      // Qwen3 can burn the whole token budget inside a span it never closes.
-      // Dropping it rendered the student a blank bubble; a rough answer beats
-      // silence. Measured end-to-end on a Luganda follow-up.
+    test('drops an unterminated span instead of showing the monologue', () {
       expect(
         run(['<think>', 'still thinking and then cut off']),
-        'still thinking and then cut off',
+        isEmpty,
       );
     });
 

@@ -1,8 +1,14 @@
-import 'dart:convert';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../l10n/app_locale.dart';
+import '../../shared/coding/code_autocorrect.dart';
+import '../../shared/widgets/code_autocorrect_button.dart';
+import '../../shared/widgets/html_preview.dart';
 import '../../shared/widgets/studio_page.dart';
 
 // ── Lesson data ──────────────────────────────────────────────────────────────
@@ -417,6 +423,7 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
   WebViewController? _webViewController;
   int _currentLesson = 0;
   bool _showHint = false;
+  bool _autocorrectBusy = false;
 
   @override
   void initState() {
@@ -427,9 +434,11 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
   }
 
   void _initWebView() {
-    _webViewController = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white);
+    unawaited(() async {
+      final c = await createPreviewWebViewController();
+      if (!mounted) return;
+      setState(() => _webViewController = c);
+    }());
   }
 
   @override
@@ -441,11 +450,52 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
 
   void _runCode() {
     final html = _codeController.text;
-    final encoded = base64Encode(utf8.encode(html));
-    _webViewController?.loadRequest(
-      Uri.parse('data:text/html;base64,$encoded'),
-    );
+    final c = _webViewController;
+    if (c != null) {
+      loadHtmlPreview(c, html);
+    }
     _tabController.animateTo(1);
+  }
+
+  Future<void> _autocorrect() async {
+    if (_autocorrectBusy) return;
+    final before = _codeController.text;
+    if (before.trim().isEmpty) return;
+    setState(() => _autocorrectBusy = true);
+    try {
+      final engine = await ref.read(programmingEngineProvider.future);
+      final fixed = await autocorrectCode(
+        source: before,
+        kind: CodeAutocorrectKind.html,
+        engine: engine,
+      );
+      if (!mounted) return;
+      if (fixed != before) {
+        _codeController.value = TextEditingValue(
+          text: fixed,
+          selection: TextSelection.collapsed(offset: fixed.length),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, 'Autocorrect applied'))),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(tr(context, 'No changes needed'))),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      final fixed = applyHeuristicAutocorrect(
+        before,
+        CodeAutocorrectKind.html,
+      );
+      _codeController.text = fixed;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'Applied quick local fixes'))),
+      );
+    } finally {
+      if (mounted) setState(() => _autocorrectBusy = false);
+    }
   }
 
   void _loadLesson(int index) {
@@ -476,26 +526,30 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.code, size: 20, color: AppColors.primary),
-            SizedBox(width: 8),
-            Text('Web Dev Lab'),
+            const Icon(Icons.code, size: 20, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(tr(context, 'Web Dev Lab')),
           ],
         ),
         actions: [
+          CodeAutocorrectButton(
+            busy: _autocorrectBusy,
+            onPressed: _autocorrect,
+          ),
           const StudioDrawerButton(),
           IconButton(
             icon: const Icon(Icons.list),
-            tooltip: 'All lessons',
+            tooltip: tr(context, 'All lessons'),
             onPressed: () => _showLessonPicker(context),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.code), text: 'Code'),
-            Tab(icon: Icon(Icons.visibility), text: 'Preview'),
+          tabs: [
+            Tab(icon: const Icon(Icons.code), text: tr(context, 'Code')),
+            Tab(icon: const Icon(Icons.visibility), text: tr(context, 'Preview')),
           ],
           indicatorColor: AppColors.primary,
           labelColor: AppColors.primary,
@@ -504,7 +558,7 @@ class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _runCode,
         icon: const Icon(Icons.play_arrow),
-        label: const Text('RUN'),
+        label: Text(tr(context, 'RUN')),
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
       ),

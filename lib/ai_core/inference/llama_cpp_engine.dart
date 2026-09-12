@@ -7,7 +7,7 @@ import 'inference_engine.dart';
 import 'native_ffi_config.dart';
 import 'pinned_prompt_cache.dart';
 import 'runtime_config.dart';
-import 'think_tag_filter.dart';
+import 'sanitize_llm_response.dart';
 
 /// GGUF inference via llama.cpp (`llm_llamacpp`).
 ///
@@ -142,7 +142,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
       ),
     );
 
-    final filter = ThinkTagFilter();
+    final streamCleaner = SanitizedTokenStream();
     final buffer = StringBuffer();
     final done = Completer<void>();
     StreamSubscription<llama.LLMChunk>? sub;
@@ -189,7 +189,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
         _consecutiveSoftFailures = 0;
         _softFailure = null;
         _softFailureUntil = null;
-        final visible = filter.add(text);
+        final visible = streamCleaner.add(text);
         if (visible.isEmpty) {
           arm(_betweenTokensTimeout);
           return;
@@ -218,15 +218,23 @@ class LlamaCppEngineImpl extends InferenceEngine {
       await sub.cancel();
     }
 
-    final tail = filter.flush();
+    final tail = streamCleaner.flush();
     if (tail.isNotEmpty) {
       buffer.write(tail);
       await emitToken(onToken, tail);
     }
 
-    final result = buffer.toString().trim();
+    final result = streamCleaner.text.isNotEmpty
+        ? streamCleaner.text
+        : sanitizeLLMResponse(buffer.toString());
     if (result.isEmpty) {
-      throw StateError('AfriSLM returned an empty response.');
+      // Qwen3 can burn the whole token budget inside <think>. Throwing here
+      // used to tear down the Flutter Windows session ("Lost connection").
+      // Return a short recoverable line so chat stays up for the next turn.
+      const fallback =
+          'I could not finish that answer. Please ask again in one short sentence.';
+      await emitToken(onToken, fallback);
+      return fallback;
     }
     return result;
   }

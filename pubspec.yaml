@@ -48,14 +48,16 @@ dependencies:
   # Curriculum diagram assets (SVG)
   flutter_svg: ^2.0.10+1
 
-  # Web Dev Lab — render student HTML in a WebView
+  # Web Dev Lab / Simple Browser — Android + desktop WebViews
   webview_flutter: ^4.10.0
+  webview_flutter_android: ^4.10.0
+  webview_flutter_windows: ^1.0.0
 
   # PDF certificate generation (offline, pure Dart)
   pdf: ^3.10.8
-  webview_flutter_windows: ^1.0.0
   share_plus: ^12.0.2
   package_info_plus: ^9.0.1
+  html: ^0.15.4
 
 dev_dependencies:
   flutter_test:

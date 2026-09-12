@@ -29,10 +29,21 @@ const int kTopK = 1;
 const int kRandomSeed = 0;
 
 /// Hard cap on tutor decode length (0.6B general reasoning).
-const int kMaxNewTokens = 150;
+/// Enough room for a short answer even if a few think tokens leak first.
+const int kMaxNewTokens = 350;
 
 /// Coding replies need room for a short fenced snippet plus the explanation.
 const int kProgrammingMaxTokens = 400;
+
+/// One-shot website Build from recorded features (1.5B coder).
+/// Compact page — enough for a small site without multi-minute CPU decode.
+const int kSiteBuildMaxTokens = 650;
+
+/// One-shot mobile-web app Build from recorded features (1.5B coder).
+const int kAppBuildMaxTokens = 650;
+
+/// Lab "Autocorrect" polish via the 1.5B coder (short snippets).
+const int kCodeFixMaxTokens = 500;
 
 /// Forward English into AfriSLM at this many characters if no punctuation.
 const int kTranslateFlushChars = 50;

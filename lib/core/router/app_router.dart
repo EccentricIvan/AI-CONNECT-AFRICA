@@ -14,6 +14,7 @@ import '../../features/certificates/certificates_screen.dart';
 import '../../features/collaborate/collaborate_screen.dart';
 import '../../features/create/create_screen.dart';
 import '../../features/home/home_screen.dart';
+import '../../features/app_dev_lab/app_chat_builder_screen.dart';
 import '../../features/app_dev_lab/app_dev_lab_screen.dart';
 import '../../features/curriculum_browser/lesson_screen.dart';
 import '../../features/python_lab/python_lab_screen.dart';
@@ -124,6 +125,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/create', builder: (_, __) => const CreateScreen()),
           GoRoute(path: '/weblab', builder: (_, __) => const WebDevLabScreen()),
           GoRoute(path: '/applab', builder: (_, __) => const AppDevLabScreen()),
+          GoRoute(
+            path: '/appchat',
+            builder: (_, __) => const AppChatBuilderScreen(),
+          ),
           GoRoute(
             path: '/sitebuilder',
             redirect: (_, __) => '/sitechat',

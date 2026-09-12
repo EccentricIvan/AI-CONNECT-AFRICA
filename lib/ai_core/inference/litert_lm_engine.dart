@@ -6,6 +6,7 @@ import '../model/model_manager.dart';
 import 'inference_engine.dart';
 import 'pinned_prompt_cache.dart';
 import 'runtime_config.dart';
+import 'sanitize_llm_response.dart';
 
 /// Chat engine for every desktop/mobile platform — Google LiteRT-LM runtime
 /// via flutter_gemma_litertlm, registered in main.dart. Runs Qwen3-0.6B
@@ -175,18 +176,21 @@ class LiteRtLmEngineImpl extends InferenceEngine {
 
     await _pinnedChat!.addQueryChunk(Message.text(text: user, isUser: true));
 
-    final buffer = StringBuffer();
+    final cleaner = SanitizedTokenStream();
     await for (final response in _pinnedChat!.generateChatResponseAsync()) {
       if (response is TextResponse) {
         final token = response.token;
         if (token.isNotEmpty) {
-          buffer.write(token);
-          await emitToken(onToken, token);
+          final visible = cleaner.add(token);
+          if (visible.isEmpty) continue;
+          await emitToken(onToken, visible);
         }
       }
     }
+    final tail = cleaner.flush();
+    if (tail.isNotEmpty) await emitToken(onToken, tail);
     _pinnedTurns++;
-    return buffer.toString();
+    return cleaner.text;
   }
 
   Future<String> _oneShot({
@@ -204,17 +208,20 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     );
     try {
       await chat.addQueryChunk(Message.text(text: user, isUser: true));
-      final buffer = StringBuffer();
+      final cleaner = SanitizedTokenStream();
       await for (final response in chat.generateChatResponseAsync()) {
         if (response is TextResponse) {
           final token = response.token;
           if (token.isNotEmpty) {
-            buffer.write(token);
-            await emitToken(onToken, token);
+            final visible = cleaner.add(token);
+            if (visible.isEmpty) continue;
+            await emitToken(onToken, visible);
           }
         }
       }
-      return buffer.toString();
+      final tail = cleaner.flush();
+      if (tail.isNotEmpty) await emitToken(onToken, tail);
+      return cleaner.text;
     } finally {
       await chat.close();
     }

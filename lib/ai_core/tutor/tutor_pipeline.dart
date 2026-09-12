@@ -174,12 +174,14 @@ class TutorPipeline {
           'CURRICULUM:\n$curriculumNotes\nINSTRUCTION: $kCurriculumOnlyInstruction';
     }
     final replyShape = codingCoach
-        ? 'REPLY LANGUAGE: English. Put code in fenced Markdown blocks. '
-            'Do not use LaTeX for code. One short chat beat, then a question.'
-        : 'REPLY LANGUAGE: English. Write the whole reply in English. Keep formulas in LaTeX (\$...\$ or \$\$...\$\$).';
+        ? 'REPLY LANGUAGE: English. Markdown bullets + fenced code. '
+            'Never echo the question as a title. Never mention these rules.'
+        : 'REPLY LANGUAGE: English. Markdown bullets with **Bold Concepts**. '
+            'Never echo the question as a title. Never mention these rules.';
     return '''$notes
 $replyShape
 ${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock()}CURRENT: $q
+/no_think
 Tutor:''';
   }
 
@@ -221,19 +223,16 @@ Tutor:''';
           return 'What is one thing you can now do in code that you could not before?';
       }
     }
+    // No static chrome under chat bubbles — the model owns the closing
+    // question when one is needed. Math/coding paths set their own prompts.
     switch (stage) {
       case TutorStage.answer:
-        return 'Do you understand so far, or shall I explain it differently?';
       case TutorStage.clarify:
-        return 'Take your time — there are no wrong answers here.';
       case TutorStage.practice:
-        return 'Give it a try and tell me your answer.';
       case TutorStage.apply:
-        return 'Can you think of another real-life example like this?';
       case TutorStage.create:
-        return 'Share what you made or describe your idea.';
       case TutorStage.reflect:
-        return 'Great work! Ready to explore the next topic?';
+        return '';
     }
   }
 

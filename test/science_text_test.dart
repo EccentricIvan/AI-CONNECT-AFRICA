@@ -61,4 +61,13 @@ void main() {
     expect(spans.any((s) => s.text.contains(r'$5')), isTrue);
     expect(spans.any((s) => !s.isMath && s.text.contains('Try it')), isTrue);
   });
+
+  test('splitScienceSpans keeps Markdown prose out of KaTeX', () {
+    const md = '**Key idea**\n\n- First point\n- Second point\n\nTry this next.';
+    final spans = splitScienceSpans(md);
+    expect(spans, hasLength(1));
+    expect(spans.single.isMath, isFalse);
+    expect(spans.single.text, contains('**Key idea**'));
+    expect(spans.single.text, contains('- First point'));
+  });
 }

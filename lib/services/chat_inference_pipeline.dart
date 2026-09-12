@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../ai_core/inference/inference_engine.dart';
 import '../ai_core/inference/runtime_config.dart';
+import '../ai_core/inference/sanitize_llm_response.dart';
 import '../ai_core/inference/stream_cascade.dart';
 import '../ai_core/science/science_text.dart';
 import '../ai_core/translate/follow_up_glossary.dart';
@@ -193,12 +194,17 @@ class ChatInferencePipeline {
         languageCode != 'en' && translator != null && canOverlapNative;
 
     final englishCtrl = StreamController<String>();
+    final rawUi = StringBuffer();
     final ui = StringBuffer();
     void pushUi(String chunk) {
-      final next = joinCascade(ui.toString(), chunk);
-      ui
+      final next = joinCascade(rawUi.toString(), chunk);
+      rawUi
         ..clear()
         ..write(next);
+      final cleaned = sanitizeLLMResponse(next);
+      ui
+        ..clear()
+        ..write(cleaned);
       onUiToken?.call(ui.toString());
     }
 
@@ -318,7 +324,9 @@ class ChatInferencePipeline {
 
     return ChatPipelineTurn(
       response: done,
-      displayText: display.trim().isEmpty ? done.text : display,
+      displayText: sanitizeLLMResponse(
+        display.trim().isEmpty ? done.text : display,
+      ),
       englishUser: englishUser,
       translatedLanguage: translatedLanguage,
       translationFailure: translationFailure,
