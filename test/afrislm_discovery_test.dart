@@ -9,6 +9,7 @@ import 'package:path/path.dart' as p;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  const fixtureBytes = 320 * 1024 * 1024;
 
   setUpAll(() {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
@@ -27,7 +28,21 @@ void main() {
     expect(files.any((f) => f.contains('${p.separator}models${p.separator}')), isTrue);
   });
 
-  test('AfriSLM manager finds the Q4 GGUF on this machine', () async {
+  test('AfriSLM manager finds the Q4 GGUF in repo models/', () async {
+    final fixture = File(
+      p.join(Directory.current.path, 'models', 'afrislm-0.8b-q4_k_m.gguf'),
+    );
+    final hadFixture = await fixture.exists();
+    if (!hadFixture) {
+      await fixture.parent.create(recursive: true);
+      final raf = await fixture.open(mode: FileMode.write);
+      await raf.truncate(fixtureBytes);
+      await raf.close();
+      addTearDown(() async {
+        if (await fixture.exists()) await fixture.delete();
+      });
+    }
+
     final info = await AfriSlmModelManager().checkModel();
     expect(
       info.isReady,
@@ -40,6 +55,20 @@ void main() {
   });
 
   test('Qwen manager finds the 0.6B GGUF brain, not AfriSLM', () async {
+    final fixture = File(
+      p.join(Directory.current.path, 'models', 'qwen-0.6b-instruct.gguf'),
+    );
+    final hadFixture = await fixture.exists();
+    if (!hadFixture) {
+      await fixture.parent.create(recursive: true);
+      final raf = await fixture.open(mode: FileMode.write);
+      await raf.truncate(fixtureBytes);
+      await raf.close();
+      addTearDown(() async {
+        if (await fixture.exists()) await fixture.delete();
+      });
+    }
+
     final info = await ModelManager().checkModel();
     expect(info.isReady, isTrue, reason: '${info.status} ${info.path}');
     expect(info.path!.toLowerCase(), contains('qwen-0.6b-instruct.gguf'));
