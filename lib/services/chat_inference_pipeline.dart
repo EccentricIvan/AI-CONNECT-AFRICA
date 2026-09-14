@@ -314,7 +314,13 @@ class ChatInferencePipeline {
       if (display.trim().isEmpty) display = done.text;
       translationFailure = 'translation model unavailable';
     } else if (display.trim().isNotEmpty) {
-      translatedLanguage = languageCode;
+      // Overlap path: rejected AfriSLM falls back to English source text.
+      // Do not mark that as a successful local-language translation.
+      if (display.trim() == done.text.trim()) {
+        translationFailure = 'translation failed';
+      } else {
+        translatedLanguage = languageCode;
+      }
     } else if (done.text.trim().isNotEmpty && done.math == null) {
       display = done.text;
       translationFailure = 'translation failed';

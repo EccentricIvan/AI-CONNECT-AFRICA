@@ -1,6 +1,7 @@
 import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/inference/runtime_config.dart';
 import '../../ai_core/inference/sanitize_llm_response.dart';
+import '../../services/hybrid_model_orchestrator.dart';
 
 enum CodeAutocorrectKind { html, python, dart }
 
@@ -162,6 +163,7 @@ String extractCorrectedCode(String raw) {
 }
 
 const _fixSystem = '''
+/no_think
 You fix student code for an offline coding lab.
 Return ONLY the corrected source code.
 No markdown fences. No explanations. No titles.
@@ -186,6 +188,7 @@ Future<String> autocorrectCode({
     CodeAutocorrectKind.dart => 'dart',
   };
   final prompt = '''
+/no_think
 Fix syntax and small mistakes in this $lang code.
 Return ONLY the full corrected code.
 
@@ -194,13 +197,15 @@ $heuristic
 ''';
 
   try {
-    final raw = await engine.generate(
-      prompt: prompt,
-      systemPrompt: _fixSystem,
-      maxTokens: kCodeFixMaxTokens,
-      temperature: 0.1,
-      onToken: (_) {},
-    );
+    final raw = await HybridModelOrchestrator.instance.runExclusive(() {
+      return engine.generate(
+        prompt: prompt,
+        systemPrompt: _fixSystem,
+        maxTokens: kCodeFixMaxTokens,
+        temperature: kCoderTemperature,
+        onToken: (_) {},
+      );
+    });
     final fixed = extractCorrectedCode(raw);
     if (fixed.isEmpty || fixed.length < heuristic.length * 0.4) {
       return heuristic;

@@ -171,7 +171,6 @@ class TranslationPipeline {
     required String toCode,
     required String direction,
     required String cacheLangCode,
-    TokenCallback? onToken,
   }) async {
     final source = text.trim();
     if (source.isEmpty) return TranslationOutcome.passthrough(text);
@@ -188,9 +187,6 @@ class TranslationPipeline {
     // ── Cache ────────────────────────────────────────────────────────────
     final cached = await _cacheLookup(key, cacheSource);
     if (cached != null) {
-      // Replay through onToken so a streaming caller still renders, and
-      // does so instantly instead of over several seconds.
-      await emitToken(onToken, cached);
       return TranslationOutcome(
         text: cached,
         translated: true,
@@ -205,13 +201,17 @@ class TranslationPipeline {
     for (var attempt = 0; attempt < 2; attempt++) {
       final strict = attempt == 0;
       try {
-        final String raw;
-        raw = await _engine.generate(
+        // Do not stream tokens while decoding. AfriSLM often loops
+        // ("bye bye bye…") until maxTokens; live onToken painted that
+        // garbage into the chat bubble before judgeTranslation could
+        // reject it, and append-only UI could not take it back.
+        // Callers emit once via onToken only after a validated (and
+        // math-restored) final string.
+        final raw = await _engine.generate(
           prompt: _userPrompt(fromName, toName, source),
           systemPrompt: _systemPrompt(fromName, toName),
           maxTokens: _tokenBudget(source),
           temperature: kTranslateTemperature,
-          onToken: strict ? onToken : null,
         );
         final candidate = cleanTranslationOutput(raw);
         if (candidate.isEmpty) {
@@ -326,13 +326,10 @@ class TranslationPipeline {
       toCode: 'en',
       direction: 'to_en',
       cacheLangCode: fromLanguageCode,
-      onToken: onToken,
     );
     if (!out.translated) return out;
     final restored = islands.restore(out.text);
-    if (onToken != null && restored != out.text) {
-      await emitToken(onToken, restored);
-    }
+    await emitToken(onToken, restored);
     return TranslationOutcome(
       text: restored,
       translated: true,
@@ -369,11 +366,12 @@ class TranslationPipeline {
       toCode: toLanguageCode,
       direction: 'from_en',
       cacheLangCode: toLanguageCode,
-      onToken: onToken,
     );
     if (whole.translated) {
+      final restored = islands.restore(whole.text);
+      await emitToken(onToken, restored);
       return TranslationOutcome(
-        text: islands.restore(whole.text),
+        text: restored,
         translated: true,
         fromCache: whole.fromCache,
       );

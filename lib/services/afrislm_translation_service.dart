@@ -49,13 +49,8 @@ class AfriSlmTranslationService {
         if (!controller.isClosed) controller.add(token);
       },
     );
-    unawaited(done.then((outcome) {
-      if (!controller.isClosed) {
-        if (controller.hasListener && outcome.translated && outcome.text.isNotEmpty) {
-          // Restore math islands after the live tokens if the stream was empty.
-        }
-        controller.close();
-      }
+    unawaited(done.then((_) {
+      if (!controller.isClosed) controller.close();
     }).catchError((Object e, StackTrace st) {
       if (!controller.isClosed) controller.addError(e, st);
     }));
@@ -65,6 +60,8 @@ class AfriSlmTranslationService {
       yield chunk;
     }
     final outcome = await done;
+    // Pipeline only emits onToken after a validated translation. On
+    // rejection nothing was streamed — surface the English/source fallback.
     if (!any && outcome.text.isNotEmpty) {
       yield outcome.text;
     }
@@ -105,6 +102,9 @@ class AfriSlmTranslationService {
       yield chunk;
     }
     final outcome = await done;
+    // Rejected loops used to stream live then skip this branch because
+    // [any] was already true — the bubble kept "bye bye bye…". Validated
+    // emits only succeed via onToken; failures fall through here.
     if (!any) {
       yield outcome.text;
     }

@@ -17,10 +17,20 @@ class LlamaCppEngineImpl extends InferenceEngine {
   LlamaCppEngineImpl({
     this.schedulerLane = EngineLane.reason,
     String backendLabel = 'llama.cpp · GGUF',
-  }) : _backendLabel = backendLabel;
+    int? nGpuLayers,
+    int? threads,
+  })  : _backendLabel = backendLabel,
+        nGpuLayers = nGpuLayers ?? llamaGpuLayersForLane(schedulerLane),
+        threads = threads ?? kLlamaThreads;
 
   final String schedulerLane;
   final String _backendLabel;
+
+  /// Layers offloaded to GPU for this engine instance.
+  final int nGpuLayers;
+
+  /// llama.cpp thread count (`null` = package auto-detect).
+  final int? threads;
 
   llama.LlamaCppChatRepository? _repo;
   String? _modelPath;
@@ -65,7 +75,8 @@ class LlamaCppEngineImpl extends InferenceEngine {
       modelPath,
       contextSize: kLlamaContextSize,
       batchSize: kLlamaBatchSize,
-      nGpuLayers: kLlamaGpuLayers,
+      threads: threads,
+      nGpuLayers: nGpuLayers,
     );
     _modelPath = modelPath;
     _nativeEverWorked = false;

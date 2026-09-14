@@ -9,9 +9,11 @@ import '../inference/litert_lm_engine.dart';
 import '../inference/llama_cpp_engine.dart';
 import '../inference/mock_engine.dart';
 import '../inference/openai_compatible_engine.dart';
+import '../tutor/tutor_contract.dart';
 import '../model/bundled_model_bootstrap.dart';
 import '../model/dual_gguf_plan.dart';
 import '../model/model_manager.dart';
+import '../model/model_runtime_policy.dart';
 import '../model/programming_model_manager.dart';
 import '../translate/afrislm_model_manager.dart';
 import '../translate/drift_translation_store.dart';
@@ -31,7 +33,11 @@ import '../../l10n/language_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../safety/emotional_safety.dart';
 import '../../services/afrislm_translation_service.dart';
+import '../../services/ai_coder_service.dart';
+import '../../services/ai_engine_service.dart';
+import '../../services/ai_model_manager.dart';
 import '../../services/chat_inference_pipeline.dart';
+import '../../services/qwen_chat_service.dart';
 import '../../services/qwen_reasoning_service.dart';
 
 /// Learn uses curriculum RAG. Wholesome chat (nav `/chat`) does not.
@@ -77,8 +83,17 @@ final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
     return const ModelInfo(status: ModelStatus.notInstalled);
   }
   try {
-    await ref.watch(bundledModelsBootstrapProvider.future);
-    return ref.watch(modelManagerProvider).checkModel();
+    final boot = await ref.watch(bundledModelsBootstrapProvider.future);
+    final info = await ref.watch(modelManagerProvider).checkModel();
+    if (info.isReady) return info;
+    if (boot.chatBundledInApk && useLiteRtChatBrain) {
+      return const ModelInfo(
+        status: ModelStatus.ready,
+        path: ModelManager.bundledChatModelPath,
+        platform: 'Android (LiteRT-LM · Qwen 0.6B)',
+      );
+    }
+    return info;
   } catch (e, st) {
     debugPrint('modelInfoProvider failed: $e\n$st');
     return const ModelInfo(status: ModelStatus.notInstalled);
@@ -106,23 +121,46 @@ class DualModelRuntime {
   final InferenceEngine reasoner;
   final InferenceEngine? translator;
   final bool shared;
-  final String? programmingPath;
+  String? programmingPath;
   InferenceEngine? _programming;
 
   InferenceEngine? get programming => _programming;
 
   Future<InferenceEngine?> ensureProgramming() async {
-    if (_programming != null) return _programming;
-    final path = programmingPath;
-    if (path == null || path.isEmpty) return null;
-    final engine = LlamaCppEngineImpl(
-      schedulerLane: EngineLane.program,
-      backendLabel: 'llama.cpp · Qwen 1.5B Coder',
-    );
-    await engine.loadModel(path);
-    _programming = engine;
-    return engine;
+    if (_programming != null && _programming!.isReady) return _programming;
+    var path = programmingPath;
+    // On-demand coder fetch may land after DualModelRuntime was built with
+    // a null path — rediscover from disk instead of forever falling back
+    // to the 0.6B chat brain for labs / Create / Practice.
+    if (path == null || path.isEmpty) {
+      final info = await ProgrammingModelManager().checkModel();
+      final discovered = info.path;
+      if (!info.isReady || discovered == null) return null;
+      path = discovered;
+      programmingPath = discovered;
+    }
+
+    if (useLiteRtCoderRuntime) {
+      AiModelManager.instance.registerAppCoderPath(path);
+      await AiModelManager.instance.prepareModelForMode(ActiveModelMode.appCoder);
+      final eng = AiModelManager.instance.coderEngine;
+      if (eng == null || !eng.isReady) return null;
+      _programming = eng;
+      _coderService ??= AiCoderService(engine: eng);
+      return eng;
+    }
+
+    final coder = AiCoderService();
+    final ok = await coder.loadFromPath(path);
+    if (!ok || coder.engine == null) return null;
+    _programming = coder.engine;
+    _coderService = coder;
+    return _programming;
   }
+
+  AiCoderService? _coderService;
+
+  AiCoderService? get coderService => _coderService;
 }
 
 final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
@@ -158,28 +196,51 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
     final translateInfo = await ref.watch(translateModelInfoProvider.future);
     final programmingInfo = await ref.watch(programmingModelInfoProvider.future);
     final plan = planDualGgufs(qwenInfo, translateInfo, programmingInfo);
+    final programmingPath = plan.programmingPath;
 
-    if (!plan.canTutor) {
+    if (!plan.canTutor ||
+        plan.qwenPath == null ||
+        !isAllowedChatBrainPath(plan.qwenPath!)) {
       debugPrint(
-        'QWEN BRAIN missing. Place qwen-0.6b-instruct.gguf in models/. '
-        'AfriSLM is translator-only.',
+        useLiteRtChatBrain
+            ? 'CHAT BRAIN missing. Place chat-model.litertlm '
+                '(LiteRT-LM) in the APK or Install from file.'
+            : 'CHAT BRAIN missing. Place qwen_brain_0.6b.Q4_K_M.gguf or '
+                'qwen-0.6b-instruct.gguf in models/.',
       );
       return demo(DemoReason.modelNotInstalled);
     }
 
     final qwenPath = plan.qwenPath!;
     final InferenceEngine reasoner;
-    if (qwenPath.toLowerCase().endsWith('.litertlm')) {
-      reasoner = LiteRtLmEngineImpl();
+    final chatIsLiteRt = useLiteRtChatBrain &&
+        (qwenPath.toLowerCase().endsWith('.litertlm') ||
+            qwenPath.toLowerCase().endsWith('.literlm') ||
+            qwenPath.toLowerCase().startsWith('bundled:'));
+    if (chatIsLiteRt) {
+      reasoner = LiteRtLmEngineImpl(roleLabel: 'Qwen 0.6B chat');
     } else {
+      // Windows/Linux GGUF, or Android HF-fetched GGUF fallback.
       reasoner = LlamaCppEngineImpl(
         schedulerLane: EngineLane.reason,
-        backendLabel: 'llama.cpp · Qwen 0.6B',
+        backendLabel: 'llama.cpp · Qwen 0.6B chat (AVX2 · CPU×2)',
+        nGpuLayers: 0,
+        threads: 2,
       );
     }
     await reasoner.loadModel(qwenPath);
+    if (reasoner is LiteRtLmEngineImpl) {
+      AiModelManager.instance.registerChatBrain(
+        engine: reasoner,
+        path: qwenPath,
+      );
+      await reasoner.pinSystemPrompt(kTutorContract);
+    }
+    if (useLiteRtCoderRuntime && programmingPath != null) {
+      AiModelManager.instance.registerAppCoderPath(programmingPath);
+    }
     debugPrint(
-      'QWEN BRAIN loaded ${qwenPath.toLowerCase().endsWith('.gguf') ? 'llama.cpp GGUF' : 'LiteRT'} '
+      'CHAT BRAIN loaded ${chatIsLiteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
       'at $qwenPath',
     );
 
@@ -205,13 +266,16 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       debugPrint('TRANSLATION OFF: no AfriSLM GGUF. English-only tutor.');
     }
 
-    if (plan.canProgram) {
-      debugPrint('PROGRAMMING BRAIN ready at ${plan.programmingPath}');
+    if (programmingPath != null) {
+      debugPrint(
+        useLiteRtCoderRuntime
+            ? 'CODER ready (LiteRT path) at $programmingPath'
+            : 'CODER ready (GGUF CPU path) at $programmingPath',
+      );
     } else {
       debugPrint(
-        'PROGRAMMING BRAIN missing. Place '
-        'qwen2.5-coder-1.5b-instruct.gguf in models/. '
-        'Learn will keep using Qwen 0.6B for coding until then.',
+        'CODER missing. Android: qwen_coder_1.5b.litertlm — '
+        'Windows: qwen_coder_1.5b.Q4_K_M.gguf',
       );
     }
 
@@ -219,14 +283,17 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       reasoner: reasoner,
       translator: translator,
       shared: shared,
-      programmingPath: plan.programmingPath,
+      programmingPath: programmingPath,
     );
     ref.onDispose(() async {
       await reasoner.dispose();
       if (translator != null && !identical(translator, reasoner)) {
         await translator.dispose();
       }
-      await runtime.programming?.dispose();
+      await runtime.coderService?.dispose();
+      if (runtime.coderService == null) {
+        await runtime.programming?.dispose();
+      }
     });
     return runtime;
   } catch (e, st) {
@@ -261,6 +328,27 @@ final programmingModelInfoProvider = FutureProvider<ModelInfo>((ref) async {
 final programmingEngineProvider = FutureProvider<InferenceEngine>((ref) async {
   final runtime = await ref.watch(dualModelRuntimeProvider.future);
   return await runtime.ensureProgramming() ?? runtime.reasoner;
+});
+
+/// Hybrid multi-platform coder (LiteRT Android / GGUF CPU Windows).
+final aiCoderServiceProvider = FutureProvider<AiCoderService>((ref) async {
+  final runtime = await ref.watch(dualModelRuntimeProvider.future);
+  await runtime.ensureProgramming();
+  final existing = runtime.coderService;
+  if (existing != null) return existing;
+  final coder = AiCoderService();
+  await coder.ensureLoaded();
+  ref.onDispose(coder.dispose);
+  return coder;
+});
+
+/// GGUF / LiteRT chat brain service.
+final qwenChatServiceProvider = FutureProvider<QwenChatService>((ref) async {
+  final runtime = await ref.watch(dualModelRuntimeProvider.future);
+  final info = await ref.watch(modelInfoProvider.future);
+  final chat = QwenChatService(runtime.reasoner, modelPath: info.path);
+  await chat.warmKvCache();
+  return chat;
 });
 
 // ── Translation (AfriSLM) ────────────────────────────────────────────────────
@@ -549,8 +637,14 @@ final tutorPipelineProvider = FutureProvider<TutorPipeline>((ref) async {
 });
 
 final qwenReasoningServiceProvider = FutureProvider<QwenReasoningService>((ref) async {
-  final engine = await ref.watch(engineLoadedProvider.future);
-  return QwenReasoningService(engine);
+  final runtime = await ref.watch(dualModelRuntimeProvider.future);
+  final info = await ref.watch(modelInfoProvider.future);
+  final service = QwenReasoningService(
+    runtime.reasoner,
+    modelPath: info.path,
+  );
+  await service.warmKvCache();
+  return service;
 });
 
 final afrislmTranslationServiceProvider =
@@ -559,6 +653,12 @@ final afrislmTranslationServiceProvider =
   if (pipeline == null) return null;
   final engine = await ref.watch(translateEngineLoadedProvider.future);
   return AfriSlmTranslationService(pipeline, engine: engine);
+});
+
+/// Translator isolation facade (no LiteRT/GGUF loaders inside).
+final aiEngineServiceProvider = FutureProvider<AiEngineService>((ref) async {
+  final translator = await ref.watch(afrislmTranslationServiceProvider.future);
+  return AiEngineService(translator);
 });
 
 final chatInferencePipelineProvider = FutureProvider<ChatInferencePipeline>((ref) async {

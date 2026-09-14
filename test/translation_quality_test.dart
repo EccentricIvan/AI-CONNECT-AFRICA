@@ -278,6 +278,18 @@ void main() {
     test('catches a looped phrase', () {
       expect(hasRepetitionLoop('chakula kutokana na mwanga ' * 6), isTrue);
     });
+
+    test('catches a single-token bye loop', () {
+      expect(hasRepetitionLoop('bye bye bye bye bye bye'), isTrue);
+      expect(
+        judgeTranslation(
+          source: 'Goodbye',
+          candidate: 'bye bye bye bye bye bye bye',
+          toCode: 'lg',
+        ),
+        TranslationRejection.repetitionLoop,
+      );
+    });
   });
 
   group('modelTagFor', () {

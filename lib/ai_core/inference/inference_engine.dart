@@ -16,11 +16,11 @@ Future<void> emitToken(TokenCallback? onToken, String token) async {
 }
 
 /// Unified inference interface.
-/// - Reason (Qwen 0.6B GGUF)         → [LlamaCppEngineImpl] (`EngineLane.reason`)
-/// - Program (Qwen 1.5B Coder GGUF)  → [LlamaCppEngineImpl] (`EngineLane.program`)
-/// - Translate (AfriSLM GGUF)        → [LlamaCppEngineImpl] (`EngineLane.translate`)
-/// - Fallback (Qwen3-0.6B `.litertlm`) → [LiteRtLmEngineImpl]
-/// - Dev/Test                        → [MockEngine]
+/// - Chat brain (Android + Windows): Qwen 0.6B GGUF → [LlamaCppEngineImpl]
+/// - Coder Android: Qwen 1.5B LiteRT → [LiteRtLmEngineImpl]
+/// - Coder Windows: Qwen 1.5B GGUF CPU → [LlamaCppEngineImpl]
+/// - Translate: AfriSLM via isolated [AiEngineService] / llama.cpp
+/// - Dev/Test → [MockEngine]
 abstract class InferenceEngine {
   bool get isReady;
   String get backendLabel;

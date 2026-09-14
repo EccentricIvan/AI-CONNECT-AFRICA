@@ -9,9 +9,11 @@ import '../../curriculum/curriculum_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/widgets/quiz_ai_answer.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../settings/coder_package_prompt.dart';
 import 'practice_providers.dart';
 import 'quiz_generator.dart';
 import 'scenario_models.dart';
@@ -197,6 +199,11 @@ class _PracticeTabState extends ConsumerState<_PracticeTab> {
   /// contributes nothing — the static quiz already works on its own.
   Future<void> _appendAdaptiveQuestions(String topic) async {
     try {
+      if (looksLikeProgramming(topic)) {
+        final coderOk = await promptAndFetchCoderPackage(context, ref);
+        if (!coderOk || !mounted) return;
+        scheduleLiteRtMode(ActiveModelMode.appCoder);
+      }
       final student = await ref.read(activeStudentProvider.future);
       if (student == null) return;
       final db = ref.read(dbProvider);

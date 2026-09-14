@@ -63,6 +63,12 @@ void main() {
     expect(Uri.file(previewFile.path).isScheme('file'), isTrue);
   });
 
+  test('htmlToBase64DataUri is available for Simple Browser load', () {
+    final uri = htmlToBase64DataUri('<html><body>ok</body></html>');
+    expect(uri.scheme, 'data');
+    expect(uri.data?.isBase64, isTrue);
+  });
+
   test('builder screens exist for Android packaging', () {
     expect(kIsWeb, isFalse);
     expect(const SiteChatBuilderScreen(), isA<SiteChatBuilderScreen>());

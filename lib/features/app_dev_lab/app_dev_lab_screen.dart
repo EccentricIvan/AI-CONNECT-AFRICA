@@ -5,12 +5,15 @@ import 'package:go_router/go_router.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart';
 import '../../shared/widgets/code_autocorrect_button.dart';
-import '../../shared/widgets/html_preview.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../settings/coder_package_prompt.dart';
 import 'app_build_controller.dart';
 import 'app_build_intent.dart';
+import 'app_schema_studio.dart';
+import 'ui_schema_interpreter.dart';
 
 /// Interactive App Dev Lab: feature picker → Qwen 1.5B Build → Preview/Code.
 class AppDevLabScreen extends ConsumerStatefulWidget {
@@ -30,6 +33,12 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
   final _codeCtrl = TextEditingController();
   var _autocorrectBusy = false;
   var _previewEpoch = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    scheduleLiteRtMode(ActiveModelMode.appCoder);
+  }
 
   @override
   void dispose() {
@@ -65,6 +74,8 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
   }
 
   Future<void> _onBuild() async {
+    final ok = await promptAndFetchCoderPackage(context, ref);
+    if (!ok || !mounted) return;
     final intent = _lockIntent();
     await ref.read(appBuildControllerProvider.notifier).buildFromIntent(intent);
     final ready = ref.read(appBuildControllerProvider);
@@ -77,6 +88,29 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
     if (_autocorrectBusy) return;
     final before = _codeCtrl.text;
     if (before.trim().isEmpty) return;
+    // UI schema source must not go through HTML tag-closers / HTML coder.
+    if (before.trimLeft().startsWith('OTIC_UI_V1')) {
+      final soft = before
+          .replaceAll('\u201C', '"')
+          .replaceAll('\u201D', '"')
+          .replaceAll('\u2018', "'")
+          .replaceAll('\u2019', "'")
+          .replaceAll('\u00A0', ' ');
+      if (!mounted) return;
+      _codeCtrl.text = soft;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            soft == before
+                ? tr(context, 'No changes needed')
+                : tr(context, 'Autocorrect applied'),
+          ),
+        ),
+      );
+      return;
+    }
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return;
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
@@ -86,11 +120,16 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
         engine: engine,
       );
       if (!mounted) return;
-      _codeCtrl.text = fixed;
+      _codeCtrl.text = fixed.isNotEmpty ? fixed : before;
     } catch (_) {
       if (!mounted) return;
-      _codeCtrl.text =
-          applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
+      final intent = ref.read(appBuildControllerProvider).intent;
+      if (parseUiSchema(before) == null && intent != null) {
+        _codeCtrl.text = fallbackUiSchemaSource(intent);
+      } else {
+        _codeCtrl.text =
+            applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
+      }
     } finally {
       if (mounted) setState(() => _autocorrectBusy = false);
     }
@@ -150,10 +189,10 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
               tr(
                 context,
                 ready
-                    ? 'Simple Browser on the right updates as you edit Code — '
-                        'all inside the app (no external browser).'
+                    ? 'Preview Layout maps your UI schema to native Flutter widgets. '
+                        'Edit View Source Code and tap Apply Changes.'
                     : 'Pick app type, theme, and features. Build runs the coding '
-                        'model, then opens an in-app Code | Preview studio.',
+                        'model, then opens Preview Layout | View Source Code.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),
@@ -181,11 +220,12 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
               ),
             ),
           Expanded(
-            child: ready
-                ? LiveHtmlStudio(
+            child: ready && studio.intent != null
+                ? AppSchemaStudio(
                     key: ValueKey('app-studio-$_previewEpoch'),
                     controller: _codeCtrl,
-                    initialHtml: studio.previewHtml,
+                    intent: studio.intent!,
+                    initialSource: studio.previewHtml,
                     onApply: _apply,
                     toolbar: Row(
                       children: [

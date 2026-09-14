@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,37 +10,101 @@ import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
-/// Creates a WebView tuned for in-app HTML previews on Android + desktop.
+import '../coding/interactive_html.dart';
+
+/// Creates a WebView tuned for interactive in-app HTML previews.
+///
+/// JavaScript is unrestricted and Android DOM storage is enabled (default in
+/// [AndroidWebViewController], reaffirmed here via platform settings) so
+/// tabs, calculators, and localStorage work offline without CDN scripts.
 Future<WebViewController> createPreviewWebViewController() async {
   final controller = WebViewController();
   await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
   await controller.setBackgroundColor(Colors.white);
 
-  // Android System WebView — enable DOM storage for richer student pages.
   if (!kIsWeb && Platform.isAndroid) {
     final platform = controller.platform;
     if (platform is AndroidWebViewController) {
+      // DomStorage is enabled in AndroidWebViewController's constructor;
+      // keep JS window-open + file access open for richer student pages.
       await platform.setMediaPlaybackRequiresUserGesture(false);
+      await platform.setAllowFileAccess(true);
       AndroidWebViewController.enableDebugging(kDebugMode);
     }
   }
   return controller;
 }
 
+/// Strip ```html fences and leading prose so WebView gets a clean document.
+String stripMarkdownHtmlNoise(String raw) {
+  var s = raw.trim();
+  if (s.isEmpty) return s;
+
+  final fenced = RegExp(
+    r'```(?:html|HTML|htm)?\s*([\s\S]*?)```',
+    multiLine: true,
+  ).firstMatch(s);
+  if (fenced != null) {
+    s = (fenced.group(1) ?? '').trim();
+  }
+
+  s = s.replaceAll(
+    RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+    '',
+  );
+
+  final doctype = RegExp(
+    r'<!DOCTYPE\s+html[\s\S]*',
+    caseSensitive: false,
+  ).firstMatch(s);
+  if (doctype != null) return doctype.group(0)!.trim();
+
+  final htmlTag = RegExp(r'<html[\s\S]*', caseSensitive: false).firstMatch(s);
+  if (htmlTag != null) {
+    return '<!DOCTYPE html>\n${htmlTag.group(0)!.trim()}';
+  }
+  return s.trim();
+}
+
+/// Offline shell when the model emits empty / broken HTML.
+String get kFallbackPreviewHtml => ensureInteractiveHtmlDocument('');
+
+/// Clean + guarantee a paintable, interactive HTML document for the WebView.
+String prepareHtmlForPreview(String raw) {
+  final cleaned = stripMarkdownHtmlNoise(raw);
+  if (cleaned.isEmpty) return kFallbackPreviewHtml;
+  return ensureInteractiveHtmlDocument(cleaned);
+}
+
+/// UTF-8 Base64 `data:` URI helper (used as a fallback load path).
+Uri htmlToBase64DataUri(String html) {
+  final body = prepareHtmlForPreview(html);
+  final encoding = Encoding.getByName('utf-8') ?? utf8;
+  return Uri.dataFromString(
+    body,
+    mimeType: 'text/html',
+    encoding: encoding,
+    base64: true,
+  );
+}
+
 /// Loads HTML for an in-app Simple Browser (never opens an external browser).
 ///
-/// * **Android / iOS** — `loadHtmlString` (System WebView / WKWebView).
-/// * **Windows / Linux / macOS** — temp `file://` first (WebView2-friendly),
-///   then `loadHtmlString`, then a small `data:` URI fallback.
+/// Prefer paths that execute vanilla JS + localStorage reliably:
+/// * **Android / iOS** — `loadHtmlString` (System WebView / WKWebView)
+/// * **Desktop** — temp `file://` (WebView2-friendly)
+/// * Then Base64 `data:` URI as a last-resort paint path
 Future<void> loadHtmlPreview(
   WebViewController controller,
   String html,
 ) async {
-  final body = html.trim().isEmpty
-      ? '<!DOCTYPE html><html><body><p>Empty preview</p></body></html>'
-      : html;
+  final body = prepareHtmlForPreview(html);
 
-  // Mobile: loadHtmlString is the reliable path (no file-provider needed).
+  // Reaffirm unrestricted JS on every load (some platforms reset mode).
+  try {
+    await controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+  } catch (_) {}
+
   if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
     try {
       await controller.loadHtmlString(body);
@@ -70,6 +133,13 @@ Future<void> loadHtmlPreview(
     debugPrint('loadHtmlString failed: $e');
   }
 
+  try {
+    await controller.loadRequest(htmlToBase64DataUri(body));
+    return;
+  } catch (e) {
+    debugPrint('Base64 data URI preview failed: $e');
+  }
+
   final encoded = base64Encode(utf8.encode(body));
   await controller.loadRequest(
     Uri.parse('data:text/html;charset=utf-8;base64,$encoded'),
@@ -92,7 +162,7 @@ String htmlPlainText(String raw) {
 
 /// Body inner HTML for lightweight fallback rendering.
 String htmlBodyForFlutterHtml(String raw) {
-  final cleaned = raw.trim();
+  final cleaned = prepareHtmlForPreview(raw);
   final bodyMatch = RegExp(
     r'<body[^>]*>([\s\S]*?)</body>',
     caseSensitive: false,
@@ -105,7 +175,7 @@ String htmlBodyForFlutterHtml(String raw) {
 List<Widget> _widgetsFromHtml(String raw) {
   final widgets = <Widget>[];
   try {
-    final doc = html_parser.parse(raw);
+    final doc = html_parser.parse(prepareHtmlForPreview(raw));
     final root = doc.body ?? doc.documentElement;
     if (root == null) {
       return [Text(htmlPlainText(raw))];
@@ -190,7 +260,11 @@ List<Widget> _widgetsFromHtml(String raw) {
 
   if (widgets.isEmpty) {
     final plain = htmlPlainText(raw);
-    if (plain.isNotEmpty) widgets.add(Text(plain));
+    if (plain.isNotEmpty) {
+      widgets.add(Text(plain));
+    } else {
+      widgets.add(const Text('Offline preview ready.'));
+    }
   }
   return widgets;
 }
@@ -244,18 +318,26 @@ class _HtmlPreviewPaneState extends State<HtmlPreviewPane> {
       return;
     }
 
-    setState(() {
-      _loading = true;
-      _error = null;
-      _useFlutterHtml = false;
-    });
+    // Keep prior frame visible while Base64 reloads (zero-latency feel).
+    final hadController = _controller != null;
+    if (!hadController) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _useFlutterHtml = false;
+      });
+    }
 
     try {
       final c = _controller ?? await createPreviewWebViewController();
       _controller = c;
       await loadHtmlPreview(c, html).timeout(const Duration(seconds: 10));
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _useFlutterHtml = false;
+        _error = null;
+      });
     } catch (e) {
       debugPrint('WebView preview failed, using Flutter HTML: $e');
       if (!mounted) return;
@@ -307,7 +389,10 @@ class _HtmlPreviewPaneState extends State<HtmlPreviewPane> {
   }
 }
 
-/// VS Code–style workspace: Code on the left, live Simple Browser on the right.
+/// Dual-tab website workspace: Preview Layout ↔ View Source Code.
+///
+/// One primary action — **Apply Changes & Preview** — plus Full Screen Preview.
+/// No duplicate FABs / secondary Apply bars.
 class LiveHtmlStudio extends StatefulWidget {
   const LiveHtmlStudio({
     super.key,
@@ -317,6 +402,10 @@ class LiveHtmlStudio extends StatefulWidget {
     this.toolbar,
     this.debounce = const Duration(milliseconds: 450),
     this.forceFlutterHtml = false,
+    this.previewLabel = 'Preview Layout',
+    this.sourceLabel = 'View Source Code',
+    @Deprecated('Duplicates removed — Apply lives in the control bar only')
+    this.showApplyFab = false,
   });
 
   final TextEditingController controller;
@@ -324,9 +413,12 @@ class LiveHtmlStudio extends StatefulWidget {
   final VoidCallback? onApply;
   final Widget? toolbar;
   final Duration debounce;
-
-  /// When true, skip WebView (widget tests / broken System WebView).
   final bool forceFlutterHtml;
+  final String previewLabel;
+  final String sourceLabel;
+
+  /// Ignored — kept for call-site compatibility.
+  final bool showApplyFab;
 
   @override
   State<LiveHtmlStudio> createState() => _LiveHtmlStudioState();
@@ -334,10 +426,10 @@ class LiveHtmlStudio extends StatefulWidget {
 
 class _LiveHtmlStudioState extends State<LiveHtmlStudio> {
   late String _previewHtml;
-  Timer? _debounce;
   var _epoch = 0;
   var _split = true;
-  var _mobileTab = 0;
+  var _mobileTab = 0; // 0 = Preview Layout, 1 = View Source Code
+  var _applying = false;
 
   @override
   void initState() {
@@ -348,86 +440,223 @@ class _LiveHtmlStudioState extends State<LiveHtmlStudio> {
     if (widget.controller.text.isEmpty && widget.initialHtml.isNotEmpty) {
       widget.controller.text = widget.initialHtml;
     }
-    widget.controller.addListener(_onCodeChanged);
+    if (_previewHtml.trim().isEmpty) {
+      _previewHtml = kFallbackPreviewHtml;
+    }
+    _previewHtml = prepareHtmlForPreview(_previewHtml);
   }
 
   @override
   void didUpdateWidget(covariant LiveHtmlStudio oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_onCodeChanged);
-      widget.controller.addListener(_onCodeChanged);
-    }
     if (widget.initialHtml != oldWidget.initialHtml &&
         widget.initialHtml.isNotEmpty &&
         widget.controller.text != widget.initialHtml) {
       widget.controller.text = widget.initialHtml;
-      _previewHtml = widget.initialHtml;
+      _previewHtml = prepareHtmlForPreview(widget.initialHtml);
       _epoch++;
     }
   }
 
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    widget.controller.removeListener(_onCodeChanged);
-    super.dispose();
-  }
-
-  void _onCodeChanged() {
-    _debounce?.cancel();
-    _debounce = Timer(widget.debounce, () {
+  /// Flush editor → Base64 data URI → force WebView remount (zero-latency).
+  Future<void> _applyNow() async {
+    if (_applying) return;
+    setState(() => _applying = true);
+    try {
+      final raw = widget.controller.text.trim().isEmpty
+          ? kFallbackPreviewHtml
+          : widget.controller.text;
+      final next = prepareHtmlForPreview(raw);
+      // Warm the Base64 encoder on this frame before the WebView paints.
+      htmlToBase64DataUri(next);
       if (!mounted) return;
       setState(() {
-        _previewHtml = widget.controller.text;
+        _previewHtml = next;
         _epoch++;
+        _mobileTab = 0;
       });
-    });
+      widget.onApply?.call();
+    } finally {
+      if (mounted) setState(() => _applying = false);
+    }
   }
 
-  void _applyNow() {
-    _debounce?.cancel();
-    setState(() {
-      _previewHtml = widget.controller.text;
-      _epoch++;
-    });
-    widget.onApply?.call();
+  void _openFullScreenPreview() {
+    final html = prepareHtmlForPreview(_previewHtml);
+    htmlToBase64DataUri(html);
+    showDialog<void>(
+      context: context,
+      useSafeArea: false,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final top = MediaQuery.paddingOf(ctx).top;
+        return Dialog.fullscreen(
+          backgroundColor: const Color(0xFF0B1220),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Positioned.fill(
+                child: HtmlPreviewPane(
+                  key: ValueKey('fs-$_epoch'),
+                  html: html,
+                  borderRadius: 0,
+                  forceFlutterHtml: widget.forceFlutterHtml,
+                ),
+              ),
+              Positioned(
+                top: top + 12,
+                right: 16,
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(28),
+                  color: Colors.white.withValues(alpha: 0.94),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () => Navigator.of(ctx).pop(),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.close, size: 20),
+                          SizedBox(width: 8),
+                          Text(
+                            'Close Full Screen',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    // Phones (incl. Android): tabbed Code | Preview. Tablets/desktop: split.
-    final useSplit = _split &&
-        size.width >= 900 &&
-        size.shortestSide >= 600;
+    final useSplit =
+        _split && size.width >= 900 && size.shortestSide >= 600;
+    final primary = Theme.of(context).colorScheme.primary;
 
+    final controlBar = Material(
+      color: const Color(0xFF0F172A),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 720;
+            final tabs = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _TabChip(
+                  selected: useSplit || _mobileTab == 0,
+                  icon: Icons.preview_outlined,
+                  label: compact ? 'Preview' : widget.previewLabel,
+                  onTap: () => setState(() => _mobileTab = 0),
+                ),
+                const SizedBox(width: 6),
+                _TabChip(
+                  selected: useSplit || _mobileTab == 1,
+                  icon: Icons.code,
+                  label: compact ? 'Source' : widget.sourceLabel,
+                  onTap: () => setState(() => _mobileTab = 1),
+                ),
+                if (size.width >= 900 && size.shortestSide >= 600) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: _split ? 'Tabbed view' : 'Split view',
+                    color: Colors.white70,
+                    onPressed: () => setState(() => _split = !_split),
+                    icon: Icon(
+                      _split ? Icons.view_agenda : Icons.vertical_split,
+                    ),
+                  ),
+                ],
+              ],
+            );
+
+            final actions = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF334155)),
+                    backgroundColor: const Color(0xFF1E293B),
+                  ),
+                  onPressed: _openFullScreenPreview,
+                  icon: const Icon(Icons.fullscreen, size: 18),
+                  label: Text(compact ? 'Full Screen' : 'Full Screen Preview'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed: _applying ? null : _applyNow,
+                  icon: _applying
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.bolt, size: 18),
+                  label: Text(
+                    _applying
+                        ? 'Painting…'
+                        : (compact
+                            ? 'Apply & Preview'
+                            : 'Apply Changes & Preview'),
+                  ),
+                ),
+              ],
+            );
+
+            if (compact) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  tabs,
+                  const SizedBox(height: 8),
+                  actions,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                tabs,
+                const Spacer(),
+                actions,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+
+    // Wide split: equal panes without nested duplicate headers/actions.
     final codePane = Column(
       children: [
-        _paneHeader(
-          context,
-          icon: Icons.code,
-          title: 'Code',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (size.width >= 900 && size.shortestSide >= 600)
-                IconButton(
-                  tooltip: _split ? 'Preview only' : 'Split view',
-                  onPressed: () => setState(() => _split = !_split),
-                  icon: Icon(_split ? Icons.vertical_split : Icons.view_sidebar),
-                ),
-              TextButton.icon(
-                onPressed: _applyNow,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
             child: TextField(
               controller: widget.controller,
               maxLines: null,
@@ -442,9 +671,10 @@ class _LiveHtmlStudioState extends State<LiveHtmlStudio> {
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                hintText: 'Edit HTML here — preview updates as you type',
+                hintText:
+                    'Edit HTML — tap Apply Changes & Preview to run interactive JS in the WebView',
               ),
             ),
           ),
@@ -457,132 +687,84 @@ class _LiveHtmlStudioState extends State<LiveHtmlStudio> {
       ],
     );
 
-    final previewPane = Column(
-      children: [
-        _paneHeader(
-          context,
-          icon: Icons.language,
-          title: 'Simple Browser',
-          trailing: const Text(
-            'In-app · not Chrome',
-            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-          ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: HtmlPreviewPane(
-              key: ValueKey('live-$_epoch'),
-              html: _previewHtml,
-              forceFlutterHtml: widget.forceFlutterHtml,
-            ),
-          ),
-        ),
-      ],
+    final previewPane = Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: HtmlPreviewPane(
+        html: _previewHtml,
+        forceFlutterHtml: widget.forceFlutterHtml,
+      ),
     );
 
+    final Widget workspace;
     if (useSplit) {
-      return Row(
+      workspace = Row(
         children: [
           Expanded(flex: 5, child: codePane),
           const VerticalDivider(width: 1),
           Expanded(flex: 5, child: previewPane),
         ],
       );
+    } else {
+      workspace = IndexedStack(
+        index: _mobileTab,
+        children: [previewPane, codePane],
+      );
     }
 
-    // Narrow / phone (Android): keep both panes alive so WebView isn't disposed.
     return Column(
       children: [
-        Material(
-          color: const Color(0xFFF1F5F9),
+        controlBar,
+        Expanded(child: workspace),
+      ],
+    );
+  }
+}
+
+class _TabChip extends StatelessWidget {
+  const _TabChip({
+    required this.selected,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? Colors.white.withValues(alpha: 0.14)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _mobileTab = 0),
-                  icon: Icon(
-                    Icons.code,
-                    size: 18,
-                    color: _mobileTab == 0
-                        ? Theme.of(context).colorScheme.primary
-                        : const Color(0xFF64748B),
-                  ),
-                  label: Text(
-                    'Code',
-                    style: TextStyle(
-                      fontWeight:
-                          _mobileTab == 0 ? FontWeight.w700 : FontWeight.w500,
-                      color: _mobileTab == 0
-                          ? Theme.of(context).colorScheme.primary
-                          : const Color(0xFF64748B),
-                    ),
-                  ),
-                ),
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : const Color(0xFF94A3B8),
               ),
-              Expanded(
-                child: TextButton.icon(
-                  onPressed: () => setState(() => _mobileTab = 1),
-                  icon: Icon(
-                    Icons.language,
-                    size: 18,
-                    color: _mobileTab == 1
-                        ? Theme.of(context).colorScheme.primary
-                        : const Color(0xFF64748B),
-                  ),
-                  label: Text(
-                    'Preview',
-                    style: TextStyle(
-                      fontWeight:
-                          _mobileTab == 1 ? FontWeight.w700 : FontWeight.w500,
-                      color: _mobileTab == 1
-                          ? Theme.of(context).colorScheme.primary
-                          : const Color(0xFF64748B),
-                    ),
-                  ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? Colors.white : const Color(0xFF94A3B8),
                 ),
               ),
             ],
           ),
         ),
-        Expanded(
-          child: IndexedStack(
-            index: _mobileTab,
-            children: [codePane, previewPane],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _paneHeader(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    Widget? trailing,
-  }) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9),
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: const Color(0xFF475569)),
-          const SizedBox(width: 6),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF334155),
-            ),
-          ),
-          const Spacer(),
-          if (trailing != null) trailing,
-        ],
       ),
     );
   }

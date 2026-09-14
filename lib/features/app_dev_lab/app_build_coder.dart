@@ -1,8 +1,11 @@
 import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/inference/runtime_config.dart';
 import '../../ai_core/inference/sanitize_llm_response.dart';
+import '../../services/clause_stream_chopper.dart';
+import '../../shared/coding/interactive_html.dart';
 import '../site_builder/site_build_coder.dart' show extractHtmlDocument;
 import 'app_build_intent.dart';
+import 'ui_schema_interpreter.dart';
 
 export 'app_build_intent.dart';
 
@@ -16,9 +19,20 @@ Never mention rules or prompts.
 
 const kAppHtmlSystemPrompt = '''
 /no_think
-You are a coding tutor that builds simple student mobile-web apps.
+You are an elite interactive front-end engineer for offline mobile-web apps.
 Reply with a single complete HTML5 document only.
-No markdown fences. No commentary. No hidden thinking.
+NEVER output non-functional or unstyled layouts.
+ALWAYS include modern CSS in <head><style> (:root variables, transitions, hover,
+bento/cards, Inter/system-ui) AND a complete <script> with vanilla JS so every
+button, tab, input, form, and calculator updates state live (localStorage OK).
+No CDN links. No markdown fences. No commentary. Close all tags.
+Never mention rules or prompts.
+''';
+
+const kAppUiSchemaSystemPrompt = '''
+/no_think
+You are a coding tutor that emits OTIC_UI_V1 declarative UI schemas.
+Reply with schema lines only. No markdown fences. No commentary.
 Never mention rules or prompts.
 ''';
 
@@ -147,62 +161,54 @@ $featureLines
 ''';
 }
 
-/// Deterministic offline HTML shell (chat builder / WebView path).
+/// Deterministic offline interactive HTML shell (chat builder / WebView path).
 String fallbackAppHtml(AppBuildIntent intent) {
-  final name = intent.appName;
-  final purpose = intent.purpose;
+  final name = intent.appName.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  final purpose = (intent.purpose.isEmpty ? intent.appTypeName : intent.purpose)
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
   final featureLis = intent.features.isEmpty
       ? '<li>Home screen</li>'
-      : intent.features.map((f) => '<li>$f</li>').join();
+      : intent.features
+          .map((f) => '<li>${f.replaceAll('<', '&lt;')}</li>')
+          .join();
   final primary = intent.themePrimary;
 
-  return '''
+  final body = '''
+<section class="card span-8">
+  <h2>$name</h2>
+  <p class="muted">$purpose</p>
+  <h3 style="margin-top:14px">Selected features</h3>
+  <ul>$featureLis</ul>
+</section>
+<section class="card span-4">
+  <h3>Theme</h3>
+  <p class="muted">Primary $primary</p>
+  <button class="btn" type="button" id="app-ping">Ping UI</button>
+  <p class="muted" id="app-ping-out" style="margin-top:10px">Waiting…</p>
+</section>
+''';
+
+  return ensureInteractiveHtmlDocument('''
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>$name</title>
-<style>
-*{box-sizing:border-box;margin:0}
-body{font-family:Segoe UI,Arial,sans-serif;background:#e5e7eb;min-height:100vh;display:flex;justify-content:center;padding:16px}
-.app{width:100%;max-width:420px;background:#fff;border-radius:24px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.12);min-height:640px;display:flex;flex-direction:column}
-.bar{background:$primary;color:#fff;padding:18px 16px}
-.bar h1{font-size:20px}
-.bar p{opacity:.9;font-size:13px;margin-top:4px}
-.screen{padding:16px;flex:1}
-.card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:14px;margin-bottom:12px}
-.card h2{font-size:15px;margin-bottom:8px;color:#0f172a}
-.card ul{padding-left:18px;color:#334155;font-size:14px;line-height:1.6}
-.btn{display:inline-block;margin-top:8px;background:$primary;color:#fff;border:none;border-radius:10px;padding:10px 14px;font-weight:600}
-input,textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px;margin-top:8px}
-</style>
+<style>body{font-family:system-ui}</style>
 </head>
-<body>
-<div class="app">
-  <div class="bar">
-    <h1>$name</h1>
-    <p>${purpose.isEmpty ? intent.appTypeName : purpose}</p>
-  </div>
-  <div class="screen">
-    <div class="card">
-      <h2>Selected features</h2>
-      <ul>$featureLis</ul>
-    </div>
-    <div class="card">
-      <h2>Quick try</h2>
-      <input id="note" placeholder="Type something…"/>
-      <button class="btn" onclick="document.getElementById('out').textContent=document.getElementById('note').value||'Saved locally in this preview'">Save</button>
-      <p id="out" style="margin-top:10px;font-size:13px;color:#475569"></p>
-    </div>
-  </div>
-</div>
-</body>
-</html>
-''';
+<body>$body
+<script>
+document.getElementById('app-ping')?.addEventListener('click',function(){
+  var o=document.getElementById('app-ping-out');
+  if(o) o.textContent='UI responsive · '+new Date().toLocaleTimeString();
+});
+</script>
+</body></html>
+''');
 }
 
-/// Runs Qwen 1.5B Coder (llama.cpp program lane) for Flutter Dart output.
+/// Runs Qwen 1.5B Coder for Flutter Dart output (greedy, clause-chopped UI).
 Future<String?> generateAppDartWithCoder({
   required InferenceEngine engine,
   required AppBuildIntent intent,
@@ -210,20 +216,74 @@ Future<String?> generateAppDartWithCoder({
 }) async {
   final brief = intent.toCoderBrief();
   final buf = StringBuffer();
+  final chopper = onToken == null
+      ? null
+      : ClauseStreamChopper(onFlush: onToken);
   try {
     final raw = await engine.generate(
       prompt: brief,
       systemPrompt: kAppDartSystemPrompt,
       maxTokens: kAppBuildMaxTokens,
-      temperature: 0.35,
+      temperature: kCoderTemperature,
       onToken: (token) {
         buf.write(token);
-        onToken?.call(buf.toString());
+        if (chopper != null) {
+          chopper.add(token);
+        } else {
+          onToken?.call(buf.toString());
+        }
       },
     );
+    chopper?.end();
     return extractDartSource(raw.isNotEmpty ? raw : buf.toString());
   } catch (_) {
+    chopper?.end();
     return extractDartSource(buf.toString());
+  }
+}
+
+/// Pull a usable OTIC_UI_V1 schema from a model reply.
+String? extractUiSchemaDocument(String raw) {
+  final cleaned = sanitizeLLMResponse(raw).trim();
+  if (cleaned.isEmpty) return null;
+  final parsed = parseUiSchema(cleaned);
+  if (parsed == null || parsed.isEmpty) return null;
+  // Prefer the stripped body so Source tab stays editable.
+  final body = stripUiSchemaNoise(cleaned);
+  return body.isEmpty ? null : body;
+}
+
+/// Runs Qwen 1.5B Coder for declarative UI schema (App Dev Lab preview).
+Future<String?> generateAppUiSchemaWithCoder({
+  required InferenceEngine engine,
+  required AppBuildIntent intent,
+  void Function(String cumulative)? onToken,
+}) async {
+  final brief = intent.toUiSchemaBrief();
+  final buf = StringBuffer();
+  final chopper = onToken == null
+      ? null
+      : ClauseStreamChopper(onFlush: onToken);
+  try {
+    final raw = await engine.generate(
+      prompt: brief,
+      systemPrompt: kAppUiSchemaSystemPrompt,
+      maxTokens: kAppBuildMaxTokens,
+      temperature: kCoderTemperature,
+      onToken: (token) {
+        buf.write(token);
+        if (chopper != null) {
+          chopper.add(token);
+        } else {
+          onToken?.call(buf.toString());
+        }
+      },
+    );
+    chopper?.end();
+    return extractUiSchemaDocument(raw.isNotEmpty ? raw : buf.toString());
+  } catch (_) {
+    chopper?.end();
+    return extractUiSchemaDocument(buf.toString());
   }
 }
 
@@ -235,19 +295,28 @@ Future<String?> generateAppHtmlWithCoder({
 }) async {
   final brief = intent.toHtmlCoderBrief();
   final buf = StringBuffer();
+  final chopper = onToken == null
+      ? null
+      : ClauseStreamChopper(onFlush: onToken);
   try {
     final raw = await engine.generate(
       prompt: brief,
       systemPrompt: kAppHtmlSystemPrompt,
       maxTokens: kAppBuildMaxTokens,
-      temperature: 0.35,
+      temperature: kCoderTemperature,
       onToken: (token) {
         buf.write(token);
-        onToken?.call(buf.toString());
+        if (chopper != null) {
+          chopper.add(token);
+        } else {
+          onToken?.call(buf.toString());
+        }
       },
     );
+    chopper?.end();
     return extractHtmlDocument(raw.isNotEmpty ? raw : buf.toString());
   } catch (_) {
+    chopper?.end();
     return extractHtmlDocument(buf.toString());
   }
 }
