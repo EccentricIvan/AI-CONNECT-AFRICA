@@ -136,8 +136,13 @@ class ModelManager {
       return modelCandidateFiles(fileName);
     }
 
-    final paths = <String>[];
-    paths.add(await canonicalModelInstallPath(fileName));
+    // Same discovery surface as desktop: canonical install + USB OTIC +
+    // any documents/models aliases so HF Install Packages and USB share one
+    // end-to-end path.
+    final paths = <String>[
+      ...await modelCandidateFiles(fileName),
+      await canonicalModelInstallPath(fileName),
+    ];
     try {
       final ext = await getExternalStorageDirectory();
       if (ext != null) {
@@ -150,7 +155,11 @@ class ModelManager {
         );
       }
     } catch (_) {}
-    return paths;
+    final seen = <String>{};
+    return [
+      for (final path in paths)
+        if (seen.add(p.normalize(path))) p.normalize(path),
+    ];
   }
 
   String get _platformLabel {

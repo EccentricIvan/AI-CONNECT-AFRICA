@@ -30,6 +30,10 @@ void main() {
       isAllowedCoderPath(r'/models/qwen_coder_1.5b.litertlm'),
       isTrue,
     );
+    expect(
+      isAllowedCoderPath(r'/models/qwen2.5-coder-1.5b-instruct.gguf'),
+      isTrue,
+    );
   });
 
   test('Windows: GGUF chat + GGUF CPU coder', () {

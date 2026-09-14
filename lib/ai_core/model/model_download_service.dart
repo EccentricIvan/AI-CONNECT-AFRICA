@@ -86,11 +86,75 @@ class ModelDownloadService {
   /// Injected only by tests; production builds create a client per download.
   final HttpClient? _client;
 
+  static const _maxAttempts = 3;
+
+  HttpClient _createClient() => HttpClient()
+    ..connectionTimeout = const Duration(seconds: 45)
+    ..idleTimeout = const Duration(minutes: 10)
+    ..autoUncompress = true
+    ..userAgent = 'AI-Connect-Africa/1.0 (Windows+Android classroom installer)';
+
   /// Downloads [pkg] to [targetPath], reporting progress through [onState].
   ///
-  /// Resumes from an existing `.part` file when one is present. Returns the
-  /// final path on success; throws [ModelDownloadException] otherwise.
+  /// Resumes from an existing `.part` file when one is present. Retries
+  /// transient network failures (Hugging Face CDN redirects + flaky school
+  /// Wi‑Fi) without discarding the partial file. Returns the final path on
+  /// success; throws [ModelDownloadException] otherwise.
   Future<String> download(
+    ModelPackage pkg, {
+    required String targetPath,
+    void Function(ModelDownloadState state)? onState,
+    CancellationToken? cancelToken,
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
+      if (cancelToken?.isCancelled ?? false) {
+        throw const ModelDownloadException('Download cancelled.');
+      }
+      try {
+        return await _downloadOnce(
+          pkg,
+          targetPath: targetPath,
+          onState: onState,
+          cancelToken: cancelToken,
+        );
+      } on ModelDownloadException catch (e) {
+        lastError = e;
+        // Cancel / integrity / storage / hard HTTP errors must not retry.
+        final msg = e.message.toLowerCase();
+        final fatal = msg.contains('cancelled') ||
+            msg.contains('integrity') ||
+            msg.contains('incomplete') ||
+            msg.contains('not enough storage') ||
+            msg.contains('http 404') ||
+            msg.contains('http 401') ||
+            msg.contains('http 403');
+        if (fatal || attempt >= _maxAttempts) rethrow;
+        debugPrint(
+          'ModelDownloadService: attempt $attempt failed (${e.message}); '
+          'retrying…',
+        );
+        await Future<void>.delayed(Duration(seconds: attempt * 2));
+      } on SocketException catch (e) {
+        lastError = e;
+        if (attempt >= _maxAttempts) {
+          final msg = 'Network error: ${e.message}. The download resumes where '
+              'it stopped when you try again.';
+          onState?.call(ModelDownloadState(
+            phase: DownloadPhase.failed,
+            error: msg,
+          ));
+          throw ModelDownloadException(msg);
+        }
+        await Future<void>.delayed(Duration(seconds: attempt * 2));
+      }
+    }
+    throw ModelDownloadException(
+      lastError?.toString() ?? 'Download failed after $_maxAttempts attempts.',
+    );
+  }
+
+  Future<String> _downloadOnce(
     ModelPackage pkg, {
     required String targetPath,
     void Function(ModelDownloadState state)? onState,
@@ -115,14 +179,14 @@ class ModelDownloadService {
 
     await _ensureSpaceFor(pkg, targetPath, alreadyHave: resumeFrom);
 
-    final client = _client ??
-        (HttpClient()
-          ..connectionTimeout = const Duration(seconds: 30)
-          ..userAgent = 'AI Connect Africa model downloader');
+    final ownsClient = _client == null;
+    final client = _client ?? _createClient();
 
     IOSink? sink;
     try {
       final request = await client.getUrl(Uri.parse(pkg.url));
+      request.followRedirects = true;
+      request.maxRedirects = 12;
       if (resumeFrom > 0) {
         request.headers.set(HttpHeaders.rangeHeader, 'bytes=$resumeFrom-');
       }
@@ -137,6 +201,7 @@ class ModelDownloadService {
         if (await partial.exists()) await partial.delete();
       }
       if (response.statusCode != HttpStatus.ok && !resumed) {
+        // 5xx → let outer retry keep the .part; 4xx → fatal via message.
         throw ModelDownloadException(_httpMessage(response.statusCode, pkg));
       }
 
@@ -222,22 +287,27 @@ class ModelDownloadService {
           'it stopped when you try again.';
       emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
       throw ModelDownloadException(msg);
+    } on HttpException catch (e) {
+      final msg = 'Network error: ${e.message}. The download resumes where '
+          'it stopped when you try again.';
+      emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
+      throw ModelDownloadException(msg);
     } on FileSystemException {
-      const msg = 'Could not save the model. The device may be out of storage.';
+      const msg = 'Could not save the package. The device may be out of storage.';
       emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
       throw const ModelDownloadException(msg);
     } finally {
       try {
         await sink?.close();
       } catch (_) {}
-      if (_client == null) client.close(force: true);
+      if (ownsClient) client.close(force: true);
     }
   }
 
   String _httpMessage(int status, ModelPackage pkg) {
     if (status == HttpStatus.notFound) {
-      return 'The ${pkg.label.toLowerCase()} is not published yet (HTTP 404). '
-          'The model-pack release may still be building.';
+      return 'The classroom package is not published yet (HTTP 404). '
+          'Check the Hugging Face package catalog and try again.';
     }
     return 'Download failed with HTTP $status.';
   }

@@ -36,7 +36,7 @@ class ProgrammingModelManager {
 
   Future<List<String>> _candidatePaths() async {
     final names = useLiteRtCoderRuntime
-        ? litertAlternateFileNames
+        ? [...litertAlternateFileNames, ...alternateFileNames]
         : alternateFileNames;
     final out = <String>[];
     for (final name in names) {

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:ai_connect_africa/ai_core/model/model_download_service.dart';
 import 'package:ai_connect_africa/ai_core/model/model_package.dart';
 import 'package:ai_connect_africa/services/model_fetch_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 
@@ -29,23 +30,26 @@ void main() {
   });
 
   tearDown(() async {
+    debugDefaultTargetPlatformOverride = null;
     if (await tmp.exists()) await tmp.delete(recursive: true);
   });
 
-  test('core fetch is Ready with zero network when both files exist', () async {
+  test('core fetch is Ready with zero network when all files exist', () async {
     final models = Directory(p.join(tmp.path, 'models'));
     await models.create(recursive: true);
     await File(p.join(models.path, ModelFetchFiles.chat)).writeAsString('ok');
     await File(p.join(models.path, ModelFetchFiles.translate))
         .writeAsString('ok');
+    await File(p.join(models.path, ModelFetchFiles.coder)).writeAsString('ok');
 
     final downloader = _NoNetworkDownloader();
     final svc = _TestFetchService(downloader, models.path);
 
-    expect(await svc.areCorePackagesReady(), isTrue);
-    final state = await svc.fetchCorePackages();
+    expect(await svc.areAllPackagesReady(), isTrue);
+    final state = await svc.fetchAllPackages();
     expect(state.isReady, isTrue);
     expect(state.statusLabel, 'Ready');
+    expect(state.coderReady, isTrue);
     expect(downloader.calls, 0);
   });
 
@@ -73,11 +77,92 @@ void main() {
     }
   });
 
-  test('core packages are tutor + translation only', () {
-    final ids = ModelFetchService.corePackages.map((p) => p.id).toList();
-    expect(ids, ['core_chat', 'core_translate']);
-    expect(ids, isNot(contains('coder')));
-    expect(ModelFetchService.coderPackage.id, 'coder');
+  test('Install Packages queue is tutor + translation + coder', () {
+    final ids = ModelFetchService.allPackages.map((p) => p.id).toList();
+    expect(ids, ['core_chat', 'core_translate', 'coder']);
+    expect(ModelFetchService.corePackages.map((p) => p.id).toList(),
+        ['core_chat', 'core_translate']);
+  });
+
+  test('Windows and Android resolve platform-correct HF package URLs', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    expect(ModelFetchFiles.chat, 'qwen-0.6b-instruct.gguf');
+    expect(
+      ModelFetchService.coreChatPackage.url,
+      '$kModelFetchHfBaseUrl/qwen-0.6b-instruct.gguf',
+    );
+    expect(
+      ModelFetchService.coreTranslatePackage.url,
+      '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
+    );
+    expect(
+      ModelFetchService.coderPackage.url,
+      '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
+    );
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(ModelFetchFiles.chat, 'chat-model.litertlm');
+    expect(
+      ModelFetchService.coreChatPackage.url,
+      '$kModelFetchHfBaseUrl/chat-model.litertlm',
+    );
+    expect(
+      ModelFetchService.coreTranslatePackage.url,
+      '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
+    );
+    expect(
+      ModelFetchService.coderPackage.url,
+      '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
+    );
+  });
+
+  test('downloads land in canonical install directory', () async {
+    final svc = ModelFetchService(downloader: _NoNetworkDownloader());
+    final chatPath = await svc.pathFor(ModelFetchFiles.chat);
+    final translatePath = await svc.pathFor(ModelFetchFiles.translate);
+    expect(chatPath, endsWith(ModelFetchFiles.chat));
+    expect(translatePath, endsWith(ModelFetchFiles.translate));
+    // Desktop → …/OTIC/<file>; Android → …/models/<file>
+    expect(
+      chatPath.contains('${Platform.pathSeparator}OTIC${Platform.pathSeparator}') ||
+          chatPath.contains(
+            '${Platform.pathSeparator}models${Platform.pathSeparator}',
+          ),
+      isTrue,
+    );
+  });
+
+  test('checkPackagesCached requires all three packages', () async {
+    final models = Directory(p.join(tmp.path, 'models'));
+    await models.create(recursive: true);
+    await File(p.join(models.path, ModelFetchFiles.chat)).writeAsString('ok');
+    await File(p.join(models.path, ModelFetchFiles.translate))
+        .writeAsString('ok');
+
+    final svc = _TestFetchService(_NoNetworkDownloader(), models.path);
+    expect(await svc.checkPackagesCached(), isFalse);
+
+    await File(p.join(models.path, ModelFetchFiles.coder)).writeAsString('ok');
+    expect(await svc.checkPackagesCached(), isTrue);
+  });
+
+  test('fetchMissingPackages streams white-label progress only', () async {
+    final models = Directory(p.join(tmp.path, 'models'));
+    await models.create(recursive: true);
+    await File(p.join(models.path, ModelFetchFiles.chat)).writeAsString('ok');
+    await File(p.join(models.path, ModelFetchFiles.translate))
+        .writeAsString('ok');
+    await File(p.join(models.path, ModelFetchFiles.coder)).writeAsString('ok');
+
+    final svc = _TestFetchService(_NoNetworkDownloader(), models.path);
+    final labels = <String>[];
+    await for (final s in svc.fetchMissingPackages()) {
+      labels.add(s.statusLabel);
+      expect(s.statusLabel.toLowerCase(), isNot(contains('gguf')));
+      expect(s.statusLabel.toLowerCase(), isNot(contains('qwen')));
+    }
+    expect(labels, isNotEmpty);
+    expect(labels.last, 'Ready');
   });
 }
 

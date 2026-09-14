@@ -4,11 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/model_fetch_service.dart';
 
-/// Ensures the on-demand coding package is present before a studio build.
+/// Ensures classroom packages (including coder) are present before a studio build.
 ///
-/// Returns `true` when ready (already on disk or just fetched).
-/// Returns `false` if dismissed or fetch failed.
-/// Never re-downloads when the file already exists on this device.
+/// After Install Packages, coder is already on disk — this returns immediately.
+/// If packages were deleted, triggers the same full Hugging Face fetch.
 Future<bool> promptAndFetchCoderPackage(
   BuildContext context,
   WidgetRef ref,
@@ -20,12 +19,12 @@ Future<bool> promptAndFetchCoderPackage(
   final go = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(tr(ctx, 'Studio package needed')),
+      title: Text(tr(ctx, 'Packages needed')),
       content: Text(
         tr(
           ctx,
-          'This workspace needs an extra offline package the first time you '
-          'use it. Download once — it stays on this device afterwards.',
+          'Offline classroom packages are not on this device yet. '
+          'Install once — tutor, translation, and studio tools stay here afterwards.',
         ),
       ),
       actions: [
@@ -35,7 +34,7 @@ Future<bool> promptAndFetchCoderPackage(
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: Text(tr(ctx, 'Fetch package')),
+          child: Text(tr(ctx, 'Install Packages')),
         ),
       ],
     ),
@@ -43,7 +42,7 @@ Future<bool> promptAndFetchCoderPackage(
   if (go != true || !context.mounted) return false;
 
   final controller = ref.read(modelFetchControllerProvider.notifier);
-  final fetchFuture = controller.fetchCoder();
+  final fetchFuture = controller.fetchCore();
 
   await showDialog<void>(
     context: context,
@@ -53,13 +52,13 @@ Future<bool> promptAndFetchCoderPackage(
         builder: (context, ref, _) {
           final state = ref.watch(modelFetchControllerProvider);
           if (!state.isFetching &&
-              (state.coderReady || state.phase == ModelFetchPhase.failed)) {
+              (state.isReady || state.phase == ModelFetchPhase.failed)) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (Navigator.of(ctx).canPop()) Navigator.of(ctx).pop();
             });
           }
           return AlertDialog(
-            title: Text(tr(ctx, 'Setting up studio')),
+            title: Text(tr(ctx, 'Installing packages')),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
