@@ -1,0 +1,21 @@
+<section class="section" id="gallery">
+  <div class="wrap">
+    <div class="head head--center">
+      <span class="eyebrow">{{gallery_eyebrow}}</span>
+      <h2>{{gallery_title}}</h2>
+    </div>
+    <div class="gal">
+      <div class="art gal__a"></div>
+      <div class="art gal__b"></div>
+      <div class="art gal__c"></div>
+      <div class="art gal__d"></div>
+    </div>
+  </div>
+</section>
+<style>
+.gal { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 150px; gap: clamp(12px, 2vw, 18px); }
+.gal__a { grid-column: span 2; grid-row: span 2; }
+.gal__b { grid-column: span 2; }
+.gal__c, .gal__d { grid-column: span 1; }
+@media (max-width: 720px) { .gal { grid-template-columns: repeat(2, 1fr); } .gal__a { grid-column: span 2; } }
+</style>

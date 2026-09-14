@@ -1,0 +1,21 @@
+<section class="section section--tint" id="testimonials">
+  <div class="wrap">
+    <div class="head head--center">
+      <span class="eyebrow">{{testimonials_eyebrow}}</span>
+      <h2>{{testimonials_title}}</h2>
+    </div>
+    <div class="grid grid--3">
+      <figure class="card quote"><blockquote>{{quote1_text}}</blockquote><figcaption><span class="ava">{{quote1_initial}}</span><span><strong>{{quote1_name}}</strong><br><span class="muted">{{quote1_role}}</span></span></figcaption></figure>
+      <figure class="card quote"><blockquote>{{quote2_text}}</blockquote><figcaption><span class="ava">{{quote2_initial}}</span><span><strong>{{quote2_name}}</strong><br><span class="muted">{{quote2_role}}</span></span></figcaption></figure>
+      <figure class="card quote"><blockquote>{{quote3_text}}</blockquote><figcaption><span class="ava">{{quote3_initial}}</span><span><strong>{{quote3_name}}</strong><br><span class="muted">{{quote3_role}}</span></span></figcaption></figure>
+    </div>
+  </div>
+</section>
+<style>
+.quote blockquote { font-size: 15.5px; color: var(--ink-2); }
+.quote blockquote::before { content: "\201C"; display: block; font-size: 44px; line-height: .6;
+  color: color-mix(in srgb, var(--brand) 40%, transparent); margin-bottom: 10px; font-weight: 800; }
+.quote figcaption { display: flex; align-items: center; gap: 12px; margin-top: 20px; font-size: 14px; }
+.ava { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto;
+  color: #fff; font-weight: 700; background: linear-gradient(140deg, var(--brand), var(--brand-2)); }
+</style>

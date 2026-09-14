@@ -1,0 +1,127 @@
+/* Premium design system for generated sites.
+   Fully self-contained: system fonts, CSS-only art, no network requests. */
+
+:root {
+  --brand: {{brand}};
+  --brand-2: {{brand2}};
+  --ink: #0b1220;
+  --ink-2: #48566f;
+  --ink-3: #7a879c;
+  --line: #e6eaf2;
+  --bg: #ffffff;
+  --bg-2: #f6f8fc;
+  --radius: 18px;
+  --radius-sm: 12px;
+  --shadow: 0 1px 2px rgba(11, 18, 32, .04), 0 12px 32px rgba(11, 18, 32, .07);
+  --shadow-lg: 0 2px 4px rgba(11, 18, 32, .04), 0 24px 60px rgba(11, 18, 32, .11);
+  --pad: clamp(20px, 5vw, 32px);
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+img { max-width: 100%; display: block; }
+a { color: inherit; text-decoration: none; }
+
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 var(--pad); }
+.section { padding: clamp(56px, 9vw, 104px) 0; }
+.section--tint { background: var(--bg-2); }
+
+/* Type scale */
+h1, h2, h3 { line-height: 1.15; letter-spacing: -.02em; font-weight: 800; }
+h1 { font-size: clamp(34px, 6vw, 60px); }
+h2 { font-size: clamp(26px, 4vw, 40px); }
+h3 { font-size: clamp(17px, 2vw, 20px); letter-spacing: -.01em; }
+p { color: var(--ink-2); }
+
+.eyebrow {
+  display: inline-block; font-size: 12px; font-weight: 700;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--brand); margin-bottom: 14px;
+}
+.lead { font-size: clamp(16px, 2vw, 19px); color: var(--ink-2); }
+
+.head { max-width: 640px; margin-bottom: clamp(32px, 5vw, 56px); }
+.head--center { margin-left: auto; margin-right: auto; text-align: center; }
+.head p { margin-top: 14px; }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 14px 26px; border-radius: 999px; font-weight: 650; font-size: 15px;
+  border: 1px solid transparent; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease;
+}
+.btn:hover { transform: translateY(-2px); }
+.btn--primary {
+  color: #fff;
+  background: linear-gradient(120deg, var(--brand), var(--brand-2));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--brand) 30%, transparent);
+}
+.btn--ghost { border-color: var(--line); background: var(--bg); color: var(--ink); }
+.btn-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+/* Cards + grid */
+.grid { display: grid; gap: clamp(16px, 2.4vw, 24px); }
+.grid--2 { grid-template-columns: repeat(2, 1fr); }
+.grid--3 { grid-template-columns: repeat(3, 1fr); }
+.grid--4 { grid-template-columns: repeat(4, 1fr); }
+
+.card {
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: clamp(22px, 3vw, 30px);
+  box-shadow: var(--shadow); transition: transform .2s ease, box-shadow .2s ease;
+}
+.card:hover { transform: translateY(-4px); box-shadow: var(--shadow-lg); }
+.card h3 { margin-bottom: 8px; }
+.card p { font-size: 15px; }
+
+/* Icon chip — CSS-only, no image files */
+.chip {
+  width: 46px; height: 46px; border-radius: 14px; margin-bottom: 18px;
+  display: grid; place-items: center; font-size: 20px; font-weight: 800; color: #fff;
+  background: linear-gradient(140deg, var(--brand), var(--brand-2));
+}
+.chip--soft {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
+}
+
+/* Decorative gradient field used instead of photography */
+.art {
+  position: relative; border-radius: var(--radius); overflow: hidden;
+  background:
+    radial-gradient(120% 120% at 12% 12%, color-mix(in srgb, var(--brand) 32%, transparent), transparent 58%),
+    radial-gradient(120% 120% at 88% 84%, color-mix(in srgb, var(--brand-2) 34%, transparent), transparent 56%),
+    var(--bg-2);
+  border: 1px solid var(--line);
+}
+.art::after {
+  content: ""; position: absolute; inset: 0; opacity: .5;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--brand) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--brand) 12%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: radial-gradient(70% 70% at 50% 50%, #000, transparent);
+}
+.art--tall { aspect-ratio: 4 / 5; }
+.art--wide { aspect-ratio: 16 / 10; }
+
+.muted { color: var(--ink-3); font-size: 14px; }
+
+@media (max-width: 900px) {
+  .grid--4 { grid-template-columns: repeat(2, 1fr); }
+  .grid--3 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  .grid--2, .grid--3, .grid--4 { grid-template-columns: 1fr; }
+}

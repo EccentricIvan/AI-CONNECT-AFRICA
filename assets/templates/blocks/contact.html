@@ -1,0 +1,37 @@
+<section class="section section--tint" id="contact">
+  <div class="wrap contact__in">
+    <div>
+      <span class="eyebrow">{{contact_eyebrow}}</span>
+      <h2>{{contact_title}}</h2>
+      <p class="lead contact__body">{{contact_text}}</p>
+      <div class="contact__rows">
+        <div class="contact__row"><span class="chip chip--soft">@</span><div><strong>Email</strong><br><span class="muted">{{email}}</span></div></div>
+        <div class="contact__row"><span class="chip chip--soft">#</span><div><strong>Phone</strong><br><span class="muted">{{phone}}</span></div></div>
+        <div class="contact__row"><span class="chip chip--soft">&deg;</span><div><strong>Visit</strong><br><span class="muted">{{address}}</span></div></div>
+      </div>
+    </div>
+    <form class="card contact__form" onsubmit="event.preventDefault();this.querySelector('.sent').hidden=false;">
+      <h3>{{form_title}}</h3>
+      <label>Name<input required placeholder="Your name"></label>
+      <label>Email<input required type="email" placeholder="you@example.com"></label>
+      <label>Message<textarea rows="4" required placeholder="How can we help?"></textarea></label>
+      <button class="btn btn--primary" type="submit">{{form_button}}</button>
+      <p class="sent muted" hidden>Thanks &mdash; your message has been recorded.</p>
+    </form>
+  </div>
+</section>
+<style>
+.contact__in { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(28px, 5vw, 56px); align-items: start; }
+.contact__body { margin-top: 16px; }
+.contact__rows { margin-top: 28px; display: grid; gap: 18px; }
+.contact__row { display: flex; align-items: center; gap: 14px; font-size: 15px; }
+.contact__row .chip { margin-bottom: 0; width: 42px; height: 42px; }
+.contact__form { display: grid; gap: 14px; }
+.contact__form label { display: grid; gap: 6px; font-size: 14px; font-weight: 600; }
+.contact__form input, .contact__form textarea {
+  font: inherit; font-weight: 400; padding: 12px 14px; border-radius: var(--radius-sm);
+  border: 1px solid var(--line); background: var(--bg-2); color: var(--ink); resize: vertical; }
+.contact__form input:focus, .contact__form textarea:focus {
+  outline: none; border-color: var(--brand); background: var(--bg); }
+@media (max-width: 900px) { .contact__in { grid-template-columns: 1fr; } }
+</style>
