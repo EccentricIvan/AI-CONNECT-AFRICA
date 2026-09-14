@@ -10,18 +10,16 @@ class _FakeModelFetchService extends ModelFetchService {
   _FakeModelFetchService({
     required this.coreReady,
     this.coreReadyFuture,
-    this.coderReady = false,
   });
 
   final bool coreReady;
   final Future<bool>? coreReadyFuture;
-  final bool coderReady;
 
   @override
   Future<bool> areCorePackagesReady() => coreReadyFuture ?? Future.value(coreReady);
 
   @override
-  Future<bool> isCoderReady() async => coderReady;
+  Future<bool> isCoderReady() async => false;
 }
 
 Future<void> _pump(
