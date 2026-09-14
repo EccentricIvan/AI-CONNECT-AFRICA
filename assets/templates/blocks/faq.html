@@ -1,0 +1,27 @@
+<section class="section" id="faq">
+  <div class="wrap faq__in">
+    <div class="head">
+      <span class="eyebrow">{{faq_eyebrow}}</span>
+      <h2>{{faq_title}}</h2>
+      <p>{{faq_intro}}</p>
+    </div>
+    <div class="faq__list">
+      <details class="faq__item" open><summary>{{faq1_q}}</summary><p>{{faq1_a}}</p></details>
+      <details class="faq__item"><summary>{{faq2_q}}</summary><p>{{faq2_a}}</p></details>
+      <details class="faq__item"><summary>{{faq3_q}}</summary><p>{{faq3_a}}</p></details>
+      <details class="faq__item"><summary>{{faq4_q}}</summary><p>{{faq4_a}}</p></details>
+    </div>
+  </div>
+</section>
+<style>
+.faq__in { display: grid; grid-template-columns: .85fr 1.15fr; gap: clamp(28px, 5vw, 64px); align-items: start; }
+.faq__in .head { margin-bottom: 0; }
+.faq__list { display: grid; gap: 12px; }
+.faq__item { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px 20px; background: var(--bg); }
+.faq__item summary { cursor: pointer; font-weight: 650; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+.faq__item summary::-webkit-details-marker { display: none; }
+.faq__item summary::after { content: "+"; color: var(--brand); font-weight: 800; }
+.faq__item[open] summary::after { content: "\2013"; }
+.faq__item p { margin-top: 10px; font-size: 15px; }
+@media (max-width: 900px) { .faq__in { grid-template-columns: 1fr; } }
+</style>

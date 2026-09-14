@@ -215,7 +215,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
               : 'Ask anything, learn together',
         ),
         icon: Icons.auto_awesome_rounded,
-        iconColor: const Color(0xFF7B6CF6),
+        iconColor: AppColors.accentViolet,
         actions: [
           StudioHeaderIconButton(
             icon: Icons.refresh_rounded,

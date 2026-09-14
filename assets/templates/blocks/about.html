@@ -1,0 +1,26 @@
+<section class="section" id="about">
+  <div class="wrap about__in">
+    <div class="art art--wide"></div>
+    <div>
+      <span class="eyebrow">{{about_eyebrow}}</span>
+      <h2>{{about_title}}</h2>
+      <p class="lead about__body">{{about_text}}</p>
+      <ul class="ticks">
+        <li>{{about_point1}}</li>
+        <li>{{about_point2}}</li>
+        <li>{{about_point3}}</li>
+      </ul>
+    </div>
+  </div>
+</section>
+<style>
+.about__in { display: grid; grid-template-columns: .9fr 1.1fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+.about__body { margin-top: 16px; }
+.ticks { list-style: none; margin-top: 22px; display: grid; gap: 12px; }
+.ticks li { position: relative; padding-left: 32px; color: var(--ink-2); }
+.ticks li::before { content: "\2713"; position: absolute; left: 0; top: 1px;
+  width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  background: linear-gradient(140deg, var(--brand), var(--brand-2)); }
+@media (max-width: 900px) { .about__in { grid-template-columns: 1fr; } }
+</style>

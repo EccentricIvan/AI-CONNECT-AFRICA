@@ -152,9 +152,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     AppColors.darkTheme.bgBottom,
                   ]
                 : const [
-                    Color(0xFFFAFCFF),
+                    Color(0xFFF9FAFF),
                     Color(0xFFFFFFFF),
-                    Color(0xFFF3F9FD),
+                    Color(0xFFF5F8FE),
                   ],
           ),
         ),

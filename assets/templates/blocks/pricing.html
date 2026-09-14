@@ -1,0 +1,23 @@
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="head head--center">
+      <span class="eyebrow">{{pricing_eyebrow}}</span>
+      <h2>{{pricing_title}}</h2>
+      <p>{{pricing_intro}}</p>
+    </div>
+    <div class="grid grid--3">
+      <div class="card tier"><h3>{{tier1_name}}</h3><div class="tier__p">{{tier1_price}}</div><p>{{tier1_text}}</p><a class="btn btn--ghost" href="#contact">{{cta_label}}</a></div>
+      <div class="card tier tier--hot"><span class="tier__tag">Popular</span><h3>{{tier2_name}}</h3><div class="tier__p">{{tier2_price}}</div><p>{{tier2_text}}</p><a class="btn btn--primary" href="#contact">{{cta_label}}</a></div>
+      <div class="card tier"><h3>{{tier3_name}}</h3><div class="tier__p">{{tier3_price}}</div><p>{{tier3_text}}</p><a class="btn btn--ghost" href="#contact">{{cta_label}}</a></div>
+    </div>
+  </div>
+</section>
+<style>
+.tier { display: flex; flex-direction: column; gap: 10px; position: relative; }
+.tier__p { font-size: 34px; font-weight: 850; letter-spacing: -.03em; }
+.tier .btn { margin-top: auto; }
+.tier--hot { border-color: color-mix(in srgb, var(--brand) 45%, transparent); box-shadow: var(--shadow-lg); }
+.tier__tag { position: absolute; top: 16px; right: 16px; font-size: 11px; font-weight: 750;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 12%, transparent); padding: 5px 10px; border-radius: 999px; }
+</style>

@@ -22,7 +22,7 @@ appBar: StudioAppBar(
         title: tr(context, 'Projects'),
         subtitle: tr(context, 'Your saved creations'),
         icon: Icons.folder_rounded,
-        iconColor: const Color(0xFF3BAFD4),
+        iconColor: AppColors.brandCyan,
         actions: [
           StudioHeaderIconButton(
             icon: Icons.add_rounded,

@@ -1,0 +1,16 @@
+<section class="section section--tint">
+  <div class="wrap">
+    <div class="grid grid--4 stats">
+      <div class="stat"><div class="stat__n">{{stat1_value}}</div><div class="muted">{{stat1_label}}</div></div>
+      <div class="stat"><div class="stat__n">{{stat2_value}}</div><div class="muted">{{stat2_label}}</div></div>
+      <div class="stat"><div class="stat__n">{{stat3_value}}</div><div class="muted">{{stat3_label}}</div></div>
+      <div class="stat"><div class="stat__n">{{stat4_value}}</div><div class="muted">{{stat4_label}}</div></div>
+    </div>
+  </div>
+</section>
+<style>
+.stats { text-align: center; }
+.stat__n { font-size: clamp(30px, 4.4vw, 46px); font-weight: 850; letter-spacing: -.03em;
+  background: linear-gradient(120deg, var(--brand), var(--brand-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+</style>

@@ -1,0 +1,24 @@
+<section class="hero" id="top">
+  <div class="wrap hero__in">
+    <div>
+      <span class="eyebrow">{{eyebrow}}</span>
+      <h1>{{headline}}</h1>
+      <p class="lead hero__sub">{{subhead}}</p>
+      <div class="btn-row">
+        <a class="btn btn--primary" href="#contact">{{cta_label}}</a>
+        <a class="btn btn--ghost" href="#about">Learn more</a>
+      </div>
+      <div class="hero__trust">{{trust_line}}</div>
+    </div>
+    <div class="art art--tall hero__art"></div>
+  </div>
+</section>
+<style>
+.hero { padding: clamp(48px, 8vw, 92px) 0 clamp(40px, 7vw, 80px); position: relative; overflow: hidden; }
+.hero::before { content: ""; position: absolute; inset: -30% -10% auto -10%; height: 70%;
+  background: radial-gradient(60% 60% at 50% 0%, color-mix(in srgb, var(--brand) 14%, transparent), transparent 70%); }
+.hero__in { position: relative; display: grid; grid-template-columns: 1.05fr .95fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+.hero__sub { margin: 18px 0 28px; max-width: 30em; }
+.hero__trust { margin-top: 22px; font-size: 13.5px; color: var(--ink-3); }
+@media (max-width: 900px) { .hero__in { grid-template-columns: 1fr; } .hero__art { display: none; } }
+</style>

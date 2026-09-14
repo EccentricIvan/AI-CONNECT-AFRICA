@@ -1,0 +1,21 @@
+<section class="section">
+  <div class="wrap">
+    <div class="cta">
+      <h2>{{cta_title}}</h2>
+      <p class="lead">{{cta_text}}</p>
+      <div class="btn-row cta__row"><a class="btn btn--primary" href="#contact">{{cta_label}}</a></div>
+    </div>
+  </div>
+</section>
+<style>
+.cta { position: relative; overflow: hidden; text-align: center; border-radius: var(--radius);
+  padding: clamp(40px, 6vw, 72px) var(--pad); color: #fff;
+  background: linear-gradient(120deg, var(--brand), var(--brand-2)); }
+.cta::after { content: ""; position: absolute; inset: 0; opacity: .16;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 40px 40px; mask-image: radial-gradient(60% 60% at 50% 50%, #000, transparent); }
+.cta h2, .cta p { position: relative; color: #fff; }
+.cta p { opacity: .92; margin: 14px auto 0; max-width: 34em; }
+.cta__row { position: relative; justify-content: center; margin-top: 26px; }
+.cta .btn--primary { background: #fff; color: var(--brand); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+</style>

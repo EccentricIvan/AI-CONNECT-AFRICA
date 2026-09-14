@@ -533,8 +533,8 @@ class StudioHeroBanner extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: ac.isDark
-              ? const [Color(0xFF1B3049), Color(0xFF152536)]
-              : const [Color(0xFFEAF4FF), Color(0xFFF7FBFF)],
+              ? const [Color(0xFF1A2750), Color(0xFF131E42)]
+              : const [Color(0xFFEAF1FE), Color(0xFFF7F5FF)],
         ),
         border: Border.all(color: ac.border),
         boxShadow: ac.softShadow(ac.isDark),
@@ -640,8 +640,8 @@ class StudioHeroBanner extends StatelessWidget {
                       end: Alignment.centerRight,
                       colors: [
                         (ac.isDark
-                                ? const Color(0xFF152536)
-                                : const Color(0xFFEAF4FF))
+                                ? const Color(0xFF131E42)
+                                : const Color(0xFFEAF1FE))
                             .withValues(alpha: 0.55),
                         Colors.transparent,
                       ],

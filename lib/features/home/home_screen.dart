@@ -156,8 +156,8 @@ class _ProgressStrip extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: ac.isDark
-              ? const [Color(0xFF1B3049), Color(0xFF152536)]
-              : const [Color(0xFFE9F3FF), Color(0xFFF6FBFF)],
+              ? const [Color(0xFF1A2750), Color(0xFF131E42)]
+              : const [Color(0xFFEAF1FE), Color(0xFFF7F5FF)],
         ),
         border: Border.all(
           color: AppColors.primary.withValues(alpha: ac.isDark ? 0.28 : 0.14),
@@ -313,25 +313,25 @@ class _StatsRow extends StatelessWidget {
     final stats = [
       _Stat(
         icon: Icons.local_fire_department_rounded,
-        color: const Color(0xFFFF8A3D),
+        color: AppColors.accentOrange,
         value: '$streakDays',
         label: tr(context, 'Day Streak'),
       ),
       _Stat(
         icon: Icons.check_circle_rounded,
-        color: const Color(0xFF2EBB6E),
+        color: AppColors.accentGreen,
         value: '$lessonsCompleted',
         label: tr(context, 'Lessons Completed'),
       ),
       _Stat(
         icon: Icons.star_rounded,
-        color: const Color(0xFF3B8FE8),
+        color: AppColors.accentBlue,
         value: '$points',
         label: tr(context, 'Points'),
       ),
       _Stat(
         icon: Icons.trending_up_rounded,
-        color: const Color(0xFF7B6CF6),
+        color: AppColors.accentViolet,
         value: '${(overallProgress * 100).round()}%',
         label: tr(context, 'Overall Progress'),
       ),
@@ -442,28 +442,28 @@ class _TileGrid extends StatelessWidget {
           title: tr(context, 'Subjects'),
           subtitle: tr(context, 'Explore your courses'),
           icon: Icons.auto_stories_rounded,
-          color: const Color(0xFF3B8FE8),
+          color: AppColors.accentBlue,
           route: '/learn',
         ),
         _TileItem(
           title: tr(context, 'Practice'),
           subtitle: tr(context, 'Sharpen your skills'),
           icon: Icons.fact_check_rounded,
-          color: const Color(0xFF2EBB6E),
+          color: AppColors.accentGreen,
           route: '/practice',
         ),
         _TileItem(
           title: tr(context, 'AI Chat'),
           subtitle: tr(context, 'Get instant help'),
           icon: Icons.auto_awesome_rounded,
-          color: const Color(0xFF7B6CF6),
+          color: AppColors.accentViolet,
           route: '/chat',
         ),
         _TileItem(
           title: tr(context, 'Teach'),
           subtitle: tr(context, 'Share your knowledge'),
           icon: Icons.school_rounded,
-          color: const Color(0xFF2EB8A0),
+          color: AppColors.accentTeal,
           route: '/teach',
         ),
       ];
@@ -472,25 +472,25 @@ class _TileGrid extends StatelessWidget {
         _TileItem(
           title: tr(context, 'Website'),
           icon: Icons.web_rounded,
-          color: const Color(0xFF5BB8E8),
+          color: AppColors.brandCyan,
           route: '/sitechat',
         ),
         _TileItem(
           title: tr(context, 'Web Lab'),
           icon: Icons.code_rounded,
-          color: const Color(0xFF3BAFD4),
+          color: AppColors.brandCyan,
           route: '/weblab',
         ),
         _TileItem(
           title: tr(context, 'Python*'),
           icon: Icons.terminal_rounded,
-          color: const Color(0xFF1B7FD4),
+          color: AppColors.accentDeep,
           route: '/pythonlab',
         ),
         _TileItem(
           title: tr(context, 'App Lab*'),
           icon: Icons.phone_android_rounded,
-          color: const Color(0xFF4A8FE8),
+          color: AppColors.accentBlue,
           route: '/applab',
         ),
       ];
@@ -499,25 +499,25 @@ class _TileGrid extends StatelessWidget {
         _TileItem(
           title: tr(context, 'Projects'),
           icon: Icons.folder_rounded,
-          color: const Color(0xFF3BAFD4),
+          color: AppColors.brandCyan,
           route: '/projects',
         ),
         _TileItem(
           title: tr(context, 'Badges'),
           icon: Icons.emoji_events_rounded,
-          color: const Color(0xFFFF8A3D),
+          color: AppColors.accentOrange,
           route: '/achievements',
         ),
         _TileItem(
           title: tr(context, 'Certs'),
           icon: Icons.workspace_premium_rounded,
-          color: const Color(0xFF7B6CF6),
+          color: AppColors.accentViolet,
           route: '/certificates',
         ),
         _TileItem(
           title: tr(context, 'Settings'),
           icon: Icons.settings_rounded,
-          color: const Color(0xFF6B8499),
+          color: AppColors.accentSlate,
           route: '/settings',
         ),
       ];
@@ -866,7 +866,7 @@ class _PathThumbnail extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF5BB3F5), AppColors.accentDeep],
+          colors: [AppColors.brandCyan, AppColors.brandViolet],
         ),
       ),
       clipBehavior: Clip.antiAlias,

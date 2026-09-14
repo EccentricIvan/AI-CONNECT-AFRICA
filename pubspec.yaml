@@ -92,6 +92,7 @@ flutter:
     - assets/curriculum/    # bundled curriculum content for all subjects
     - assets/curriculum/diagrams/  # subject-linked teaching diagrams (pilot: biology)
     - assets/templates/     # website templates for Site Builder
+    - assets/templates/blocks/  # premium section blocks the builders assemble from
 
   # Bundled offline — google_fonts would fetch over the network at runtime
   fonts:

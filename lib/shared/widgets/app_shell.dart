@@ -115,7 +115,7 @@ class AppShell extends StatelessWidget {
                         ? const []
                         : const [
                             BoxShadow(
-                              color: Color(0x141A4A7A),
+                              color: AppColors.glassShadow,
                               blurRadius: 16,
                               offset: Offset(0, -4),
                             ),
