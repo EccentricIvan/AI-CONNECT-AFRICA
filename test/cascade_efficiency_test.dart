@@ -43,7 +43,7 @@ void main() {
     );
     expect(brain.calls, 1);
     expect(brain.lastPrompt, contains('What is photosynthesis'));
-    expect(brain.lastPrompt, contains('REPLY LANGUAGE: English'));
+    expect(brain.lastPrompt, contains('REPLY: English'));
   });
 
   test('Wholesome: one Qwen generate, curriculum bypassed', () async {

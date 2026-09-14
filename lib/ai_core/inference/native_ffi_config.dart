@@ -8,10 +8,18 @@ import 'engine_scheduler.dart';
 
 const int kLlamaContextSize = 2048;
 
-/// Must cover the tokenized tutor prompt (often ~350 tokens). 256 crashed
-/// with `n_tokens_all <= n_batch`. Keep this below context size so Windows
-/// debug builds do not OOM while Qwen + AfriSLM stay mapped.
-const int kLlamaBatchSize = 512;
+/// Prefill batch must cover the tokenized chat template (system + user).
+///
+/// At 512, the hybrid Africa AI Connect contract + curriculum notes already
+/// hit ~560 tokens and tripped `GGML_ASSERT(n_tokens_all <= n_batch)`, which
+/// aborts the Windows process ("Lost connection to device") — often on the
+/// second turn once THREAD history is appended. 1024 leaves headroom while
+/// staying under [kLlamaContextSize].
+const int kLlamaBatchSize = 1024;
+
+/// Soft char budget for system+user before tokenization (~3 chars/token).
+/// See [fitLlamaChatBodies] in prompt_budget.dart — native assert guard.
+const int kLlamaSafePromptChars = (kLlamaBatchSize - 128) * 3;
 
 /// CPU-only baseline. Prefer [llamaGpuLayersForLane] so reason/program
 /// engines can use Vulkan when the linked ggml already requires it to load.

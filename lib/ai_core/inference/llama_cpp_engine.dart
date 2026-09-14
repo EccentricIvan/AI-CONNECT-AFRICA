@@ -6,6 +6,7 @@ import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'native_ffi_config.dart';
 import 'pinned_prompt_cache.dart';
+import 'prompt_budget.dart';
 import 'runtime_config.dart';
 import 'sanitize_llm_response.dart';
 
@@ -100,17 +101,23 @@ class LlamaCppEngineImpl extends InferenceEngine {
       throw StateError('GGUF model not loaded.');
     }
     final hard = _hardFailure;
-    if (hard != null) throw StateError(hard);
+    if (hard != null) {
+      const fallback =
+          'The on-device model is unavailable right now. Please restart the app or reinstall packages.';
+      await emitToken(onToken, fallback);
+      return fallback;
+    }
     if (_inSoftBackoff) {
-      throw StateError(
-        '${_softFailure ?? 'AfriSLM stalled recently.'} Retrying after a '
-        'short backoff.',
-      );
+      const fallback =
+          'I hit a brief snag finishing that answer. Please ask again in one short sentence.';
+      await emitToken(onToken, fallback);
+      return fallback;
     }
 
     final greedyTemp = kDoSample ? temperature : kTutorTemperature;
-    return EngineScheduler.instance.exclusive(
-      () => _generateLocked(
+    try {
+      return await EngineScheduler.instance.exclusive(
+        () => _generateLocked(
           repo: repo,
           modelPath: modelPath,
           prompt: prompt,
@@ -119,8 +126,21 @@ class LlamaCppEngineImpl extends InferenceEngine {
           onToken: onToken,
           systemPrompt: systemPrompt,
         ),
-      lane: schedulerLane,
-    );
+        lane: schedulerLane,
+      );
+    } catch (e, st) {
+      // Never let a soft/native Dart error kill the chat turn. Native
+      // GGML_ASSERT aborts cannot be caught — prompt fitting prevents those.
+      assert(() {
+        // ignore: avoid_print
+        print('LlamaCppEngineImpl.generate recovered: $e\n$st');
+        return true;
+      }());
+      const fallback =
+          'I hit a brief snag finishing that answer. Please ask again in one short sentence.';
+      await emitToken(onToken, fallback);
+      return fallback;
+    }
   }
 
   Future<String> _generateLocked({
@@ -132,16 +152,24 @@ class LlamaCppEngineImpl extends InferenceEngine {
     TokenCallback? onToken,
     String? systemPrompt,
   }) async {
-    final sys = (systemPrompt == null || systemPrompt.trim().isEmpty)
+    final rawSys = (systemPrompt == null || systemPrompt.trim().isEmpty)
         ? null
-        : PinnedPromptCache.intern(systemPrompt.trim());
+        : systemPrompt.trim();
+    final fitted = fitLlamaChatBodies(system: rawSys, user: prompt);
+    final sys = fitted.system == null
+        ? null
+        : PinnedPromptCache.intern(fitted.system!);
+    final user = fitted.user;
 
     final stream = repo.streamChatWithGenerationOptions(
       modelPath,
       messages: [
         if (sys != null)
           llama.LLMMessage(role: llama.LLMRole.system, content: sys),
-        llama.LLMMessage(role: llama.LLMRole.user, content: prompt),
+        llama.LLMMessage(
+          role: llama.LLMRole.user,
+          content: _withNoThink(user),
+        ),
       ],
       think: false,
       generationOptions: llama.GenerationOptions(
@@ -248,6 +276,20 @@ class LlamaCppEngineImpl extends InferenceEngine {
       return fallback;
     }
     return result;
+  }
+
+  /// Qwen3 respects `/no_think` best when it is on the user turn (LiteRT does
+  /// the same when `isThinking: false`). Avoid doubling the marker.
+  static String _withNoThink(String prompt) {
+    final trimmed = prompt.trimRight();
+    if (RegExp(r'/no_think\s*$', caseSensitive: false).hasMatch(trimmed)) {
+      return prompt;
+    }
+    if (trimmed.endsWith('Tutor:')) {
+      return '${trimmed.substring(0, trimmed.length - 'Tutor:'.length)}'
+          '/no_think\nTutor:';
+    }
+    return '$trimmed\n/no_think';
   }
 
   @override

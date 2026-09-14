@@ -53,21 +53,37 @@ class SanitizedTokenStream {
 String sanitizeLLMResponse(String rawText) {
   if (rawText.isEmpty) return rawText;
 
-  // 1. Remove explicit <think>...</think> tags.
-  var cleaned = rawText.replaceAll(
-    RegExp(r'<think>[\s\S]*?<\/think>', caseSensitive: false),
-    '',
-  );
+  // 1. Remove explicit think / reasoning tag blocks (Qwen + HF variants).
+  var cleaned = rawText
+      .replaceAll(
+        RegExp(r'<think>[\s\S]*?<\/think>', caseSensitive: false),
+        '',
+      )
+      .replaceAll(
+        RegExp(
+          r'<\|?redacted_reasoning\|?>[\s\S]*?<\|/?redacted_reasoning\|?>',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .replaceAll(
+        RegExp(r'◁think▷[\s\S]*?◁/think▷', caseSensitive: false),
+        '',
+      );
 
   // 2. Handle unmatched trailing </think> tags.
   if (RegExp(r'</think>', caseSensitive: false).hasMatch(cleaned)) {
     cleaned = cleaned.split(RegExp(r'</think>', caseSensitive: false)).last;
   }
+  if (RegExp(r'◁/think▷', caseSensitive: false).hasMatch(cleaned)) {
+    cleaned = cleaned.split(RegExp(r'◁/think▷', caseSensitive: false)).last;
+  }
 
   // Drop an unclosed <think>… span (stream cut off mid-reasoning).
   final open = RegExp(r'<think>', caseSensitive: false).firstMatch(cleaned);
   if (open != null) {
-    cleaned = cleaned.substring(0, open.start).replaceFirst(RegExp(r'\s+$'), '');
+    cleaned =
+        cleaned.substring(0, open.start).replaceFirst(RegExp(r'\s+$'), '');
   }
 
   cleaned = cleaned.replaceAll(RegExp(r'/no_think', caseSensitive: false), '');
@@ -78,13 +94,41 @@ String sanitizeLLMResponse(String rawText) {
 
   // Leading junk left by removed think blocks / markers.
   cleaned = cleaned.replaceFirst(RegExp(r'^\s+'), '');
+  cleaned = cleaned.replaceFirst(
+    RegExp(r'^(Tutor|Assistant|AI)\s*:\s*', caseSensitive: false),
+    '',
+  );
 
-  // 3. Fallback: strip common meta-reasoning prefixes.
+  // 3. Strip common chain-of-thought preambles before the real answer.
   final metaPatterns = [
     RegExp(r'^(Okay,?\s*let\x27?s\s*see\b[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(r'^(Okay,?\s+so\b[\s\S]*?\n\n)', caseSensitive: false),
     RegExp(r'^(The student is asking[\s\S]*?\n\n)', caseSensitive: false),
     RegExp(r'^(Okay,?\s+the user is asking[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(
+      r'^(The user (?:is asking|asked|wants|said|wrote)\b[\s\S]*?\n\n)',
+      caseSensitive: false,
+    ),
     RegExp(r'^(Let me think\b[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(
+      r'^(Let me (?:analyze|break|explain|see|check)\b[\s\S]*?\n\n)',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'^(I (?:need to|should|will|must|am going to)\b[\s\S]*?\n\n)',
+      caseSensitive: false,
+    ),
+    RegExp(r'^(Looking at (?:the|this)\b[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(r'^(Hmm[,.]?\s*[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(r'^(First,?\s+I\b[\s\S]*?\n\n)', caseSensitive: false),
+    RegExp(
+      r'^(My (?:approach|plan|reasoning|thoughts)\b[\s\S]*?\n\n)',
+      caseSensitive: false,
+    ),
+    RegExp(
+      r'^(The question (?:is|asks)\b[\s\S]*?\n\n)',
+      caseSensitive: false,
+    ),
   ];
 
   for (final pattern in metaPatterns) {
@@ -101,15 +145,30 @@ String sanitizeLLMResponse(String rawText) {
     return '';
   }
 
+  // If the first paragraph is still chain-of-thought, keep only what follows.
+  final split = cleaned.split(RegExp(r'\n\n+'));
+  if (split.length > 1 && _isBareReasoningPreamble(split.first.trim())) {
+    cleaned = split.skip(1).join('\n\n').replaceFirst(RegExp(r'^\s+'), '');
+  }
+
   return cleaned;
 }
 
 bool _isBareReasoningPreamble(String text) {
   const openers = [
     r'^Okay,?\s+let\x27?s\s+see\b',
+    r'^Okay,?\s+so\b',
     r'^Okay,?\s+the user is asking\b',
     r'^The student is asking\b',
+    r'^The user (?:is asking|asked|wants|said|wrote)\b',
     r'^Let me think\b',
+    r'^Let me (?:analyze|break|explain|see|check)\b',
+    r'^I (?:need to|should|will|must|am going to)\b',
+    r'^Looking at (?:the|this)\b',
+    r'^Hmm\b',
+    r'^First,?\s+I\b',
+    r'^My (?:approach|plan|reasoning|thoughts)\b',
+    r'^The question (?:is|asks)\b',
   ];
   for (final source in openers) {
     if (RegExp(source, caseSensitive: false).hasMatch(text)) return true;

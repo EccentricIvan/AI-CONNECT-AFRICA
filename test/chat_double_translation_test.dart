@@ -46,7 +46,7 @@ void main() {
       );
       expect(tutor.prompts, isNotEmpty);
       expect(tutor.prompts.first, contains(_studentMessage));
-      expect(tutor.prompts.first, contains('REPLY LANGUAGE: English'));
+      expect(tutor.prompts.first, contains('REPLY: English'));
       expect(reply.text, contains('Photosynthesis'));
     });
 

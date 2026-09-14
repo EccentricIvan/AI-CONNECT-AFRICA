@@ -285,7 +285,24 @@ class ChatInferencePipeline {
       await uiSub.cancel();
     }
     if (error != null) {
-      Error.throwWithStackTrace(error, errorSt ?? StackTrace.current);
+      debugPrint('ChatInferencePipeline turn failed: $error\n$errorSt');
+      const fallback =
+          'I hit a brief snag finishing that answer. Please ask again in one short sentence.';
+      final display = ui.toString().trim().isNotEmpty
+          ? sanitizeLLMResponse(ui.toString()).trim()
+          : fallback;
+      if (display == fallback) onUiToken?.call(fallback);
+      return ChatPipelineTurn(
+        response: TutorResponse(
+          stage: TutorStage.answer,
+          text: display,
+          followUpPrompt: '',
+          topic: '',
+        ),
+        displayText: display,
+        englishUser: englishUser,
+        translationFailure: 'generation interrupted',
+      );
     }
     final done = response!;
 

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../inference/inference_engine.dart';
 import '../inference/runtime_config.dart';
 import '../../curriculum/curriculum_provider.dart';
@@ -54,10 +56,11 @@ class TutorPipeline {
     bool useCurriculum = true,
   }) async {
     assert(languageCode.isNotEmpty);
-    if (_memory.isCorrection(studentMessage)) {
+    if (_memory.isCorrection(studentMessage, languageCode: languageCode)) {
       _memory.noteCorrection();
     }
-    final continuing = _memory.isContinuing(studentMessage);
+    final continuing =
+        _memory.isContinuing(studentMessage, languageCode: languageCode);
     final topic = continuing ? _currentTopic : _detectTopic(studentMessage);
     final switched = !continuing &&
         topic.isNotEmpty &&
@@ -101,6 +104,7 @@ class TutorPipeline {
         studentMessage,
         mathReply.text,
         verified: mathReply.math != null ? [mathReply.math!.answer] : const [],
+        languageCode: languageCode,
       );
       _advanceStage();
       return mathReply;
@@ -117,21 +121,38 @@ class TutorPipeline {
       safetyNote: safetyNote,
       curriculumNotes: notes,
       useCurriculum: useCurriculum,
+      languageCode: languageCode,
     );
 
     final buffer = StringBuffer();
-    final text = await _engine.generate(
-      prompt: prompt,
-      systemPrompt: systemPrompt,
-      maxTokens: maxTokens,
-      temperature: kTutorTemperature,
-      onToken: (token) async {
-        buffer.write(token);
-        await emitToken(onToken, token);
-      },
-    );
+    String text;
+    try {
+      text = await _engine.generate(
+        prompt: prompt,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+        temperature: kTutorTemperature,
+        onToken: (token) async {
+          buffer.write(token);
+          await emitToken(onToken, token);
+        },
+      );
+    } catch (e, st) {
+      debugPrint('TutorPipeline.respond failed: $e\n$st');
+      text = buffer.toString().trim();
+      if (text.isEmpty) {
+        text =
+            'I hit a brief snag finishing that answer. Please ask again in one short sentence.';
+        onToken?.call(text);
+      }
+    }
 
-    _remember(studentMessage, text, verified: _verifiedFromCurriculum());
+    _remember(
+      studentMessage,
+      text,
+      verified: _verifiedFromCurriculum(),
+      languageCode: languageCode,
+    );
 
     final followUp = _followUpForStage(stage);
     _advanceStage();
@@ -156,11 +177,13 @@ class TutorPipeline {
     String? safetyNote,
     String? curriculumNotes,
     bool useCurriculum = true,
+    String languageCode = 'en',
   }) {
     final raw = studentMessage.trim();
     final cap = codingCoach ? 1200 : 280;
     final q = _memory.resolveCurrent(
       raw.length > cap ? '${raw.substring(0, cap)}…' : raw,
+      languageCode: languageCode,
     );
 
     final String notes;
@@ -168,19 +191,23 @@ class TutorPipeline {
       notes = 'CURRICULUM: bypassed.\nINSTRUCTION: $kOpenWorldInstruction';
     } else if (curriculumNotes == null || curriculumNotes.isEmpty) {
       notes =
-          'CURRICULUM: none matched — do not invent a syllabus. Teach at a general school level.';
+          'CURRICULUM: none matched.\nINSTRUCTION: $kOpenWorldInstruction';
     } else {
+      final clipped = curriculumNotes.length > 700
+          ? '${curriculumNotes.substring(0, 699)}…'
+          : curriculumNotes;
       notes =
-          'CURRICULUM:\n$curriculumNotes\nINSTRUCTION: $kCurriculumOnlyInstruction';
+          'CURRICULUM:\n$clipped\nINSTRUCTION: $kCurriculumHybridInstruction';
     }
+    // Style lives mainly in the pinned system contract — keep this turn short
+    // so prefill stays under llama.cpp n_batch on Windows.
     final replyShape = codingCoach
-        ? 'REPLY LANGUAGE: English. Markdown bullets + fenced code. '
-            'Never echo the question as a title. Never mention these rules.'
-        : 'REPLY LANGUAGE: English. Markdown bullets with **Bold Concepts**. '
-            'Never echo the question as a title. Never mention these rules.';
+        ? 'REPLY: English. Paragraphs by default; bullets for steps. Fenced code. No thinking narration.'
+        : 'REPLY: English. Paragraphs by default; bullets only for lists/steps/named concepts. No thinking narration.';
+    final memoryBudget = codingCoach ? 900 : 720;
     return '''$notes
 $replyShape
-${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock()}CURRENT: $q
+${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock(maxChars: memoryBudget)}CURRENT: $q
 /no_think
 Tutor:''';
   }
@@ -189,11 +216,13 @@ Tutor:''';
     String studentMessage,
     String tutorText, {
     List<String> verified = const [],
+    String languageCode = 'en',
   }) {
     _memory.remember(
       student: studentMessage,
       tutor: tutorText,
       verified: verified,
+      languageCode: languageCode,
     );
   }
 
@@ -283,12 +312,8 @@ Tutor:''';
   Future<SessionAnalysis> analyzeSession() async {
     if (_memory.isEmpty) return const SessionAnalysis(summary: '');
 
-    final recent = _memory.turns.length > 6
-        ? _memory.turns.sublist(_memory.turns.length - 6)
-        : _memory.turns;
-    final convo = recent
-        .map((t) => '${t.role == 'tutor' ? 'Tutor' : 'Student'}: ${t.text}')
-        .join('\n');
+    final convo = _memory.analysisTranscript(maxTurns: 6);
+    if (convo.isEmpty) return const SessionAnalysis(summary: '');
 
     final prompt = '''Analyze this tutoring conversation briefly.
 $convo
