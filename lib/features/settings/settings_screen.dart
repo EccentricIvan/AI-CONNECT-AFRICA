@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../ai_core/cloud/cloud_api_settings.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/translate/chat_languages.dart';
 import '../../ai_core/translate/supported_languages.dart';
@@ -14,6 +13,7 @@ import '../../core/theme/theme_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
+import '../../services/model_fetch_service.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 
@@ -38,22 +38,22 @@ appBar: StudioAppBar(
         maxWidth: 760,
         child: ListView(
           children: [
-            // ── AI Model ─────────────────────────────────────────────────────
-            _Section('AI Model', [
+            // ── System Core Configuration ────────────────────────────────────
+            _Section('System Core Configuration', [
               const FetchPackagesTile(),
               ref.watch(aiStatusProvider).when(
                 loading: () => ListTile(
-                  leading: const Icon(Icons.memory, color: AppColors.primary),
-                  title: Text(tr(context, 'Checking AI…')),
+                  leading: const Icon(Icons.auto_awesome, color: AppColors.primary),
+                  title: Text(tr(context, 'Checking workspace…')),
                 ),
-                error: (e, _) => ListTile(
-                  leading: const Icon(Icons.memory, color: Colors.red),
-                  title: const Text('AI check failed'),
-                  subtitle: Text('$e'),
+                error: (_, __) => ListTile(
+                  leading: const Icon(Icons.auto_awesome, color: Colors.orange),
+                  title: const Text('Workspace check incomplete'),
+                  subtitle: const Text('You can still explore the app.'),
                 ),
                 data: (status) => ListTile(
                   leading: Icon(
-                    status.isDemo ? Icons.info_outline : Icons.memory,
+                    status.isDemo ? Icons.info_outline : Icons.verified_outlined,
                     color: status.isDemo
                         ? Colors.orange
                         : AppColors.teachColor,
@@ -62,8 +62,8 @@ appBar: StudioAppBar(
                     status.isDemo
                         ? tr(context, 'Demo mode')
                         : (status.backendLabel?.startsWith('Cloud') == true
-                            ? 'Cloud AI ready'
-                            : tr(context, 'Local AI ready')),
+                            ? 'Cloud assistant ready'
+                            : 'Classroom assistant ready'),
                   ),
                   subtitle: Text(
                     status.isDemo
@@ -79,21 +79,17 @@ appBar: StudioAppBar(
               ),
               modelAsync.when(
                 loading: () => const SizedBox.shrink(),
-                error: (e, _) => ListTile(
-                  leading: const Icon(Icons.sd_storage_outlined, color: Colors.red),
-                  title: Text(tr(context, 'Chat model')),
-                  subtitle: Text('$e'),
-                ),
+                error: (_, __) => const SizedBox.shrink(),
                 data: (info) => ListTile(
                   leading: Icon(
-                    Icons.sd_storage_outlined,
+                    Icons.inventory_2_outlined,
                     color: info.isReady ? AppColors.teachColor : Colors.orange,
                   ),
-                  title: Text(tr(context, 'Chat model')),
+                  title: const Text('Workspace Optimization'),
                   subtitle: Text(
                     info.isReady
-                        ? 'Installed on this device'
-                        : 'Not installed — add it from a USB drive or file',
+                        ? 'Packages ready on this device'
+                        : 'Packages not installed yet — use Install Packages above',
                   ),
                   trailing: info.isReady
                       ? const Icon(
@@ -111,7 +107,7 @@ appBar: StudioAppBar(
                 title: Text(tr(context, 'How AI works here')),
                 subtitle: const Text(
                   'Answers are generated on this device. Chat uses the '
-                  'language you chose. If a model is missing, you still get '
+                  'language you chose. If setup is incomplete, you still get '
                   'sample replies so you can explore the app.',
                 ),
                 isThreeLine: true,
@@ -162,51 +158,6 @@ appBar: StudioAppBar(
                   'Teach back, and Apply.',
                 ),
                 isThreeLine: true,
-              ),
-            ]),
-
-            // ── Cloud AI (optional) ──────────────────────────────────────────
-            _Section('Cloud AI (optional)', [
-              ref.watch(cloudApiSettingsProvider).when(
-                loading: () => const ListTile(title: Text('Loading…')),
-                error: (_, __) => const ListTile(title: Text('Could not load cloud settings')),
-                data: (cfg) => SwitchListTile(
-                  secondary: Icon(
-                    Icons.cloud_outlined,
-                    color: cfg.isConfigured
-                        ? AppColors.teachColor
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  title: const Text('Use cloud API for chat'),
-                  subtitle: Text(
-                    cfg.isConfigured
-                        ? 'On · ${cfg.model} · key saved on this device'
-                        : 'Off — add an API key for live OpenAI-compatible answers',
-                  ),
-                  value: cfg.enabled && cfg.apiKey.isNotEmpty,
-                  onChanged: (on) async {
-                    if (on && cfg.apiKey.isEmpty) {
-                      await _editCloudApi(context, ref, cfg);
-                      return;
-                    }
-                    await ref
-                        .read(cloudApiSettingsProvider.notifier)
-                        .save(cfg.copyWith(enabled: on));
-                  },
-                ),
-              ),
-              ListTile(
-                leading: const Icon(Icons.vpn_key_outlined, color: AppColors.primary),
-                title: const Text('API key & model'),
-                subtitle: const Text(
-                  'OpenAI, Groq, OpenRouter, or any OpenAI-compatible /v1 endpoint',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final cfg = await ref.read(cloudApiSettingsProvider.future);
-                  if (!context.mounted) return;
-                  await _editCloudApi(context, ref, cfg);
-                },
               ),
             ]),
 
@@ -439,112 +390,7 @@ appBar: StudioAppBar(
   }
 }
 
-Future<void> _editCloudApi(
-  BuildContext context,
-  WidgetRef ref,
-  CloudApiConfig initial,
-) async {
-  final keyCtrl = TextEditingController(text: initial.apiKey);
-  final urlCtrl = TextEditingController(text: initial.baseUrl);
-  final modelCtrl = TextEditingController(text: initial.model);
-  var enabled = initial.enabled || initial.apiKey.isEmpty;
-
-  final saved = await showDialog<CloudApiConfig>(
-    context: context,
-    builder: (ctx) {
-      return StatefulBuilder(
-        builder: (ctx, setLocal) {
-          return AlertDialog(
-            title: const Text('Cloud AI API'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Uses an OpenAI-compatible chat API for live answers. '
-                    'Needs internet. The key is stored only on this device.',
-                    style: TextStyle(fontSize: 13, height: 1.35),
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Enable cloud AI'),
-                    value: enabled,
-                    onChanged: (v) => setLocal(() => enabled = v),
-                  ),
-                  TextField(
-                    controller: keyCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'API key',
-                      hintText: 'sk-… or provider key',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: urlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Base URL',
-                      hintText: 'https://api.openai.com/v1',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: modelCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Model',
-                      hintText: 'gpt-4o-mini',
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(
-                  ctx,
-                  initial.copyWith(apiKey: '', enabled: false),
-                ),
-                child: const Text('Clear'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(
-                  ctx,
-                  CloudApiConfig(
-                    apiKey: keyCtrl.text.trim(),
-                    baseUrl: urlCtrl.text.trim().isEmpty
-                        ? 'https://api.openai.com/v1'
-                        : urlCtrl.text.trim(),
-                    model: modelCtrl.text.trim().isEmpty
-                        ? 'gpt-4o-mini'
-                        : modelCtrl.text.trim(),
-                    enabled: enabled && keyCtrl.text.trim().isNotEmpty,
-                  ),
-                ),
-                child: const Text('Save'),
-              ),
-            ],
-          );
-        },
-      );
-    },
-  );
-
-  keyCtrl.dispose();
-  urlCtrl.dispose();
-  modelCtrl.dispose();
-
-  if (saved != null) {
-    await ref.read(cloudApiSettingsProvider.notifier).save(saved);
-  }
-}
-
-/// Install-from-file for the AfriSLM translation GGUF. llama.cpp loads it
-/// in-process — no Ollama step. Translation is optional (chat works without it).
+/// Install-from-file for the optional regional language pack.
 class _TranslateModelTile extends ConsumerStatefulWidget {
   const _TranslateModelTile();
 
@@ -559,7 +405,7 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
 
   Future<void> _installFromFile() async {
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Select the language model (.gguf) file',
+      dialogTitle: 'Select a language package file',
       type: FileType.any,
     );
     final path = result?.files.single.path;
@@ -568,7 +414,7 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
     setState(() {
       _busy = true;
       _progress = 0;
-      _statusMessage = 'Copying model file…';
+      _statusMessage = 'Setting up regional workspace...';
     });
 
     try {
@@ -577,7 +423,13 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
         path,
         onProgress: (p) {
           if (mounted && (p - (_progress ?? 0) >= 0.01 || p >= 1)) {
-            setState(() => _progress = p);
+            setState(() {
+              _progress = p;
+              _statusMessage = ModelFetchService.whiteLabelStatus(
+                p,
+                connecting: p <= 0,
+              );
+            });
           }
         },
       );
@@ -589,14 +441,16 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
       if (mounted) {
         setState(() => _statusMessage = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Language model installed and ready.')),
+          const SnackBar(content: Text('Language package ready on this device.')),
         );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() => _statusMessage = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not set up the language model: $e')),
+          const SnackBar(
+            content: Text('Could not finish language package setup. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -616,10 +470,7 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
         final ready = info.isReady && (engineAsync.valueOrNull != null);
         String subtitle;
         if (_busy) {
-          subtitle = _statusMessage ??
-              (_progress != null
-                  ? 'Installing… ${((_progress ?? 0) * 100).toStringAsFixed(0)}%'
-                  : 'Working…');
+          subtitle = _statusMessage ?? 'Optimizing formula drivers...';
         } else if (ready) {
           subtitle = 'Installed';
         } else if (info.isReady) {
@@ -630,10 +481,10 @@ class _TranslateModelTileState extends ConsumerState<_TranslateModelTile> {
 
         return ListTile(
           leading: Icon(
-            Icons.sd_storage_outlined,
+            Icons.translate_outlined,
             color: ready ? AppColors.teachColor : Colors.orange,
           ),
-          title: Text(tr(context, 'Language model')),
+          title: const Text('Regional language pack'),
           subtitle: Text(subtitle),
           trailing: _busy
               ? const SizedBox(

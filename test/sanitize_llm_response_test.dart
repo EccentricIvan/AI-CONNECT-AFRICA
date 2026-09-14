@@ -44,12 +44,42 @@ void main() {
       );
     });
 
+    test('strips The user wants preamble', () {
+      expect(
+        sanitizeLLMResponse(
+          'The user wants help with fractions.\n\n'
+          'A fraction is a part of a whole.',
+        ),
+        'A fraction is a part of a whole.',
+      );
+    });
+
+    test('strips I need to planning preamble', () {
+      expect(
+        sanitizeLLMResponse(
+          'I need to explain photosynthesis carefully.\n\n'
+          'Plants turn sunlight into food.',
+        ),
+        'Plants turn sunlight into food.',
+      );
+    });
+
     test('hides a whole-reply monologue with no answer paragraph', () {
       expect(
         sanitizeLLMResponse(
           'Okay, the user is asking, "What is 2 plus 2?" Let me think. 2 plus',
         ),
         isEmpty,
+      );
+    });
+
+    test('drops first-paragraph reasoning when later answer exists', () {
+      expect(
+        sanitizeLLMResponse(
+          'Looking at this question about water.\n\n'
+          'Water evaporates, then rains back down.',
+        ),
+        'Water evaporates, then rains back down.',
       );
     });
 

@@ -87,7 +87,7 @@ void main() {
     );
     expect(turn.englishUser, contains('chlorophyll'));
     expect(turn.displayText, contains('Chlorophyll'));
-    expect(brain.prompts.single, contains('REPLY LANGUAGE: English'));
+    expect(brain.prompts.single, contains('REPLY: English'));
     expect(shown, isNotEmpty);
   });
 

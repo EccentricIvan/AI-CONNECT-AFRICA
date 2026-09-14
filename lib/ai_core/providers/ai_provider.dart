@@ -140,7 +140,12 @@ class DualModelRuntime {
       programmingPath = discovered;
     }
 
-    if (useLiteRtCoderRuntime) {
+    final lower = path.toLowerCase();
+    final wantsLiteRt = useLiteRtCoderRuntime &&
+        (lower.endsWith('.litertlm') ||
+            lower.endsWith('.literlm') ||
+            lower.startsWith('bundled:'));
+    if (wantsLiteRt) {
       AiModelManager.instance.registerAppCoderPath(path);
       await AiModelManager.instance.prepareModelForMode(ActiveModelMode.appCoder);
       final eng = AiModelManager.instance.coderEngine;
@@ -236,8 +241,12 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       );
       await reasoner.pinSystemPrompt(kTutorContract);
     }
-    if (useLiteRtCoderRuntime && programmingPath != null) {
-      AiModelManager.instance.registerAppCoderPath(programmingPath);
+    if (useLiteRtCoderRuntime &&
+        programmingPath != null &&
+        (programmingPath!.toLowerCase().endsWith('.litertlm') ||
+            programmingPath!.toLowerCase().endsWith('.literlm') ||
+            programmingPath!.toLowerCase().startsWith('bundled:'))) {
+      AiModelManager.instance.registerAppCoderPath(programmingPath!);
     }
     debugPrint(
       'CHAT BRAIN loaded ${chatIsLiteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
@@ -274,8 +283,8 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       );
     } else {
       debugPrint(
-        'CODER missing. Android: qwen_coder_1.5b.litertlm — '
-        'Windows: qwen_coder_1.5b.Q4_K_M.gguf',
+        'CODER missing. Place qwen2.5-coder-1.5b-instruct.gguf '
+        '(or Android LiteRT qwen_coder_1.5b.litertlm) in models/.',
       );
     }
 

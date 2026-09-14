@@ -31,6 +31,7 @@ import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
 import '../../features/web_dev_lab/web_dev_lab_screen.dart';
 import '../../features/website/website_builder_screen.dart';
+import '../../screens/package_fetch_screen.dart';
 import '../../shared/widgets/app_shell.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -69,11 +70,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/onboarding',
         builder: (_, __) => const OnboardingScreen(),
       ),
+      GoRoute(
+        path: '/packages',
+        builder: (_, __) => const PackageFetchScreen(),
+      ),
       ShellRoute(
         navigatorKey: _shellKey,
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
+          GoRoute(
+            path: '/home',
+            redirect: (_, __) => '/',
+          ),
           GoRoute(path: '/learn', builder: (_, __) => const SubjectsScreen()),
           GoRoute(
             path: '/learn/subject/:id',

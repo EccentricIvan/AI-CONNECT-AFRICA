@@ -12,6 +12,7 @@ import 'core/theme/theme_provider.dart';
 import 'features/model_setup/model_not_installed_screen.dart';
 import 'l10n/app_locale.dart';
 import 'l10n/language_provider.dart';
+import 'services/model_fetch_service.dart';
 
 class OticApp extends ConsumerStatefulWidget {
   const OticApp({super.key});
@@ -158,13 +159,14 @@ class _ModelGateState extends ConsumerState<ModelGate> {
 
     final bootstrap = ref.watch(bundledModelsBootstrapProvider);
     final modelInfo = ref.watch(modelInfoProvider);
+    final packagesReady = ref.watch(classroomPackagesReadyProvider);
 
     final unpacking = bootstrap.isLoading ||
         (bootstrap.hasValue &&
             bootstrap.value!.extractedAnything &&
             modelInfo.isLoading);
 
-    if (bootstrap.isLoading || unpacking) {
+    if (bootstrap.isLoading || unpacking || packagesReady.isLoading) {
       return Scaffold(
         body: Center(
           child: Padding(
@@ -173,7 +175,7 @@ class _ModelGateState extends ConsumerState<ModelGate> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Preparing AI models…',
+                  'Preparing your workspace…',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
@@ -181,7 +183,7 @@ class _ModelGateState extends ConsumerState<ModelGate> {
                 const LinearProgressIndicator(),
                 const SizedBox(height: 16),
                 Text(
-                  'One-time setup for this install. Needs about 1 GB free storage.',
+                  'Initializing offline classroom systems...',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).hintColor,
@@ -199,7 +201,9 @@ class _ModelGateState extends ConsumerState<ModelGate> {
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (_, __) => widget.child,
       data: (info) {
-        if (info.status == ModelStatus.notInstalled) {
+        final missingChat = info.status == ModelStatus.notInstalled;
+        final missingPackages = packagesReady.valueOrNull != true;
+        if (missingChat || missingPackages) {
           final err = bootstrap.asData?.value.error;
           return ModelNotInstalledScreen(
             info: info,

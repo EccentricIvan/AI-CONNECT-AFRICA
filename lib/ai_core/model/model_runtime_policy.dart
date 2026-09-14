@@ -44,8 +44,11 @@ bool isAllowedChatBrainPath(String path) {
 bool isAllowedCoderPath(String path) {
   final lower = path.toLowerCase();
   if (useLiteRtCoderRuntime) {
+    // Prefer LiteRT on Android; accept HF GGUF coder until a .litertlm
+    // artifact is published on the package repo.
     return lower.endsWith('.litertlm') ||
         lower.endsWith('.literlm') ||
+        lower.endsWith('.gguf') ||
         lower.startsWith('bundled:');
   }
   return lower.endsWith('.gguf');

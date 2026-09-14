@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../ai_core/inference/inference_engine.dart';
 import '../ai_core/inference/litert_lm_engine.dart';
 import '../ai_core/inference/runtime_config.dart';
+import '../ai_core/tutor/conversation_memory.dart';
 import '../ai_core/tutor/tutor_contract.dart';
 import 'ai_model_manager.dart';
 import 'hybrid_model_orchestrator.dart';
@@ -22,8 +23,8 @@ class QwenChatService {
   final InferenceEngine _engine;
   final String? modelPath;
 
-  /// Rolling English turns for the next prompt. Not multilingual.
-  final List<({String role, String text})> _englishHistory = [];
+  /// Rolling English conversation memory shared with the tutor prompt path.
+  final ConversationMemory englishMemory = ConversationMemory();
   var _kvWarmed = false;
 
   InferenceEngine get engine => _engine;
@@ -45,24 +46,12 @@ class QwenChatService {
   }
 
   void rememberEnglish({required String user, required String assistant}) {
-    _englishHistory.add((role: 'user', text: user));
-    _englishHistory.add((role: 'assistant', text: assistant));
-    const cap = 8;
-    if (_englishHistory.length > cap) {
-      _englishHistory.removeRange(0, _englishHistory.length - cap);
-    }
+    englishMemory.remember(student: user, tutor: assistant);
   }
 
-  void clearHistory() => _englishHistory.clear();
+  void clearHistory() => englishMemory.clear();
 
-  String historyBlock() {
-    if (_englishHistory.isEmpty) return '';
-    final buf = StringBuffer('THREAD:\n');
-    for (final turn in _englishHistory) {
-      buf.writeln('${turn.role == 'user' ? 'Student' : 'Tutor'}: ${turn.text}');
-    }
-    return buf.toString();
-  }
+  String historyBlock() => englishMemory.promptBlock(maxChars: 720);
 
   Future<void> _beforeGenerate(String? systemPrompt) async {
     await AiModelManager.instance.prepareModelForMode(ActiveModelMode.chatBrain);

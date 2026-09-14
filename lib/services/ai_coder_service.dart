@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-
 import 'package:flutter/foundation.dart';
 
 import '../ai_core/inference/engine_scheduler.dart';
@@ -15,10 +13,9 @@ import 'hybrid_model_orchestrator.dart';
 
 /// Multi-platform Qwen 1.5B Coder for App Dev Lab + Website Builder.
 ///
-/// - **Android** → LiteRT-LM (`qwen_coder_1.5b.litertlm`), temperature 0.0,
-///   thinking disabled via `/no_think` + sanitize (NNAPI/Vulkan via LiteRT).
-/// - **Windows** → llama.cpp GGUF (`qwen_coder_1.5b.Q4_K_M.gguf`), **CPU only**
-///   (`nGpuLayers: 0`, `threads: 2`) so the GPU stays free for other work.
+/// - **Android** → LiteRT-LM when present; otherwise HF GGUF via llama.cpp.
+/// - **Windows / Linux** → llama.cpp GGUF (`qwen2.5-coder-1.5b-instruct.gguf`),
+///   **CPU only** (`nGpuLayers: 0`, `threads: 2`).
 ///
 /// Uses [HybridModelOrchestrator] so coder decode never overlaps chat or
 /// translation on low-RAM devices. Call [releaseAfterJob] / [dispose] to
@@ -46,17 +43,6 @@ class AiCoderService {
 
   /// Resolves the platform model file and binds the matching runtime.
   Future<bool> ensureLoaded() async {
-    if (useLiteRtCoderRuntime) {
-      final info = await _models.checkModel();
-      if (!info.isReady || info.path == null) return false;
-      AiModelManager.instance.registerAppCoderPath(info.path!);
-      await AiModelManager.instance.prepareModelForMode(ActiveModelMode.appCoder);
-      final eng = AiModelManager.instance.coderEngine;
-      if (eng == null || !eng.isReady) return false;
-      _engine = eng;
-      _loadedPath = info.path;
-      return true;
-    }
     if (_engine != null && _engine!.isReady) return true;
     final info = await _models.checkModel();
     if (!info.isReady || info.path == null) return false;
@@ -68,7 +54,12 @@ class AiCoderService {
       debugPrint('AiCoderService rejected path: $path');
       return false;
     }
-    if (useLiteRtCoderRuntime) {
+    final lower = path.toLowerCase();
+    final wantsLiteRt = useLiteRtCoderRuntime &&
+        (lower.endsWith('.litertlm') ||
+            lower.endsWith('.literlm') ||
+            lower.startsWith('bundled:'));
+    if (wantsLiteRt) {
       AiModelManager.instance.registerAppCoderPath(path);
       await AiModelManager.instance.prepareModelForMode(ActiveModelMode.appCoder);
       final eng = AiModelManager.instance.coderEngine;
@@ -79,19 +70,12 @@ class AiCoderService {
       return true;
     }
     await dispose();
-    final InferenceEngine engine;
-    if (Platform.isWindows ||
-        Platform.isLinux ||
-        useGgufCoderRuntime) {
-      engine = LlamaCppEngineImpl(
-        schedulerLane: EngineLane.program,
-        backendLabel: 'llama.cpp · Qwen 1.5B Coder (AVX2 · CPU×2)',
-        nGpuLayers: 0,
-        threads: 2,
-      );
-    } else {
-      return false;
-    }
+    final engine = LlamaCppEngineImpl(
+      schedulerLane: EngineLane.program,
+      backendLabel: 'llama.cpp · Qwen 1.5B Coder (AVX2 · CPU×2)',
+      nGpuLayers: 0,
+      threads: 2,
+    );
     await engine.loadModel(path);
     _engine = engine;
     _loadedPath = path;

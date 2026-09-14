@@ -39,28 +39,35 @@ class AfriSlmModelManager {
   /// bundled-next-to-the-executable fallback so a self-contained release
   /// zip (exe + models/translate-afrislm.gguf) is picked up automatically.
   Future<List<String>> _candidatePathsFor(String fileName) async {
-    final paths = <String>[];
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      try {
-        final ext = await getExternalStorageDirectory();
-        if (ext != null) {
-          paths.add(
-            p.join(
-              ext.parent.parent.parent.parent.path,
-              'OTIC',
-              fileName,
-            ),
-          );
-        }
-      } catch (_) {}
-      try {
-        final appFiles = await getApplicationDocumentsDirectory();
-        paths.add(p.join(appFiles.path, 'models', fileName));
-      } catch (_) {}
-    } else {
+    if (defaultTargetPlatform != TargetPlatform.android) {
       return modelCandidateFiles(fileName);
     }
-    return paths;
+
+    final paths = <String>[
+      await canonicalModelInstallPath(fileName),
+      ...await modelCandidateFiles(fileName),
+    ];
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) {
+        paths.add(
+          p.join(
+            ext.parent.parent.parent.parent.path,
+            'OTIC',
+            fileName,
+          ),
+        );
+      }
+    } catch (_) {}
+    try {
+      final appFiles = await getApplicationDocumentsDirectory();
+      paths.add(p.join(appFiles.path, 'models', fileName));
+    } catch (_) {}
+    final seen = <String>{};
+    return [
+      for (final path in paths)
+        if (seen.add(p.normalize(path))) p.normalize(path),
+    ];
   }
 
   Future<List<String>> _candidatePaths() async {
