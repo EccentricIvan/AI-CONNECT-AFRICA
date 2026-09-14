@@ -6,11 +6,13 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart';
 import '../../shared/widgets/code_autocorrect_button.dart';
 import '../../shared/widgets/html_preview.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../create/dev_l10n.dart';
+import '../settings/coder_package_prompt.dart';
 import 'app_build_coder.dart';
 
 class _AppType {
@@ -111,6 +113,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   @override
   void initState() {
     super.initState();
+    scheduleLiteRtMode(ActiveModelMode.appCoder);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
   }
 
@@ -307,6 +310,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return;
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
@@ -336,6 +341,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   Future<void> _buildApp() async {
     if (_appType == null) return;
     if (!mounted) return;
+
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return;
+
     setState(() {
       _building = true;
       _buildNote = tr(context, 'Loading coding model…');
@@ -361,12 +370,11 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
         setState(() {
           _buildNote = tr(context, 'Coding model writing your app…');
         });
-        final engine = await ref.read(programmingEngineProvider.future);
+        final coder = await ref.read(aiCoderServiceProvider.future);
         if (!mounted) return;
 
         var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
-        final generated = await generateAppHtmlWithCoder(
-          engine: engine,
+        final generated = await coder.generateAppHtml(
           intent: intent,
           onToken: (cumulative) {
             final now = DateTime.now();
@@ -463,10 +471,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
               tr(
                 context,
                 _showStudio
-                    ? 'Simple Browser preview updates as you edit Code — '
-                        'all inside the app (no external browser).'
+                    ? 'Use Apply Changes & Preview to paint Base64 WebView, or Full Screen Preview for an unconstrained view.'
                     : 'Answer the prompts to record features. Build runs the coding '
-                        'model, then opens an in-app Code | Preview studio.',
+                        'model, then opens Preview Layout | View Source Code.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),
@@ -476,21 +483,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
               child: LiveHtmlStudio(
                 controller: _codeController,
                 onApply: _applyCodeEdits,
-                toolbar: Row(
-                  children: [
-                    CodeAutocorrectButton(
-                      busy: _autocorrectBusy,
-                      onPressed: _autocorrectCode,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _applyCodeEdits,
-                        icon: const Icon(Icons.play_arrow),
-                        label: Text(tr(context, 'Apply & preview')),
-                      ),
-                    ),
-                  ],
+                toolbar: CodeAutocorrectButton(
+                  busy: _autocorrectBusy,
+                  onPressed: _autocorrectCode,
                 ),
               ),
             )

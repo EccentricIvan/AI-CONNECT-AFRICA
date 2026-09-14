@@ -65,6 +65,51 @@ class AppBuildIntent {
 
   String get audience => answers['audience']?.trim() ?? '';
 
+  /// Brief for the on-device 1.5B coder (declarative UI schema target).
+  String toUiSchemaBrief() {
+    final buf = StringBuffer()
+      ..writeln('/no_think')
+      ..writeln(
+        'Output ONLY an OTIC_UI_V1 declarative UI schema for a student app.',
+      )
+      ..writeln('No markdown fences. No commentary. No Dart. No HTML.')
+      ..writeln('First lines:')
+      ..writeln('OTIC_UI_V1')
+      ..writeln('title: <app name>')
+      ..writeln('style: <theme name>')
+      ..writeln('Then one element per line using this exact shape:')
+      ..writeln('Type: Header, Text: ...')
+      ..writeln('Type: Text, Text: ...')
+      ..writeln('Type: TextField, Label: ..., Hint: ...')
+      ..writeln('Type: Button, Text: ..., Action: Alert, Style: Cyberpunk')
+      ..writeln('Type: Chip, Text: ...')
+      ..writeln('Type: Card, Title: ..., Text: ...')
+      ..writeln('Type: List, Items: a|b|c')
+      ..writeln()
+      ..writeln('APP TYPE: $appTypeName ($appTypeId)')
+      ..writeln('VISUAL STYLE: $themeName — primary $themePrimary');
+
+    if (answers.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('STUDENT DETAILS:');
+      for (final e in answers.entries) {
+        if (e.value.trim().isEmpty) continue;
+        buf.writeln('- ${e.key}: ${e.value}');
+      }
+    }
+    if (features.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('SELECTED FEATURES (must appear as Chip or Card lines):');
+      for (final f in features) {
+        buf.writeln('- $f');
+      }
+    }
+    buf
+      ..writeln()
+      ..writeln('Include a Header with the app name and a Save Button.');
+    return buf.toString();
+  }
+
   /// Brief for the on-device 1.5B coder (Dart widget target).
   String toCoderBrief() {
     final buf = StringBuffer()
@@ -117,13 +162,21 @@ class AppBuildIntent {
       ..writeln(
         'Output ONLY the HTML document. No markdown fences. No commentary.',
       )
-      ..writeln('Start with <!DOCTYPE html>. Inline CSS + minimal JavaScript.')
+      ..writeln('Start with <!DOCTYPE html>.')
       ..writeln(
-        'Make it look like a phone app: max-width 420px, centered, rounded cards.',
+        'NEVER output plain unstyled or non-functional HTML. Include modern CSS '
+        'in <head><style> (:root variables, transitions, hover, bento cards) AND '
+        'a complete <script> with vanilla JS so buttons/tabs/inputs/forms update '
+        'state live. Offline only — no CDN. Close every tag.',
+      )
+      ..writeln(
+        'Make it look like a premium phone app: max-width 420px, centered, '
+        'rounded glass cards.',
       )
       ..writeln()
       ..writeln('APP TYPE: $appTypeName ($appTypeId)')
       ..writeln('COLOR THEME: $themeName — primary $themePrimary');
+
 
     if (answers.isNotEmpty) {
       buf.writeln();

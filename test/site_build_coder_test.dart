@@ -41,7 +41,10 @@ Here you go:
     expect(extractHtmlDocument(raw), contains('Ok'));
   });
 
-  test('extractHtmlDocument rejects non-HTML chatter', () {
-    expect(extractHtmlDocument('Just an explanation with no markup.'), isNull);
+  test('extractHtmlDocument salvages non-HTML chatter into interactive shell', () {
+    final out = extractHtmlDocument('Just an explanation with no markup.');
+    expect(out, isNotNull);
+    expect(out, contains('<!DOCTYPE html>'));
+    expect(out!.toLowerCase(), contains('otic_interactive_runtime'));
   });
 }

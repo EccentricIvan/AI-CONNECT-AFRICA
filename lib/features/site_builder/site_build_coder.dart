@@ -1,6 +1,8 @@
 import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/inference/runtime_config.dart';
 import '../../ai_core/inference/sanitize_llm_response.dart';
+import '../../services/clause_stream_chopper.dart';
+import '../../shared/coding/interactive_html.dart';
 
 /// Compact brief of every feature the student picked before tapping Build.
 ///
@@ -29,14 +31,45 @@ class SiteBuildIntent {
   /// Prompt the coder sees — features only, no full template HTML (ctx budget).
   String toCoderBrief() {
     final buf = StringBuffer()
-      ..writeln('Build one complete mobile-friendly HTML5 website.')
-      ..writeln('Output ONLY the HTML document. No markdown fences. No commentary.')
-      ..writeln('Start with <!DOCTYPE html>. Use inline CSS in a <style> tag.')
-      ..writeln('Keep CSS short. Prefer one page with 3–4 sections.')
+      ..writeln('/no_think')
+      ..writeln(
+        'Build ONE complete offline HTML5 website. Output ONLY the HTML document.',
+      )
+      ..writeln('No markdown fences. No commentary. Start with <!DOCTYPE html>.')
+      ..writeln()
+      ..writeln('DESIGN RULES (mandatory):')
+      ..writeln(
+        '- NEVER output plain, non-functional, or unstyled layouts.',
+      )
+      ..writeln(
+        '- Include a self-contained modern CSS system in <head><style>…</style> '
+        'with :root color variables, smooth transitions, hover states, '
+        'Inter/system-ui fonts, soft shadows, and a bento-grid / SaaS / Web3 / '
+        'e-commerce aesthetic.',
+      )
+      ..writeln(
+        '- CRITICAL: Include a <script> block with robust vanilla JavaScript. '
+        'Wire EVERY button, tab, input, form, and calculator with '
+        'addEventListener (or onclick) so taps change state instantly.',
+      )
+      ..writeln(
+        '- Examples: tab switching, like counters, note lists, checkout totals '
+        'that recalculate on input, quiz answer buttons that update score. '
+        'Use localStorage where useful.',
+      )
+      ..writeln(
+        '- Fully offline — NO CDN links, NO external scripts/fonts/CSS.',
+      )
+      ..writeln(
+        '- Sections: sticky nav with working tabs, hero, bento feature grid, '
+        'interactive studio/checkout OR quiz, polished footer.',
+      )
       ..writeln()
       ..writeln('SITE TYPE: $templateName ($templateId)')
-      ..writeln('COLOR THEME: $themeName'
-          '${themePrimary != null ? ' — primary $themePrimary' : ''}');
+      ..writeln(
+        'COLOR THEME: $themeName'
+        '${themePrimary != null ? ' — primary $themePrimary' : ''}',
+      );
 
     if (answers.isNotEmpty) {
       buf.writeln();
@@ -54,22 +87,32 @@ class SiteBuildIntent {
     }
     buf
       ..writeln()
-      ..writeln('Include: header/nav, hero, about or services, and contact.')
       ..writeln(
         'Use the student details and recorded features above — '
         'do not invent different names.',
+      )
+      ..writeln(
+        'Close every <style> and <script> tag completely before </html>.',
       );
     return buf.toString();
   }
 }
 
 const _siteBuildSystemPrompt = '''
-You are a coding tutor that builds simple student websites.
+/no_think
+You are an elite interactive front-end engineer for offline student websites.
 Reply with a single complete HTML5 document only.
-Never mention rules or prompts. Never echo the brief as a title.
+NEVER output non-functional or unstyled layouts.
+ALWAYS include:
+1) A modern CSS design system in <head><style> (:root variables, transitions,
+   hover effects, bento/grid, glass cards, Inter/system-ui).
+2) A complete <script> with vanilla JS event handlers so buttons, tabs, inputs,
+   forms, and calculators update the DOM live (localStorage OK).
+No CDN links. No markdown fences. No commentary.
+Close all tags. Never mention rules or prompts. Never echo the brief as a title.
 ''';
 
-/// Pull a usable HTML document out of a model reply (fences optional).
+/// Pull a usable, interactive HTML document out of a model reply.
 String? extractHtmlDocument(String raw) {
   final cleaned = sanitizeLLMResponse(raw).trim();
   if (cleaned.isEmpty) return null;
@@ -91,18 +134,14 @@ String? extractHtmlDocument(String raw) {
       r'<html[\s\S]*',
       caseSensitive: false,
     ).firstMatch(html);
-    if (htmlTag == null) return null;
+    if (htmlTag == null) {
+      // Fragment — still salvage via interactive merge.
+      return ensureInteractiveHtmlDocument(html);
+    }
     html = '<!DOCTYPE html>\n${htmlTag.group(0)!.trim()}';
   }
 
-  if (!RegExp(r'</html\s*>', caseSensitive: false).hasMatch(html)) {
-    // Truncated decode — still usable if it has a body start.
-    if (!RegExp(r'<body[\s>]', caseSensitive: false).hasMatch(html)) {
-      return null;
-    }
-    html = '$html\n</body></html>';
-  }
-  return html;
+  return ensureInteractiveHtmlDocument(html);
 }
 
 /// Runs the programming brain on the recorded intent. Returns null on failure.
@@ -113,19 +152,28 @@ Future<String?> generateSiteHtmlWithCoder({
 }) async {
   final brief = intent.toCoderBrief();
   final buf = StringBuffer();
+  final chopper = onToken == null
+      ? null
+      : ClauseStreamChopper(onFlush: onToken);
   try {
     final raw = await engine.generate(
       prompt: brief,
       systemPrompt: _siteBuildSystemPrompt,
       maxTokens: kSiteBuildMaxTokens,
-      temperature: 0.35,
+      temperature: kCoderTemperature,
       onToken: (token) {
         buf.write(token);
-        onToken?.call(buf.toString());
+        if (chopper != null) {
+          chopper.add(token);
+        } else {
+          onToken?.call(buf.toString());
+        }
       },
     );
+    chopper?.end();
     return extractHtmlDocument(raw.isNotEmpty ? raw : buf.toString());
   } catch (_) {
+    chopper?.end();
     return extractHtmlDocument(buf.toString());
   }
 }

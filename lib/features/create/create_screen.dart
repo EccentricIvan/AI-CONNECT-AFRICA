@@ -10,9 +10,11 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/widgets/generating_indicator.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../settings/coder_package_prompt.dart';
 import 'package:drift/drift.dart' show Value;
 
 // ── Project types ─────────────────────────────────────────────────────────────
@@ -467,13 +469,19 @@ class _SetupView extends ConsumerWidget {
               child: FilledButton(
                 onPressed: state.projectType.isEmpty
                     ? null
-                    : () {
+                    : () async {
                         final topic = topicController.text.trim();
                         if (topic.isEmpty) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Enter a topic first')),
                           );
                           return;
+                        }
+                        if (state.projectType == 'Code Plan') {
+                          final coderOk =
+                              await promptAndFetchCoderPackage(context, ref);
+                          if (!coderOk || !context.mounted) return;
+                          scheduleLiteRtMode(ActiveModelMode.appCoder);
                         }
                         final notifier = ref.read(_createProvider.notifier);
                         notifier.setTopic(topic);

@@ -1,5 +1,6 @@
 import 'package:ai_connect_africa/ai_core/model/dual_gguf_plan.dart';
 import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -50,13 +51,21 @@ void main() {
     expect(plan.afrislmPath, afrislm.path);
   });
 
-  test('Qwen GGUF is discovered before the LiteRT fallback', () {
+  test('desktop prefers GGUF tutor names; Android prefers LiteRT chat', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     expect(
-      ModelManager.alternateChatFileNames.first,
-      ModelManager.qwenGgufFileName,
+      ModelManager.ggufChatFileNames.first,
+      ModelManager.canonicalChatGgufFileName,
     );
     expect(
-      ModelManager.alternateChatFileNames.last,
+      ModelManager.chatFileNamesForPlatform(),
+      ModelManager.ggufChatFileNames,
+    );
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(
+      ModelManager.chatFileNamesForPlatform().first,
       ModelManager.chatModelFileName,
     );
   });

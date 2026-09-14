@@ -186,13 +186,22 @@ class ModelDownloadService {
 
       emit(state.copyWith(phase: DownloadPhase.verifying));
 
-      if (digest.close().toString() != pkg.sha256) {
+      final digestHex = digest.close().toString();
+      if (pkg.sha256.isNotEmpty && digestHex != pkg.sha256) {
         // Wrong bytes are worse than no bytes: keeping them would make every
         // later retry resume onto a corrupt prefix.
         await partial.delete();
         throw const ModelDownloadException(
           'The downloaded file failed its integrity check and was removed. '
           'This usually means the download was corrupted — try again.',
+        );
+      }
+
+      final minBytes = (pkg.approxBytes * 0.5).floor();
+      if (received < minBytes) {
+        await partial.delete();
+        throw const ModelDownloadException(
+          'The downloaded package looks incomplete and was removed. Try again.',
         );
       }
 

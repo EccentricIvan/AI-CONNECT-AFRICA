@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart';
 import '../../shared/widgets/code_autocorrect_button.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../settings/coder_package_prompt.dart';
 
 class _PyLesson {
   const _PyLesson({required this.title, required this.instruction, required this.starterCode, required this.expectedOutput, this.hint, this.challenge});
@@ -231,6 +233,7 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
   @override
   void initState() {
     super.initState();
+    scheduleLiteRtMode(ActiveModelMode.appCoder);
     _tabController = TabController(length: 2, vsync: this);
     _codeController.text = _lessons[0].starterCode;
   }
@@ -356,6 +359,8 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return;
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);

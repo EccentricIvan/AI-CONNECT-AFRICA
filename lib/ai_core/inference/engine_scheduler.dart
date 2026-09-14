@@ -11,6 +11,10 @@ class EngineLane {
   static const reason = 'reason';
   static const program = 'program';
   static const translate = 'translate';
+
+  /// Global sequential lane — chat, coder, and translator must not spike
+  /// RAM concurrently on 4 GB phones / dual-core school PCs.
+  static const hybrid = 'hybrid';
 }
 
 /// Serializes jobs that share a native runtime.

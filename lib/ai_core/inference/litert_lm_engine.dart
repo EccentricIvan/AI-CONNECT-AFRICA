@@ -27,9 +27,15 @@ import 'sanitize_llm_response.dart';
 /// default (GPU/NPU delegate when available), since it's the primary target
 /// and this machine's finding doesn't generalize to it.
 class LiteRtLmEngineImpl extends InferenceEngine {
+  LiteRtLmEngineImpl({this.roleLabel = 'Qwen3-0.6B'});
+
+  /// Distinguishes chat vs coder in logs when both share FlutterGemma.
+  final String roleLabel;
+
   InferenceModel? _model;
   InferenceChat? _pinnedChat;
   String? _pinnedSystem;
+  String? _loadedPath;
   int _pinnedTurns = 0;
   Future<void> _gate = Future.value();
 
@@ -45,7 +51,9 @@ class LiteRtLmEngineImpl extends InferenceEngine {
 
   @override
   String get backendLabel =>
-      'LiteRT-LM · Qwen3-0.6B${_cpuOnly ? ' (CPU)' : ''}';
+      'LiteRT-LM · $roleLabel${_cpuOnly ? ' (CPU)' : ' (NNAPI/GPU)'}';
+
+  String? get loadedPath => _loadedPath;
 
   @override
   Future<void> loadModel(String modelPath) async {
@@ -60,6 +68,9 @@ class LiteRtLmEngineImpl extends InferenceEngine {
         ? modelPath.substring(ModelManager.bundledAssetPrefix.length)
         : null;
 
+    final installName = bundledName ??
+        modelPath.split(RegExp(r'[\\/]')).last;
+
     Future<void> install() {
       final builder = FlutterGemma.installModel(
         modelType: ModelType.qwen3,
@@ -72,8 +83,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     }
 
     try {
-      final installed =
-          await FlutterGemma.isModelInstalled(ModelManager.chatModelFileName);
+      final installed = await FlutterGemma.isModelInstalled(installName);
       if (!installed) {
         await install();
       }
@@ -83,21 +93,47 @@ class LiteRtLmEngineImpl extends InferenceEngine {
           preferredBackend: _cpuOnly ? PreferredBackend.cpu : null,
         );
       } catch (_) {
-        // flutter_gemma's "installed" repository record can go stale
-        // relative to the actual copied file (e.g. cleared from its
-        // managed AppData cache) — isModelInstalled() then reports true
-        // while its own active-model restore silently finds the file
-        // missing and refuses to set an active model. Force a fresh
-        // install once and retry rather than falling back to demo mode.
         await install();
         _model = await FlutterGemma.getActiveModel(
           maxTokens: 1024,
           preferredBackend: _cpuOnly ? PreferredBackend.cpu : null,
         );
       }
+      _loadedPath = modelPath;
+      // Drop any prior pin — weights changed / active model swapped.
+      await resetSession();
     } catch (e) {
       throw ModelLoadException('LiteRT-LM failed to load "$modelPath": $e');
     }
+  }
+
+  /// Re-bind if FlutterGemma's single active slot was stolen by the coder.
+  Future<void> ensureLoaded(String modelPath) async {
+    if (_model != null && _loadedPath == modelPath) return;
+    await loadModel(modelPath);
+  }
+
+  /// Prefill the system contract once so the first student turn skips
+  /// re-tokenizing instructions (warm KV / low TTFT).
+  Future<void> pinSystemPrompt(String systemPrompt) async {
+    if (_model == null) {
+      throw StateError('Model not loaded. Call loadModel() first.');
+    }
+    final sys = PinnedPromptCache.intern(systemPrompt.trim());
+    if (_pinnedChat != null && _pinnedSystem == sys) return;
+    await _pinnedChat?.close();
+    _pinnedChat = await _model!.createChat(
+      temperature: kChatTemperature,
+      randomSeed: kRandomSeed,
+      topK: kTopK,
+      topP: kTopP,
+      systemInstruction: sys,
+      maxOutputTokens: kMaxNewTokens,
+      modelType: ModelType.qwen3,
+      isThinking: false,
+    );
+    _pinnedSystem = sys;
+    _pinnedTurns = 0;
   }
 
   @override
@@ -138,12 +174,19 @@ class LiteRtLmEngineImpl extends InferenceEngine {
       throw StateError('Model not loaded. Call loadModel() first.');
     }
 
-    final clipped =
-        prompt.length > 1600 ? '${prompt.substring(0, 1600)}\nTutor:' : prompt;
-
     final sys = (systemPrompt == null || systemPrompt.trim().isEmpty)
         ? ''
         : PinnedPromptCache.intern(systemPrompt.trim());
+    // Tutor prompts clip tightly; coder briefs (with systemPrompt) must keep
+    // the locked feature list — truncating mid-brief + appending "Tutor:"
+    // produced broken / empty site and app builds on Android.
+    final maxChars =
+        sys.isEmpty ? kTutorMaxPromptChars : kCoderMaxPromptChars;
+    final clipped = prompt.length > maxChars
+        ? (sys.isEmpty
+            ? '${prompt.substring(0, maxChars)}\nTutor:'
+            : prompt.substring(0, maxChars))
+        : prompt;
     var user = clipped;
     if (sys.isNotEmpty && user.startsWith(sys)) {
       user = user.substring(sys.length).trim();
@@ -162,13 +205,14 @@ class LiteRtLmEngineImpl extends InferenceEngine {
         _pinnedTurns >= _maxPinnedTurns) {
       await _pinnedChat?.close();
       _pinnedChat = await _model!.createChat(
-        temperature: kDoSample ? temperature : kTutorTemperature,
+        temperature: kDoSample ? temperature : kChatTemperature,
         randomSeed: kRandomSeed,
         topK: kDoSample ? 40 : kTopK,
         topP: kTopP,
         systemInstruction: sys,
         maxOutputTokens: maxTokens,
         modelType: ModelType.qwen3,
+        isThinking: false,
       );
       _pinnedSystem = sys;
       _pinnedTurns = 0;
@@ -199,12 +243,13 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     TokenCallback? onToken,
   }) async {
     final chat = await _model!.createChat(
-      temperature: kTutorTemperature,
+      temperature: kCoderTemperature,
       randomSeed: kRandomSeed,
       topK: kTopK,
       topP: kTopP,
       maxOutputTokens: maxTokens,
       modelType: ModelType.qwen3,
+      isThinking: false,
     );
     try {
       await chat.addQueryChunk(Message.text(text: user, isUser: true));
@@ -240,5 +285,6 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     await resetSession();
     _model?.close();
     _model = null;
+    _loadedPath = null;
   }
 }

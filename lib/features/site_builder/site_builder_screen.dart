@@ -178,15 +178,71 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
             : null,
         actions: const [StudioDrawerButton()],
       ),
-      floatingActionButton: _selected != null && !_showPreview
+      floatingActionButton: _selected != null && _showPreview
           ? FloatingActionButton.extended(
-              onPressed: _buildSite,
-              icon: const Icon(Icons.rocket_launch),
-              label: const Text('BUILD'),
-              backgroundColor: _selected!.color,
-              foregroundColor: Colors.white,
+              onPressed: () {
+                final c = _webViewController;
+                if (c == null) return;
+                showDialog<void>(
+                  context: context,
+                  useSafeArea: false,
+                  builder: (ctx) {
+                    final top = MediaQuery.paddingOf(ctx).top;
+                    return Dialog.fullscreen(
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Positioned.fill(child: WebViewWidget(controller: c)),
+                          Positioned(
+                            top: top + 12,
+                            right: 16,
+                            child: Material(
+                              elevation: 8,
+                              borderRadius: BorderRadius.circular(28),
+                              color: Colors.white.withValues(alpha: 0.94),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(28),
+                                onTap: () => Navigator.of(ctx).pop(),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 12,
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.close, size: 20),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Close Full Screen',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+              icon: const Icon(Icons.fullscreen),
+              label: const Text('Full Screen Preview'),
             )
-          : null,
+          : _selected != null && !_showPreview
+              ? FloatingActionButton.extended(
+                  onPressed: _buildSite,
+                  icon: const Icon(Icons.rocket_launch),
+                  label: const Text('BUILD'),
+                  backgroundColor: _selected!.color,
+                  foregroundColor: Colors.white,
+                )
+              : null,
       body: _selected == null
           ? _TemplatePicker(onSelect: _selectTemplate)
           : _showPreview

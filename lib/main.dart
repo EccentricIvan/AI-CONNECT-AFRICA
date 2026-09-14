@@ -3,14 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'ai_core/model/model_runtime_policy.dart';
 import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Qwen 0.6B GGUF is the general brain (llama.cpp). 1.5B Coder is
-  // programming. AfriSLM translates. LiteRT stays registered as fallback.
-  if (!kIsWeb) {
+  // Hybrid stack:
+  // - Chat brain: llama.cpp GGUF on Android + Windows
+  // - Coder: LiteRT on Android (needs FlutterGemma), GGUF CPU on Windows
+  // - Translator: isolated via AiEngineService (AfriSLM today)
+  if (shouldInitializeLiteRt) {
     try {
       await FlutterGemma.initialize(
         inferenceEngines: const [LiteRtLmEngine()],
@@ -20,6 +23,10 @@ void main() async {
     }
   }
 
-  debugPrint('Qwen 0.6B brain + Qwen 1.5B coder + AfriSLM translator');
+  debugPrint(
+    'Low-latency hybrid: '
+    '${shouldInitializeLiteRt ? 'Android LiteRT chat+coder (NNAPI/GPU)' : 'Desktop GGUF chat+coder (AVX2 CPU×2)'} · '
+    'isolated translator · pinned KV',
+  );
   runApp(const ProviderScope(child: OticApp()));
 }
