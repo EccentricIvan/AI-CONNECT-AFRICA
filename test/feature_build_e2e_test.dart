@@ -112,9 +112,9 @@ void main() {
       engine: emptyEngine,
       intent: appIntent,
     );
-    expect(fallback, isNull);
-    final shell = fallbackAppHtml(appIntent);
-    expect(shell, contains('BrainBoost Quiz'));
-    expect(shell, contains('Question screen'));
+    expect(fallback, isNotNull);
+    expect(fallback!, contains('<!DOCTYPE html>'));
+    expect(fallback, contains('Sorry, I cannot help.'));
+    expect(fallback, contains('OTIC_INTERACTIVE_RUNTIME'));
   });
 }

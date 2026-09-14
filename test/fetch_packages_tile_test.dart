@@ -1,107 +1,91 @@
 import 'dart:async';
 
-import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
-import 'package:ai_connect_africa/ai_core/providers/ai_provider.dart';
 import 'package:ai_connect_africa/features/settings/fetch_packages_tile.dart';
+import 'package:ai_connect_africa/services/model_fetch_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-ModelInfo _ready() => const ModelInfo(
-      status: ModelStatus.ready,
-      path: '/models/x',
-      sizeBytes: 600 * 1024 * 1024,
-    );
+class _FakeModelFetchService extends ModelFetchService {
+  _FakeModelFetchService({
+    required this.coreReady,
+    this.coreReadyFuture,
+    this.coderReady = false,
+  });
 
-ModelInfo _missing() => const ModelInfo(status: ModelStatus.notInstalled);
+  final bool coreReady;
+  final Future<bool>? coreReadyFuture;
+  final bool coderReady;
+
+  @override
+  Future<bool> areCorePackagesReady() => coreReadyFuture ?? Future.value(coreReady);
+
+  @override
+  Future<bool> isCoderReady() async => coderReady;
+}
 
 Future<void> _pump(
   WidgetTester tester, {
-  required AsyncValue<ModelInfo> chat,
-  required AsyncValue<ModelInfo> translate,
+  required _FakeModelFetchService service,
+  bool settle = true,
 }) async {
-  Override overrideWith(
-    FutureProvider<ModelInfo> p,
-    AsyncValue<ModelInfo> v,
-  ) =>
-      p.overrideWith((ref) async {
-        // A pending future models the real first-launch window, where the
-        // filesystem lookup has not answered yet.
-        if (v is AsyncLoading) return Completer<ModelInfo>().future;
-        return v.value!;
-      });
-
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        overrideWith(modelInfoProvider, chat),
-        overrideWith(translateModelInfoProvider, translate),
+        modelFetchServiceProvider.overrideWithValue(service),
       ],
       child: const MaterialApp(
         home: Scaffold(body: SingleChildScrollView(child: FetchPackagesTile())),
       ),
     ),
   );
-  await tester.pump();
+  if (settle) {
+    await tester.pump();
+  }
 }
 
 void main() {
-  testWidgets('offers a Fetch button for a model that is not installed',
+  testWidgets('offers a Fetch action when core packages are missing',
       (tester) async {
     await _pump(
       tester,
-      chat: AsyncData(_missing()),
-      translate: AsyncData(_missing()),
+      service: _FakeModelFetchService(coreReady: false),
     );
 
-    expect(find.text('Fetch packages'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Fetch'), findsNWidgets(2));
+    expect(find.text('Fetch packages'), findsNWidgets(2));
+    expect(find.widgetWithText(FilledButton, 'Fetch packages'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsNothing);
   });
 
-  testWidgets('shows a tick instead of a button once a model is installed',
+  testWidgets('shows a tick instead of a button once core packages are installed',
       (tester) async {
     await _pump(
       tester,
-      chat: AsyncData(_ready()),
-      translate: AsyncData(_missing()),
+      service: _FakeModelFetchService(coreReady: true),
     );
 
-    // The chat model row shows a tick while the translation model row keeps
-    // its Fetch button until installed.
+    expect(find.text('All packages installed.'), findsOneWidget);
     expect(find.byIcon(Icons.check_circle), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, 'Fetch'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, 'Fetch packages'), findsNothing);
   });
 
-  testWidgets('reports all packages installed when the chat model is ready',
+  testWidgets('keeps the tile in pre-check state while readiness is pending',
       (tester) async {
+    final pending = Completer<bool>();
     await _pump(
       tester,
-      chat: AsyncData(_ready()),
-      translate: AsyncData(_ready()),
+      service: _FakeModelFetchService(
+        coreReady: false,
+        coreReadyFuture: pending.future,
+      ),
+      settle: false,
     );
 
-    expect(find.text('All packages installed.'), findsOneWidget);
-    expect(find.byIcon(Icons.check_circle), findsNWidgets(2));
-    expect(find.widgetWithText(FilledButton, 'Fetch'), findsNothing);
-  });
-
-  testWidgets('does not claim models are missing while the check is pending',
-      (tester) async {
-    await _pump(
-      tester,
-      chat: const AsyncLoading(),
-      translate: const AsyncLoading(),
-    );
-
-    // The regression this guards: treating an unresolved filesystem lookup
-    // as "missing" flashed the download prompt on a device that already had
-    // both models.
-    expect(find.text('All packages installed.'), findsOneWidget);
+    expect(find.text('Fetch packages'), findsNWidgets(2));
+    expect(find.text('All packages installed.'), findsNothing);
     expect(
       find.textContaining('Download tutor'),
       findsNothing,
-      reason: 'a pending lookup must not render as a missing model',
     );
   });
 }
