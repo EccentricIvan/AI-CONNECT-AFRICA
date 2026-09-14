@@ -243,10 +243,10 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
     }
     if (useLiteRtCoderRuntime &&
         programmingPath != null &&
-        (programmingPath!.toLowerCase().endsWith('.litertlm') ||
-            programmingPath!.toLowerCase().endsWith('.literlm') ||
-            programmingPath!.toLowerCase().startsWith('bundled:'))) {
-      AiModelManager.instance.registerAppCoderPath(programmingPath!);
+        (programmingPath.toLowerCase().endsWith('.litertlm') ||
+            programmingPath.toLowerCase().endsWith('.literlm') ||
+            programmingPath.toLowerCase().startsWith('bundled:'))) {
+      AiModelManager.instance.registerAppCoderPath(programmingPath);
     }
     debugPrint(
       'CHAT BRAIN loaded ${chatIsLiteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
