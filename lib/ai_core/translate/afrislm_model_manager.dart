@@ -17,6 +17,7 @@ class AfriSlmModelManager {
 
   /// USB / older quants accepted so a Q4 copy still loads.
   static const alternateFileNames = [
+    'TranslatePsy-AfriSLM-0.8B.Q4_K_M.gguf',
     'TranslatePsy-AfriSLM-0.8B-Q8_0-imat.gguf',
     'afrislm-0.8b-q5_k_m.gguf',
     'afrislm-0.8b-q4_k_m.gguf',

@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,7 +43,9 @@ class _ModelNotInstalledScreenState
     setState(() => _error = null);
 
     final result = await FilePicker.platform.pickFiles(
-      dialogTitle: 'Select the Qwen tutor model (.litertlm)',
+      dialogTitle: defaultTargetPlatform == TargetPlatform.android
+          ? 'Select the Qwen chat brain (.litertlm)'
+          : 'Select the Qwen chat brain (.gguf)',
       type: FileType.any,
     );
     final path = result?.files.single.path;

@@ -9,6 +9,7 @@ import '../../curriculum/curriculum_models.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../l10n/ui_registry.dart';
+import '../../services/ai_model_manager.dart';
 import '../../shared/widgets/curriculum_diagram.dart';
 import '../../shared/widgets/generating_indicator.dart';
 import '../../shared/widgets/responsive.dart';
@@ -70,6 +71,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
   void initState() {
     super.initState();
     _voice = ref.read(voiceServiceProvider);
+    scheduleLiteRtMode(ActiveModelMode.chatBrain);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatProvider.notifier).setSection(widget.section);
       ref.read(chatProvider.notifier).setProgrammingSubject(

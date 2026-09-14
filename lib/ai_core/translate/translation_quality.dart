@@ -131,17 +131,34 @@ String _normalize(String s) => s
 int _wordCount(String s) =>
     s.trim().isEmpty ? 0 : s.trim().split(RegExp(r'\s+')).length;
 
-/// True when some 3-word phrase repeats more than [threshold] times —
-/// the shape of a decoder that has fallen into a loop.
+/// True when the decoder has fallen into a loop.
+///
+/// Catches two shapes seen on AfriSLM:
+///   * a 3-word phrase repeating (`chakula kutokana na` × N)
+///   * a single token repeating (`bye bye bye…`) — the old 3-gram
+///     check needed 12+ words, so short single-token loops slipped
+///     through until maxTokens filled the bubble
 bool hasRepetitionLoop(String text, {int threshold = 4}) {
   final words = _normalize(text).split(' ').where((w) => w.isNotEmpty).toList();
+  if (words.length < 6) return false;
+
+  // Single-token runaway: same word dominates the output.
+  if (words.length >= 6) {
+    final counts = <String, int>{};
+    for (final w in words) {
+      final n = (counts[w] ?? 0) + 1;
+      counts[w] = n;
+      if (n >= 6 && n / words.length >= 0.7) return true;
+    }
+  }
+
   if (words.length < 12) return false;
-  final counts = <String, int>{};
+  final grams = <String, int>{};
   for (var i = 0; i + 3 <= words.length; i++) {
     final gram = '${words[i]} ${words[i + 1]} ${words[i + 2]}';
-    final n = (counts[gram] ?? 0) + 1;
+    final n = (grams[gram] ?? 0) + 1;
     if (n > threshold) return true;
-    counts[gram] = n;
+    grams[gram] = n;
   }
   return false;
 }
