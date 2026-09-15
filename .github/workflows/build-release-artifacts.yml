@@ -51,14 +51,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # GitHub ubuntu-latest already has an Android SDK. android-actions/setup-android
-      # currently fails with `Failed to find package 'tools'` (obsolete package).
-      - name: Install Android native toolchain
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platforms;android-36" \
-            "build-tools;36.0.0"
+      # GitHub's ubuntu-latest runner provides the Android SDK and the Flutter
+      # action supplies the SDK versions required by this project.
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null || true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
