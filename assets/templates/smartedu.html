@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --violet:#5b53d6; --violet2:#7a72ee; --ink:#171a2e; --muted:#7078a0;
+  --wash:#eef0fc; --paper:#f3f4fb; --card:#ffffff; --line:#e6e8f6;
+  --pink:#ec5f9b; --teal:#25b7a6; --amber:#f2a33c;
+}
+*{margin:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);background:var(--paper)}
+
+.shell{display:flex;min-height:100vh;flex-wrap:wrap}
+
+.side{
+  width:210px;background:var(--card);border-right:1px solid var(--line);
+  padding:22px 16px;flex-shrink:0
+}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:16px;margin-bottom:26px}
+.logo .dot{
+  width:30px;height:30px;border-radius:9px;background:var(--violet);color:#fff;
+  display:grid;place-items:center;font-size:14px
+}
+.side a{
+  display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:11px;
+  color:var(--muted);text-decoration:none;font-size:13px;font-weight:600;margin-bottom:3px
+}
+.side a.on{background:var(--wash);color:var(--violet)}
+
+.main{flex:1;min-width:280px;padding:22px}
+.top{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  flex-wrap:wrap;margin-bottom:22px
+}
+.top h1{font-size:22px}
+.top .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.who{display:flex;align-items:center;gap:10px}
+.who .av{
+  width:36px;height:36px;border-radius:50%;background:var(--violet);color:#fff;
+  display:grid;place-items:center;font-weight:800;font-size:14px
+}
+.who .nm{font-size:13px;font-weight:700}
+
+h2{font-size:15px;margin-bottom:12px}
+
+.rings{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:22px}
+.ring{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;
+  padding:18px;text-align:center;box-shadow:0 6px 18px rgba(23,26,46,.05)
+}
+.dial{
+  width:76px;height:76px;border-radius:50%;margin:0 auto 12px;display:grid;place-items:center;
+  font-weight:800;font-size:15px
+}
+.ring .l{font-size:12px;font-weight:700}
+.ring .n{font-size:11px;color:var(--muted);margin-top:4px}
+
+.cols{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.panel{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;
+  box-shadow:0 6px 18px rgba(23,26,46,.05)
+}
+
+.lesson{
+  display:flex;align-items:center;gap:12px;padding:12px;border-radius:13px;
+  background:var(--paper);margin-bottom:9px
+}
+.lesson.on{background:var(--violet);color:#fff}
+.lesson .day{text-align:center;min-width:34px}
+.lesson .day b{display:block;font-size:16px;font-weight:800}
+.lesson .day span{font-size:10px;opacity:.7}
+.lesson .t{flex:1;font-size:13px;font-weight:600}
+.lesson .hr{font-size:11px;opacity:.75}
+
+.person{display:flex;align-items:center;gap:11px;padding:10px 0;border-bottom:1px solid var(--line)}
+.person:last-child{border-bottom:none}
+.person .av{
+  width:34px;height:34px;border-radius:50%;background:var(--wash);color:var(--violet);
+  display:grid;place-items:center;font-weight:800;font-size:13px
+}
+.person .nm{font-size:13px;font-weight:600}
+.person .rl{font-size:11px;color:var(--muted)}
+
+.klass{margin-top:12px}
+.klass .row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px}
+.bar{height:7px;border-radius:999px;background:var(--wash);overflow:hidden;margin-bottom:13px}
+.bar i{display:block;height:100%;border-radius:999px}
+
+.contact{
+  background:var(--ink);color:#fff;border-radius:18px;padding:22px;
+  margin-top:16px;text-align:center
+}
+.contact h2{margin-bottom:10px}
+.contact p{color:#a6adcd;font-size:13px;margin-bottom:5px}
+footer{text-align:center;padding:18px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="logo"><span class="dot">✦</span> {{school_name}}</div>
+    <a class="on" href="#">📊 Dashboard</a>
+    <a href="#classes">📚 My classes</a>
+    <a href="#teachers">🧑‍🏫 Teachers</a>
+    <a href="#schedule">🗓️ Schedule</a>
+    <a href="#contact">⚙️ Contact</a>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <div>
+        <h1>{{greeting}}</h1>
+        <div class="sub">{{description}}</div>
+      </div>
+      <div class="who">
+        <div class="av">🧑🏾‍🎓</div>
+        <div>
+          <div class="nm">{{student_name}}</div>
+        </div>
+      </div>
+    </div>
+
+    <h2>Progress</h2>
+    <div class="rings">
+      <div class="ring">
+        <div class="dial" style="background:conic-gradient(var(--violet) 90%,var(--wash) 0)">{{attendance}}</div>
+        <div class="l">Attendance</div>
+        <div class="n">Keep it up</div>
+      </div>
+      <div class="ring">
+        <div class="dial" style="background:conic-gradient(var(--pink) 60%,var(--wash) 0)">{{homework}}</div>
+        <div class="l">Homework</div>
+        <div class="n">Almost there</div>
+      </div>
+      <div class="ring">
+        <div class="dial" style="background:conic-gradient(var(--teal) 70%,var(--wash) 0)">{{rating}}</div>
+        <div class="l">Rating</div>
+        <div class="n">Good standing</div>
+      </div>
+      <div class="ring">
+        <div class="dial" style="background:conic-gradient(var(--amber) 40%,var(--wash) 0)">{{completed}}</div>
+        <div class="l">Classes done</div>
+        <div class="n">This term</div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="panel" id="schedule">
+        <h2>Schedule</h2>
+        <div class="lesson">
+          <div class="day"><b>07</b><span>Mon</span></div>
+          <div class="t">{{class1_name}}</div>
+          <div class="hr">{{class1_time}}</div>
+        </div>
+        <div class="lesson on">
+          <div class="day"><b>12</b><span>Wed</span></div>
+          <div class="t">{{class2_name}}</div>
+          <div class="hr">{{class2_time}}</div>
+        </div>
+        <div class="lesson">
+          <div class="day"><b>14</b><span>Fri</span></div>
+          <div class="t">{{class3_name}}</div>
+          <div class="hr">{{class3_time}}</div>
+        </div>
+      </div>
+
+      <div class="panel" id="teachers">
+        <h2>Teachers</h2>
+        <div class="person">
+          <div class="av">{{teacher1_initial}}</div>
+          <div>
+            <div class="nm">{{teacher1_name}}</div>
+            <div class="rl">{{teacher1_subject}}</div>
+          </div>
+        </div>
+        <div class="person">
+          <div class="av">{{teacher2_initial}}</div>
+          <div>
+            <div class="nm">{{teacher2_name}}</div>
+            <div class="rl">{{teacher2_subject}}</div>
+          </div>
+        </div>
+        <div class="person">
+          <div class="av">{{teacher3_initial}}</div>
+          <div>
+            <div class="nm">{{teacher3_name}}</div>
+            <div class="rl">{{teacher3_subject}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel klass" id="classes" style="margin-top:14px">
+      <h2>My classes</h2>
+      <div class="row"><span>{{class1_name}}</span><b>75%</b></div>
+      <div class="bar"><i style="width:75%;background:var(--violet)"></i></div>
+      <div class="row"><span>{{class2_name}}</span><b>60%</b></div>
+      <div class="bar"><i style="width:60%;background:var(--pink)"></i></div>
+      <div class="row"><span>{{class3_name}}</span><b>40%</b></div>
+      <div class="bar"><i style="width:40%;background:var(--teal)"></i></div>
+    </div>
+
+    <div class="contact" id="contact">
+      <h2>Get in touch</h2>
+      <p>📍 {{address}}</p>
+      <p>📞 {{phone}}</p>
+      <p>✉️ {{email}}</p>
+    </div>
+
+    <footer>&copy; 2026 {{school_name}} — Built with AI Connect Africa</footer>
+  </main>
+</div>
+</body>
+</html>

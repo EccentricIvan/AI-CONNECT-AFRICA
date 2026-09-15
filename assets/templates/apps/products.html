@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#15161f;--muted:#8b90a3;--line:#22242f;--panel:#1b1d27}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:#f2f3f7;
+  background:#2c2f3a;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:var(--ink);border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(0,0,0,.4);display:flex;flex-direction:column
+}
+.status{display:flex;justify-content:space-between;padding:13px 22px 6px;font-size:12px;font-weight:700}
+
+.head{padding:6px 18px 16px;display:flex;align-items:center;gap:11px}
+.logo{
+  width:38px;height:38px;border-radius:11px;background:var(--primary);color:#fff;
+  display:grid;place-items:center;font-size:17px;font-weight:800
+}
+.head .nm{font-size:15px;font-weight:800}
+.head .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.head .bell{margin-left:auto;font-size:16px}
+
+.body{padding:0 16px;flex:1}
+.tiles{display:grid;gap:11px;grid-template-columns:1fr 1fr;margin-bottom:16px}
+.tile{border-radius:17px;padding:15px}
+.tile .v{font-size:23px;font-weight:800}
+.tile .l{font-size:11px;opacity:.85;margin-top:3px}
+.t1{background:#ee4f7b}
+.t2{background:#f0834a}
+.t3{background:#5a6ae4}
+.t4{background:#7b5ae4}
+
+.panel{background:var(--panel);border-radius:18px;padding:16px;margin-bottom:14px}
+.panel h2{font-size:14px;margin-bottom:14px}
+.spark{display:flex;align-items:flex-end;gap:5px;height:66px}
+.spark i{flex:1;border-radius:4px 4px 0 0;background:var(--primary);display:block;opacity:.85}
+.spark i.hi{opacity:1}
+.xs{display:flex;gap:5px;margin-top:7px}
+.xs span{flex:1;text-align:center;font-size:9px;color:var(--muted)}
+
+.plist .row{
+  display:flex;align-items:center;gap:11px;padding:11px 0;
+  border-bottom:1px solid var(--line)
+}
+.plist .row:last-child{border-bottom:none}
+.plist .ic{
+  width:38px;height:38px;border-radius:10px;background:#262935;
+  display:grid;place-items:center;font-size:17px;flex-shrink:0
+}
+.plist .nm{font-size:13px;font-weight:600}
+.plist .meta{font-size:10px;color:var(--muted);margin-top:3px}
+.plist .pr{margin-left:auto;font-size:13px;font-weight:800}
+
+.feat{margin:16px 0 12px}
+.feat h2{font-size:14px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:var(--panel);border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.fab{
+  margin:0 16px 12px;background:var(--primary);color:#fff;border:none;border-radius:999px;
+  padding:14px;font-size:13px;font-weight:800;cursor:pointer
+}
+.nav{
+  display:flex;justify-content:space-around;padding:13px 8px 18px;
+  border-top:1px solid var(--line)
+}
+.nav div{font-size:10px;text-align:center;color:var(--muted)}
+.nav div.on{color:var(--primary);font-weight:800}
+.nav span{display:block;font-size:17px;margin-bottom:3px}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="head">
+    <div class="logo">{{initial}}</div>
+    <div>
+      <div class="nm">{{app_name}}</div>
+      <div class="sub">{{owner_role}}</div>
+    </div>
+    <div class="bell">🔔</div>
+  </div>
+
+  <div class="body">
+    <div class="tiles">
+      <div class="tile t1"><div class="v">{{product_count}}</div><div class="l">Products</div></div>
+      <div class="tile t2"><div class="v">{{sales_count}}</div><div class="l">Total sales</div></div>
+      <div class="tile t3"><div class="v">{{revenue}}</div><div class="l">Revenue</div></div>
+      <div class="tile t4"><div class="v">{{returns}}</div><div class="l">Returns</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>{{chart_title}}</h2>
+      <div class="spark">
+        <i style="height:38%"></i><i style="height:55%"></i><i style="height:30%"></i>
+        <i class="hi" style="height:82%"></i><i style="height:48%"></i>
+        <i style="height:64%"></i><i style="height:42%"></i>
+      </div>
+      <div class="xs">
+        <span>10AM</span><span>12PM</span><span>2PM</span><span>4PM</span>
+        <span>6PM</span><span>8PM</span><span>10PM</span>
+      </div>
+    </div>
+
+    <div class="panel plist">
+      <h2>Products</h2>
+      <div class="row">
+        <div class="ic">🧴</div>
+        <div>
+          <div class="nm">{{product1_name}}</div>
+          <div class="meta">{{product1_stock}} in stock</div>
+        </div>
+        <div class="pr">{{product1_price}}</div>
+      </div>
+      <div class="row">
+        <div class="ic">🎧</div>
+        <div>
+          <div class="nm">{{product2_name}}</div>
+          <div class="meta">{{product2_stock}} in stock</div>
+        </div>
+        <div class="pr">{{product2_price}}</div>
+      </div>
+      <div class="row">
+        <div class="ic">🧼</div>
+        <div>
+          <div class="nm">{{product3_name}}</div>
+          <div class="meta">{{product3_stock}} in stock</div>
+        </div>
+        <div class="pr">{{product3_price}}</div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <h2>What {{app_name}} does</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <button class="fab" type="button">+ Add Product</button>
+
+  <div class="nav">
+    <div class="on"><span>🏠</span>Home</div>
+    <div><span>📦</span>Products</div>
+    <div><span>💳</span>Sales</div>
+    <div><span>📊</span>Stats</div>
+    <div><span>⚙️</span>Settings</div>
+  </div>
+</div>
+</body>
+</html>

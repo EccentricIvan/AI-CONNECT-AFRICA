@@ -85,6 +85,7 @@ void main() {
       final appIntent = AppBuildIntent(
         appTypeId: 'quiz',
         appTypeName: 'Quiz Game',
+        themeId: 'royal',
         themeName: 'Royal Purple',
         themePrimary: '#7c3aed',
         answers: {

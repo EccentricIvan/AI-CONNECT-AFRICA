@@ -29,6 +29,9 @@ void main() {
   test('Android preview helpers are available', () {
     expect(createPreviewWebViewController, isA<Function>());
     expect(loadHtmlPreview, isA<Function>());
-    expect(htmlBodyForFlutterHtml('<body><p>Hi</p></body>'), contains('Hi'));
+    expect(
+      prepareHtmlForPreview('<body><p>Hi</p></body>'),
+      contains('<p>Hi</p>'),
+    );
   });
 }

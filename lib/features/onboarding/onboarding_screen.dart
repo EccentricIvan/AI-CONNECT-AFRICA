@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai_core/translate/chat_languages.dart';
+import '../../ai_core/translate/supported_languages.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
@@ -100,6 +101,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // Take the chosen language as the live one before navigating: it outranks
     // any language picked earlier as a guest, and on web (where nothing is
     // written below) it is the only place the choice survives at all.
+    await persistLearningLanguage(_language);
+    ref.invalidate(persistedLanguageProvider);
     ref.read(languageOverrideProvider.notifier).adoptSaved(_language);
 
     if (mounted) context.go('/');
@@ -305,7 +308,7 @@ class _NamePage extends StatelessWidget {
               prefixIcon: Icon(Icons.language),
             ),
             items: [
-              for (final lang in chatLanguages)
+              for (final lang in supportedLanguages)
                 DropdownMenuItem(value: lang.code, child: Text(lang.name)),
             ],
             onChanged: (code) {

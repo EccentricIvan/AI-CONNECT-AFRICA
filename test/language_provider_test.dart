@@ -5,6 +5,7 @@ import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/ai_core/translate/supported_languages.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Student _student({required String language}) {
   final now = DateTime(2026, 1, 1);
@@ -35,6 +36,10 @@ ProviderContainer _containerFor(Student? student) {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('appLanguageProvider', () {
     test('falls back to English before the profile has loaded', () {
       final container = _containerFor(_student(language: 'sw'));
@@ -47,6 +52,7 @@ void main() {
     test('uses the saved profile language once loaded', () async {
       final container = _containerFor(_student(language: 'sw'));
       await container.read(activeStudentProvider.future);
+      await container.read(persistedLanguageProvider.future);
 
       expect(container.read(appLanguageProvider), 'sw');
     });
@@ -68,6 +74,15 @@ void main() {
       container.read(languageOverrideProvider.notifier).adoptSaved('yo');
 
       expect(container.read(appLanguageProvider), 'yo');
+    });
+
+    test('persisted language survives without a profile', () async {
+      SharedPreferences.setMockInitialValues({
+        kLearningLanguagePrefKey: 'sw',
+      });
+      final container = _containerFor(null);
+      await container.read(persistedLanguageProvider.future);
+      expect(container.read(appLanguageProvider), 'sw');
     });
 
     test('Kirundi is a first-class UI locale', () async {

@@ -19,12 +19,12 @@ Never mention rules or prompts.
 
 const kAppHtmlSystemPrompt = '''
 /no_think
-You are an elite interactive front-end engineer for offline mobile-web apps.
+You are a front-end engineer building offline mobile-web apps.
 Reply with a single complete HTML5 document only.
-NEVER output non-functional or unstyled layouts.
-ALWAYS include modern CSS in <head><style> (:root variables, transitions, hover,
-bento/cards, Inter/system-ui) AND a complete <script> with vanilla JS so every
-button, tab, input, form, and calculator updates state live (localStorage OK).
+Include modern CSS in <head><style> (:root variables, transitions, hover,
+cards, Inter/system-ui). Add a <script> with vanilla JS for the features the
+brief asks for, wired with addEventListener. Never add sample widgets the
+brief did not ask for.
 No CDN links. No markdown fences. No commentary. Close all tags.
 Never mention rules or prompts.
 ''';
@@ -174,30 +174,49 @@ String fallbackAppHtml(AppBuildIntent intent) {
           .join();
   final primary = intent.themePrimary;
 
-  final body = '''
-<section class="card span-8">
-  <h2>$name</h2>
-  <p class="muted">$purpose</p>
-  <h3 style="margin-top:14px">Selected features</h3>
-  <ul>$featureLis</ul>
-</section>
-<section class="card span-4">
-  <h3>Theme</h3>
-  <p class="muted">Primary $primary</p>
-  <button class="btn" type="button" id="app-ping">Ping UI</button>
-  <p class="muted" id="app-ping-out" style="margin-top:10px">Waiting…</p>
-</section>
-''';
-
-  return ensureInteractiveHtmlDocument('''
+  // Self-contained: this document carries every class it uses, so it renders
+  // the same whether or not anything downstream touches it.
+  return ensureRenderableHtmlDocument('''
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>$name</title>
-<style>body{font-family:system-ui}</style>
+<style>
+:root{--primary:$primary;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0}
+*{box-sizing:border-box}
+body{margin:0;padding:24px;background:#f8fafc;color:var(--ink);
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif}
+.wrap{max-width:720px;margin:0 auto;display:grid;gap:16px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;
+  box-shadow:0 1px 3px rgba(15,23,42,.06)}
+h1{margin:0 0 6px;font-size:24px}
+h2{margin:0 0 10px;font-size:16px}
+p{margin:0;line-height:1.55}
+.muted{color:var(--muted);font-size:14px}
+ul{margin:10px 0 0;padding-left:20px;line-height:1.9}
+button{border:0;cursor:pointer;border-radius:10px;padding:11px 18px;font-weight:600;
+  font-size:14px;background:var(--primary);color:#fff}
+button:hover{opacity:.9}
+</style>
 </head>
-<body>$body
+<body>
+<div class="wrap">
+  <section class="card">
+    <h1>$name</h1>
+    <p class="muted">$purpose</p>
+  </section>
+  <section class="card">
+    <h2>Selected features</h2>
+    <ul>$featureLis</ul>
+  </section>
+  <section class="card">
+    <h2>Try it</h2>
+    <button type="button" id="app-ping">Ping UI</button>
+    <p class="muted" id="app-ping-out" style="margin-top:12px">Waiting…</p>
+  </section>
+</div>
 <script>
 document.getElementById('app-ping')?.addEventListener('click',function(){
   var o=document.getElementById('app-ping-out');

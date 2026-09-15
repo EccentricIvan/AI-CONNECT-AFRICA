@@ -2,13 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../features/website/site_assembler.dart';
 import '../../features/website/site_blocks.dart';
 import '../../shared/widgets/html_preview.dart';
-import '../../shared/widgets/studio_page.dart';
 
 /// Identity questions asked before building. Everything else on the page comes
 /// from the vertical's preset copy, so a student can build a complete site
@@ -44,7 +42,7 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
   final Set<String> _features = {};
 
   SiteVertical? _selected;
-  WebViewController? _webViewController;
+  String _previewHtml = '';
   bool _showPreview = false;
   bool _building = false;
 
@@ -69,13 +67,7 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
       ..clear()
       ..addAll(v.features.where((f) => f.on).map((f) => f.blockId));
 
-    _webViewController = null;
-    unawaited(() async {
-      final c = await createPreviewWebViewController();
-      if (!mounted) return;
-      setState(() => _webViewController = c);
-    }());
-
+    _previewHtml = '';
     setState(() {
       _selected = v;
       _showPreview = false;
@@ -95,10 +87,11 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
         selected: _features,
         answers: answers,
       );
-      final c = _webViewController;
-      if (c != null) await loadHtmlPreview(c, html);
       if (!mounted) return;
-      setState(() => _showPreview = true);
+      setState(() {
+        _previewHtml = html;
+        _showPreview = true;
+      });
     } finally {
       if (mounted) setState(() => _building = false);
     }
@@ -115,49 +108,8 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
   }
 
   void _openFullScreen() {
-    final c = _webViewController;
-    if (c == null) return;
-    showDialog<void>(
-      context: context,
-      useSafeArea: false,
-      builder: (ctx) {
-        final top = MediaQuery.paddingOf(ctx).top;
-        return Dialog.fullscreen(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned.fill(child: WebViewWidget(controller: c)),
-              Positioned(
-                top: top + 12,
-                right: 16,
-                child: Material(
-                  elevation: 8,
-                  borderRadius: BorderRadius.circular(28),
-                  color: Colors.white.withValues(alpha: 0.94),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(28),
-                    onTap: () => Navigator.of(ctx).pop(),
-                    child: const Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.close, size: 20),
-                          SizedBox(width: 8),
-                          Text('Close Full Screen',
-                              style: TextStyle(fontWeight: FontWeight.w700)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
+    if (_previewHtml.trim().isEmpty) return;
+    showHtmlFullScreen(context, _previewHtml);
   }
 
   @override
@@ -177,7 +129,6 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
         leading: v != null
             ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back)
             : null,
-        actions: const [StudioDrawerButton()],
       ),
       floatingActionButton: v == null
           ? null
@@ -204,9 +155,10 @@ class _SiteBuilderScreenState extends ConsumerState<SiteBuilderScreen> {
       body: v == null
           ? _VerticalPicker(onSelect: _selectVertical)
           : _showPreview
-              ? _webViewController != null
-                  ? WebViewWidget(controller: _webViewController!)
-                  : const Center(child: CircularProgressIndicator())
+              ? Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: BrowserFrame(html: _previewHtml),
+                )
               : _Setup(
                   vertical: v,
                   controllers: _controllers,

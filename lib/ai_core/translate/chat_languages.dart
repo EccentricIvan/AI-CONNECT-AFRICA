@@ -17,16 +17,15 @@ final chatLanguages = [
 
 /// Map a stored / legacy code onto a picker value so dropdowns never crash.
 ///
-/// Kirundi (`rn`) stays Kirundi in the profile; the picker shows Kinyarwanda
-/// because AfriSLM has no dedicated Kirundi pair.
+/// Every AfriSLM language stays itself. Only unknown codes fall back to
+/// English — mapping Yoruba / Zulu / … to `en` made local-language chat
+/// look broken after a download if the saved profile was not in the
+/// short East-Africa picker list.
 String coerceChatLanguage(String code) {
   if (isPrimaryChatLanguage(code)) return code;
-  switch (code) {
-    case 'rn':
-      return 'rw';
-    default:
-      return 'en';
-  }
+  if (code == 'rn') return 'rw';
+  if (isSupportedLearningLanguage(code)) return code;
+  return 'en';
 }
 
 /// AfriSLM model-card language name for a chat turn.

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --ink:#10121a; --slate:#1c2030; --yellow:#f6e651;
+  --paper:#f7f7f4; --card:#ffffff; --line:#e6e6e0; --muted:#6a6f7d;
+}
+*{margin:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);background:var(--paper)}
+
+nav{
+  background:var(--card);border-bottom:1px solid var(--line);
+  padding:16px 24px;display:flex;align-items:center;justify-content:space-between;
+  gap:14px;flex-wrap:wrap
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px}
+.brand .mark{
+  width:28px;height:28px;border-radius:50%;background:var(--yellow);
+  display:grid;place-items:center;font-size:14px
+}
+.links{display:flex;gap:20px;flex-wrap:wrap}
+.links a{color:var(--muted);text-decoration:none;font-size:13px;font-weight:600}
+.nav-cta{
+  background:var(--yellow);color:var(--ink);border:none;border-radius:999px;
+  padding:10px 20px;font-weight:800;font-size:13px;cursor:pointer
+}
+
+.hero{
+  max-width:1080px;margin:0 auto;padding:46px 24px;
+  display:grid;gap:34px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  align-items:center
+}
+.tagpill{
+  display:inline-flex;align-items:center;gap:8px;background:var(--card);
+  border:1px solid var(--line);border-radius:999px;padding:7px 15px;
+  font-size:12px;font-weight:700;margin-bottom:18px
+}
+.tagpill .dot{width:8px;height:8px;border-radius:50%;background:var(--yellow)}
+.hero h1{font-size:36px;line-height:1.1;letter-spacing:-1px;margin-bottom:16px}
+.hero h1 em{
+  font-style:normal;background:linear-gradient(transparent 62%,var(--yellow) 62%)
+}
+.hero p{color:var(--muted);font-size:15px;line-height:1.65;margin-bottom:24px}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.btn{
+  border:none;border-radius:999px;padding:14px 26px;font-size:14px;font-weight:800;
+  cursor:pointer;text-decoration:none;display:inline-block
+}
+.btn-primary{background:var(--yellow);color:var(--ink)}
+.btn-ghost{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.trusted{margin-top:28px;font-size:11px;letter-spacing:1px;color:var(--muted);font-weight:700}
+.logos{display:flex;gap:20px;flex-wrap:wrap;margin-top:12px;font-weight:800;color:#9aa0ad}
+
+.mock{
+  background:var(--slate);border-radius:18px;padding:18px;color:#e8eaf2;
+  box-shadow:0 22px 44px rgba(16,18,26,.24)
+}
+.mock .bar{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.mock .bar i{width:9px;height:9px;border-radius:50%;background:#4b5163;display:block}
+.mock h4{font-size:14px;margin-bottom:12px}
+.mgrid{display:grid;gap:10px;grid-template-columns:repeat(3,1fr)}
+.mcard{background:#262b3d;border-radius:12px;padding:12px}
+.mcard .v{font-size:19px;font-weight:800}
+.mcard .l{font-size:10px;color:#9aa1b5;margin-top:3px}
+.mlist{margin-top:12px;background:#262b3d;border-radius:12px;padding:12px}
+.mlist div{
+  display:flex;align-items:center;gap:9px;font-size:12px;
+  color:#c7cbd8;padding:5px 0
+}
+.mlist i{width:13px;height:13px;border-radius:4px;border:1.5px solid #5b6178;display:block}
+.mlist .done i{background:var(--yellow);border-color:var(--yellow)}
+
+.why{background:var(--card);border-top:1px solid var(--line);padding:44px 24px;text-align:center}
+.why .chip{
+  display:inline-block;background:var(--paper);border:1px solid var(--line);
+  border-radius:999px;padding:6px 15px;font-size:11px;font-weight:800;
+  letter-spacing:.6px;margin-bottom:16px
+}
+.why h2{font-size:26px;line-height:1.25;margin-bottom:12px}
+.why h2 em{font-style:normal;background:linear-gradient(transparent 62%,var(--yellow) 62%)}
+.why p{color:var(--muted);font-size:14px;line-height:1.6;max-width:520px;margin:0 auto}
+
+.compare{
+  max-width:940px;margin:28px auto 0;display:grid;gap:16px;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));text-align:left
+}
+.pane{border:1px solid var(--line);border-radius:18px;padding:20px;background:var(--paper)}
+.pane.good{background:#fefce0;border-color:#f0e79a}
+.pane h3{font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.pane p{font-size:13px;color:var(--muted);line-height:1.6}
+
+.contact{background:var(--slate);color:#e8eaf2;padding:34px 24px;text-align:center}
+.contact h2{font-size:19px;margin-bottom:12px}
+.contact p{color:#a7adbe;font-size:13px;margin-bottom:6px}
+
+footer{background:#0b0d14;color:#767c8d;text-align:center;padding:18px;font-size:12px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="brand"><span class="mark">◆</span> {{company_name}}</div>
+  <div class="links">
+    <a href="#product">Product</a>
+    <a href="#why">Why switch</a>
+    <a href="#contact">Contact</a>
+  </div>
+  <button class="nav-cta" type="button">Get Started</button>
+</nav>
+
+<div class="hero" id="product">
+  <div>
+    <span class="tagpill"><span class="dot"></span> {{pill_text}}</span>
+    <h1><em>{{tagline}}</em></h1>
+    <p>{{description}}</p>
+    <div class="cta">
+      <a href="#contact" class="btn btn-primary">Start Free →</a>
+      <a href="#why" class="btn btn-ghost">▶ Book Demo</a>
+    </div>
+    <div class="trusted">TRUSTED BY {{trusted_count}} TEAMS</div>
+    <div class="logos"><span>◈ Acme</span><span>✦ Rocket</span><span>⚡ BoltShift</span></div>
+  </div>
+
+  <div class="mock">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <h4>{{project_name}}</h4>
+    <div class="mgrid">
+      <div class="mcard"><div class="v">{{metric1_value}}</div><div class="l">{{metric1_label}}</div></div>
+      <div class="mcard"><div class="v">{{metric2_value}}</div><div class="l">{{metric2_label}}</div></div>
+      <div class="mcard"><div class="v">{{metric3_value}}</div><div class="l">{{metric3_label}}</div></div>
+    </div>
+    <div class="mlist">
+      <div class="done"><i></i> {{task1}}</div>
+      <div><i></i> {{task2}}</div>
+      <div><i></i> {{task3}}</div>
+    </div>
+  </div>
+</div>
+
+<div class="why" id="why">
+  <span class="chip">WHY SWITCH?</span>
+  <h2>Stop drowning in scattered work.<br><em>Start moving together.</em></h2>
+  <p>{{why_text}}</p>
+
+  <div class="compare">
+    <div class="pane">
+      <h3>⚠️ The Old Way</h3>
+      <p>{{old_way}}</p>
+    </div>
+    <div class="pane good">
+      <h3>✅ The New Way</h3>
+      <p>{{new_way}}</p>
+    </div>
+  </div>
+</div>
+
+<div class="contact" id="contact">
+  <h2>Talk to us</h2>
+  <p>✉️ {{email}}</p>
+  <p>📞 {{phone}}</p>
+</div>
+
+<footer>&copy; 2026 {{company_name}} — Built with AI Connect Africa</footer>
+
+</body>
+</html>

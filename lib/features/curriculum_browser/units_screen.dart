@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../ai_core/tutor/programming_topic.dart';
 import '../../core/theme/app_colors.dart';
-import '../../curriculum/curriculum_provider.dart';
+import '../../services/custom_subject_service.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/localized_text.dart';
 import '../../shared/widgets/studio_page.dart';
@@ -14,12 +14,14 @@ class UnitsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final curriculum = ref.watch(curriculumServiceProvider);
+    // subjectByIdProvider, not CurriculumService.load, so a subject the
+    // teacher created opens here too. Bundled subjects resolve exactly as
+    // before; a custom one is built from the material uploaded into it.
+    final subjectAsync = ref.watch(subjectByIdProvider(subjectId));
 
-    return FutureBuilder(
-      future: curriculum.load(subjectId),
-      builder: (context, snapshot) {
-        final subject = snapshot.data;
+    return Builder(
+      builder: (context) {
+        final subject = subjectAsync.valueOrNull;
         if (subject == null) {
           return Scaffold(
             backgroundColor: Colors.transparent,

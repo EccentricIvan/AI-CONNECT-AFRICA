@@ -4504,6 +4504,900 @@ class TranslationCacheEntriesCompanion
   }
 }
 
+class $TopicResourcesTable extends TopicResources
+    with TableInfo<$TopicResourcesTable, TopicResource> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TopicResourcesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _topicKeyMeta = const VerificationMeta(
+    'topicKey',
+  );
+  @override
+  late final GeneratedColumn<String> topicKey = GeneratedColumn<String>(
+    'topic_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _termMarkerMeta = const VerificationMeta(
+    'termMarker',
+  );
+  @override
+  late final GeneratedColumn<int> termMarker = GeneratedColumn<int>(
+    'term_marker',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(kAllTermsMarker),
+  );
+  static const VerificationMeta _resourceTitleMeta = const VerificationMeta(
+    'resourceTitle',
+  );
+  @override
+  late final GeneratedColumn<String> resourceTitle = GeneratedColumn<String>(
+    'resource_title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _contentChunkMeta = const VerificationMeta(
+    'contentChunk',
+  );
+  @override
+  late final GeneratedColumn<String> contentChunk = GeneratedColumn<String>(
+    'content_chunk',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    topicKey,
+    termMarker,
+    resourceTitle,
+    contentChunk,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'topic_resources';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TopicResource> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('topic_key')) {
+      context.handle(
+        _topicKeyMeta,
+        topicKey.isAcceptableOrUnknown(data['topic_key']!, _topicKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_topicKeyMeta);
+    }
+    if (data.containsKey('term_marker')) {
+      context.handle(
+        _termMarkerMeta,
+        termMarker.isAcceptableOrUnknown(data['term_marker']!, _termMarkerMeta),
+      );
+    }
+    if (data.containsKey('resource_title')) {
+      context.handle(
+        _resourceTitleMeta,
+        resourceTitle.isAcceptableOrUnknown(
+          data['resource_title']!,
+          _resourceTitleMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_resourceTitleMeta);
+    }
+    if (data.containsKey('content_chunk')) {
+      context.handle(
+        _contentChunkMeta,
+        contentChunk.isAcceptableOrUnknown(
+          data['content_chunk']!,
+          _contentChunkMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_contentChunkMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  TopicResource map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TopicResource(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      topicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}topic_key'],
+      )!,
+      termMarker: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}term_marker'],
+      )!,
+      resourceTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}resource_title'],
+      )!,
+      contentChunk: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}content_chunk'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $TopicResourcesTable createAlias(String alias) {
+    return $TopicResourcesTable(attachedDatabase, alias);
+  }
+}
+
+class TopicResource extends DataClass implements Insertable<TopicResource> {
+  final int id;
+
+  /// Curriculum subject this resource belongs to, e.g. `chemistry`.
+  ///
+  /// Must be spelled the same way on write and on read or retrieval silently
+  /// returns nothing forever — see `normalizeSubjectId`, which both sides call.
+  final String subjectId;
+
+  /// Normalized lesson/topic identifier tying the resource to one point in the
+  /// hardcoded syllabus. Always written through `normalizeTopicKey` so a
+  /// teacher typing "Acid–Base Balances" and a chat turn on the lesson titled
+  /// "Acid-Base Balances" land on the same key.
+  final String topicKey;
+
+  /// School term this resource applies to: 1, 2 or 3.
+  ///
+  /// [kAllTermsMarker] (0) means "applies to every term", which is the right
+  /// default for a textbook extract that is not term-specific.
+  final int termMarker;
+
+  /// Human-readable name, e.g. "Acid-Base Balances Notes". Every chunk of one
+  /// document shares the title — that is what makes deletion by title able to
+  /// remove a whole resource in a single statement.
+  final String resourceTitle;
+
+  /// One ~500-character slice of the resource's text. Stored as many small
+  /// rows rather than one large blob so a retrieval can return the paragraphs
+  /// that matter instead of a whole chapter — on a 4 GB device the prompt
+  /// budget, not the disk, is the scarce resource.
+  final String contentChunk;
+
+  /// ISO-8601 UTC timestamp. TEXT rather than drift's default integer
+  /// `DateTimeColumn` so the physical column type matches the agreed schema.
+  final String createdAt;
+  const TopicResource({
+    required this.id,
+    required this.subjectId,
+    required this.topicKey,
+    required this.termMarker,
+    required this.resourceTitle,
+    required this.contentChunk,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['topic_key'] = Variable<String>(topicKey);
+    map['term_marker'] = Variable<int>(termMarker);
+    map['resource_title'] = Variable<String>(resourceTitle);
+    map['content_chunk'] = Variable<String>(contentChunk);
+    map['created_at'] = Variable<String>(createdAt);
+    return map;
+  }
+
+  TopicResourcesCompanion toCompanion(bool nullToAbsent) {
+    return TopicResourcesCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      topicKey: Value(topicKey),
+      termMarker: Value(termMarker),
+      resourceTitle: Value(resourceTitle),
+      contentChunk: Value(contentChunk),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory TopicResource.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TopicResource(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      topicKey: serializer.fromJson<String>(json['topicKey']),
+      termMarker: serializer.fromJson<int>(json['termMarker']),
+      resourceTitle: serializer.fromJson<String>(json['resourceTitle']),
+      contentChunk: serializer.fromJson<String>(json['contentChunk']),
+      createdAt: serializer.fromJson<String>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'topicKey': serializer.toJson<String>(topicKey),
+      'termMarker': serializer.toJson<int>(termMarker),
+      'resourceTitle': serializer.toJson<String>(resourceTitle),
+      'contentChunk': serializer.toJson<String>(contentChunk),
+      'createdAt': serializer.toJson<String>(createdAt),
+    };
+  }
+
+  TopicResource copyWith({
+    int? id,
+    String? subjectId,
+    String? topicKey,
+    int? termMarker,
+    String? resourceTitle,
+    String? contentChunk,
+    String? createdAt,
+  }) => TopicResource(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    topicKey: topicKey ?? this.topicKey,
+    termMarker: termMarker ?? this.termMarker,
+    resourceTitle: resourceTitle ?? this.resourceTitle,
+    contentChunk: contentChunk ?? this.contentChunk,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  TopicResource copyWithCompanion(TopicResourcesCompanion data) {
+    return TopicResource(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      topicKey: data.topicKey.present ? data.topicKey.value : this.topicKey,
+      termMarker: data.termMarker.present
+          ? data.termMarker.value
+          : this.termMarker,
+      resourceTitle: data.resourceTitle.present
+          ? data.resourceTitle.value
+          : this.resourceTitle,
+      contentChunk: data.contentChunk.present
+          ? data.contentChunk.value
+          : this.contentChunk,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TopicResource(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('topicKey: $topicKey, ')
+          ..write('termMarker: $termMarker, ')
+          ..write('resourceTitle: $resourceTitle, ')
+          ..write('contentChunk: $contentChunk, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    subjectId,
+    topicKey,
+    termMarker,
+    resourceTitle,
+    contentChunk,
+    createdAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TopicResource &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.topicKey == this.topicKey &&
+          other.termMarker == this.termMarker &&
+          other.resourceTitle == this.resourceTitle &&
+          other.contentChunk == this.contentChunk &&
+          other.createdAt == this.createdAt);
+}
+
+class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
+  final Value<int> id;
+  final Value<String> subjectId;
+  final Value<String> topicKey;
+  final Value<int> termMarker;
+  final Value<String> resourceTitle;
+  final Value<String> contentChunk;
+  final Value<String> createdAt;
+  const TopicResourcesCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.topicKey = const Value.absent(),
+    this.termMarker = const Value.absent(),
+    this.resourceTitle = const Value.absent(),
+    this.contentChunk = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  TopicResourcesCompanion.insert({
+    this.id = const Value.absent(),
+    required String subjectId,
+    required String topicKey,
+    this.termMarker = const Value.absent(),
+    required String resourceTitle,
+    required String contentChunk,
+    required String createdAt,
+  }) : subjectId = Value(subjectId),
+       topicKey = Value(topicKey),
+       resourceTitle = Value(resourceTitle),
+       contentChunk = Value(contentChunk),
+       createdAt = Value(createdAt);
+  static Insertable<TopicResource> custom({
+    Expression<int>? id,
+    Expression<String>? subjectId,
+    Expression<String>? topicKey,
+    Expression<int>? termMarker,
+    Expression<String>? resourceTitle,
+    Expression<String>? contentChunk,
+    Expression<String>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (topicKey != null) 'topic_key': topicKey,
+      if (termMarker != null) 'term_marker': termMarker,
+      if (resourceTitle != null) 'resource_title': resourceTitle,
+      if (contentChunk != null) 'content_chunk': contentChunk,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  TopicResourcesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? subjectId,
+    Value<String>? topicKey,
+    Value<int>? termMarker,
+    Value<String>? resourceTitle,
+    Value<String>? contentChunk,
+    Value<String>? createdAt,
+  }) {
+    return TopicResourcesCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      topicKey: topicKey ?? this.topicKey,
+      termMarker: termMarker ?? this.termMarker,
+      resourceTitle: resourceTitle ?? this.resourceTitle,
+      contentChunk: contentChunk ?? this.contentChunk,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (topicKey.present) {
+      map['topic_key'] = Variable<String>(topicKey.value);
+    }
+    if (termMarker.present) {
+      map['term_marker'] = Variable<int>(termMarker.value);
+    }
+    if (resourceTitle.present) {
+      map['resource_title'] = Variable<String>(resourceTitle.value);
+    }
+    if (contentChunk.present) {
+      map['content_chunk'] = Variable<String>(contentChunk.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<String>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TopicResourcesCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('topicKey: $topicKey, ')
+          ..write('termMarker: $termMarker, ')
+          ..write('resourceTitle: $resourceTitle, ')
+          ..write('contentChunk: $contentChunk, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CustomSubjectsTable extends CustomSubjects
+    with TableInfo<$CustomSubjectsTable, CustomSubject> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CustomSubjectsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<String> icon = GeneratedColumn<String>(
+    'icon',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('menu_book'),
+  );
+  static const VerificationMeta _colorMeta = const VerificationMeta('color');
+  @override
+  late final GeneratedColumn<String> color = GeneratedColumn<String>(
+    'color',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('#4F46E5'),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    name,
+    icon,
+    color,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'custom_subjects';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CustomSubject> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
+    if (data.containsKey('color')) {
+      context.handle(
+        _colorMeta,
+        color.isAcceptableOrUnknown(data['color']!, _colorMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CustomSubject map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CustomSubject(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon'],
+      )!,
+      color: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}color'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CustomSubjectsTable createAlias(String alias) {
+    return $CustomSubjectsTable(attachedDatabase, alias);
+  }
+}
+
+class CustomSubject extends DataClass implements Insertable<CustomSubject> {
+  final int id;
+
+  /// Slug used in routes and as `topic_resources.subject_id`.
+  ///
+  /// Unique, and validated against the bundled ids before insert so a teacher
+  /// cannot create a second "chemistry" that shadows the bundled one — see
+  /// [CustomSubjectService.create].
+  final String subjectId;
+
+  /// What the teacher typed, shown on the subject card.
+  final String name;
+
+  /// Icon key and card colour, using the same vocabulary as the bundled
+  /// curriculum JSON so one card widget renders both kinds.
+  final String icon;
+  final String color;
+
+  /// ISO-8601 UTC, matching `topic_resources.created_at`.
+  final String createdAt;
+  const CustomSubject({
+    required this.id,
+    required this.subjectId,
+    required this.name,
+    required this.icon,
+    required this.color,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['name'] = Variable<String>(name);
+    map['icon'] = Variable<String>(icon);
+    map['color'] = Variable<String>(color);
+    map['created_at'] = Variable<String>(createdAt);
+    return map;
+  }
+
+  CustomSubjectsCompanion toCompanion(bool nullToAbsent) {
+    return CustomSubjectsCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      name: Value(name),
+      icon: Value(icon),
+      color: Value(color),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory CustomSubject.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CustomSubject(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      name: serializer.fromJson<String>(json['name']),
+      icon: serializer.fromJson<String>(json['icon']),
+      color: serializer.fromJson<String>(json['color']),
+      createdAt: serializer.fromJson<String>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'name': serializer.toJson<String>(name),
+      'icon': serializer.toJson<String>(icon),
+      'color': serializer.toJson<String>(color),
+      'createdAt': serializer.toJson<String>(createdAt),
+    };
+  }
+
+  CustomSubject copyWith({
+    int? id,
+    String? subjectId,
+    String? name,
+    String? icon,
+    String? color,
+    String? createdAt,
+  }) => CustomSubject(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    name: name ?? this.name,
+    icon: icon ?? this.icon,
+    color: color ?? this.color,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  CustomSubject copyWithCompanion(CustomSubjectsCompanion data) {
+    return CustomSubject(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      name: data.name.present ? data.name.value : this.name,
+      icon: data.icon.present ? data.icon.value : this.icon,
+      color: data.color.present ? data.color.value : this.color,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomSubject(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('name: $name, ')
+          ..write('icon: $icon, ')
+          ..write('color: $color, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, subjectId, name, icon, color, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CustomSubject &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.name == this.name &&
+          other.icon == this.icon &&
+          other.color == this.color &&
+          other.createdAt == this.createdAt);
+}
+
+class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
+  final Value<int> id;
+  final Value<String> subjectId;
+  final Value<String> name;
+  final Value<String> icon;
+  final Value<String> color;
+  final Value<String> createdAt;
+  const CustomSubjectsCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.color = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  CustomSubjectsCompanion.insert({
+    this.id = const Value.absent(),
+    required String subjectId,
+    required String name,
+    this.icon = const Value.absent(),
+    this.color = const Value.absent(),
+    required String createdAt,
+  }) : subjectId = Value(subjectId),
+       name = Value(name),
+       createdAt = Value(createdAt);
+  static Insertable<CustomSubject> custom({
+    Expression<int>? id,
+    Expression<String>? subjectId,
+    Expression<String>? name,
+    Expression<String>? icon,
+    Expression<String>? color,
+    Expression<String>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (name != null) 'name': name,
+      if (icon != null) 'icon': icon,
+      if (color != null) 'color': color,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  CustomSubjectsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? subjectId,
+    Value<String>? name,
+    Value<String>? icon,
+    Value<String>? color,
+    Value<String>? createdAt,
+  }) {
+    return CustomSubjectsCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (icon.present) {
+      map['icon'] = Variable<String>(icon.value);
+    }
+    if (color.present) {
+      map['color'] = Variable<String>(color.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<String>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CustomSubjectsCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('name: $name, ')
+          ..write('icon: $icon, ')
+          ..write('color: $color, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -4522,6 +5416,20 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   );
   late final $TranslationCacheEntriesTable translationCacheEntries =
       $TranslationCacheEntriesTable(this);
+  late final $TopicResourcesTable topicResources = $TopicResourcesTable(this);
+  late final $CustomSubjectsTable customSubjects = $CustomSubjectsTable(this);
+  late final Index idxTopicResourcesLookup = Index(
+    'idx_topic_resources_lookup',
+    'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
+  );
+  late final Index idxTopicResourcesTitle = Index(
+    'idx_topic_resources_title',
+    'CREATE INDEX idx_topic_resources_title ON topic_resources (resource_title)',
+  );
+  late final Index idxCustomSubjectsSubjectId = Index(
+    'idx_custom_subjects_subject_id',
+    'CREATE INDEX idx_custom_subjects_subject_id ON custom_subjects (subject_id)',
+  );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
   late final PathDao pathDao = PathDao(this as OticDatabase);
@@ -4529,6 +5437,12 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final ProjectDao projectDao = ProjectDao(this as OticDatabase);
   late final WebsiteDao websiteDao = WebsiteDao(this as OticDatabase);
   late final TranslationCacheDao translationCacheDao = TranslationCacheDao(
+    this as OticDatabase,
+  );
+  late final TopicResourceDao topicResourceDao = TopicResourceDao(
+    this as OticDatabase,
+  );
+  late final CustomSubjectDao customSubjectDao = CustomSubjectDao(
     this as OticDatabase,
   );
   @override
@@ -4544,6 +5458,11 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     studentProjects,
     websiteProjects,
     translationCacheEntries,
+    topicResources,
+    customSubjects,
+    idxTopicResourcesLookup,
+    idxTopicResourcesTitle,
+    idxCustomSubjectsSubjectId,
   ];
 }
 
@@ -6815,6 +7734,461 @@ typedef $$TranslationCacheEntriesTableProcessedTableManager =
       TranslationCacheEntry,
       PrefetchHooks Function()
     >;
+typedef $$TopicResourcesTableCreateCompanionBuilder =
+    TopicResourcesCompanion Function({
+      Value<int> id,
+      required String subjectId,
+      required String topicKey,
+      Value<int> termMarker,
+      required String resourceTitle,
+      required String contentChunk,
+      required String createdAt,
+    });
+typedef $$TopicResourcesTableUpdateCompanionBuilder =
+    TopicResourcesCompanion Function({
+      Value<int> id,
+      Value<String> subjectId,
+      Value<String> topicKey,
+      Value<int> termMarker,
+      Value<String> resourceTitle,
+      Value<String> contentChunk,
+      Value<String> createdAt,
+    });
+
+class $$TopicResourcesTableFilterComposer
+    extends Composer<_$OticDatabase, $TopicResourcesTable> {
+  $$TopicResourcesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get topicKey => $composableBuilder(
+    column: $table.topicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get termMarker => $composableBuilder(
+    column: $table.termMarker,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get resourceTitle => $composableBuilder(
+    column: $table.resourceTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get contentChunk => $composableBuilder(
+    column: $table.contentChunk,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TopicResourcesTableOrderingComposer
+    extends Composer<_$OticDatabase, $TopicResourcesTable> {
+  $$TopicResourcesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get topicKey => $composableBuilder(
+    column: $table.topicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get termMarker => $composableBuilder(
+    column: $table.termMarker,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get resourceTitle => $composableBuilder(
+    column: $table.resourceTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get contentChunk => $composableBuilder(
+    column: $table.contentChunk,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TopicResourcesTableAnnotationComposer
+    extends Composer<_$OticDatabase, $TopicResourcesTable> {
+  $$TopicResourcesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get topicKey =>
+      $composableBuilder(column: $table.topicKey, builder: (column) => column);
+
+  GeneratedColumn<int> get termMarker => $composableBuilder(
+    column: $table.termMarker,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get resourceTitle => $composableBuilder(
+    column: $table.resourceTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get contentChunk => $composableBuilder(
+    column: $table.contentChunk,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$TopicResourcesTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $TopicResourcesTable,
+          TopicResource,
+          $$TopicResourcesTableFilterComposer,
+          $$TopicResourcesTableOrderingComposer,
+          $$TopicResourcesTableAnnotationComposer,
+          $$TopicResourcesTableCreateCompanionBuilder,
+          $$TopicResourcesTableUpdateCompanionBuilder,
+          (
+            TopicResource,
+            BaseReferences<_$OticDatabase, $TopicResourcesTable, TopicResource>,
+          ),
+          TopicResource,
+          PrefetchHooks Function()
+        > {
+  $$TopicResourcesTableTableManager(
+    _$OticDatabase db,
+    $TopicResourcesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TopicResourcesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TopicResourcesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TopicResourcesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> topicKey = const Value.absent(),
+                Value<int> termMarker = const Value.absent(),
+                Value<String> resourceTitle = const Value.absent(),
+                Value<String> contentChunk = const Value.absent(),
+                Value<String> createdAt = const Value.absent(),
+              }) => TopicResourcesCompanion(
+                id: id,
+                subjectId: subjectId,
+                topicKey: topicKey,
+                termMarker: termMarker,
+                resourceTitle: resourceTitle,
+                contentChunk: contentChunk,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String subjectId,
+                required String topicKey,
+                Value<int> termMarker = const Value.absent(),
+                required String resourceTitle,
+                required String contentChunk,
+                required String createdAt,
+              }) => TopicResourcesCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                topicKey: topicKey,
+                termMarker: termMarker,
+                resourceTitle: resourceTitle,
+                contentChunk: contentChunk,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TopicResourcesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $TopicResourcesTable,
+      TopicResource,
+      $$TopicResourcesTableFilterComposer,
+      $$TopicResourcesTableOrderingComposer,
+      $$TopicResourcesTableAnnotationComposer,
+      $$TopicResourcesTableCreateCompanionBuilder,
+      $$TopicResourcesTableUpdateCompanionBuilder,
+      (
+        TopicResource,
+        BaseReferences<_$OticDatabase, $TopicResourcesTable, TopicResource>,
+      ),
+      TopicResource,
+      PrefetchHooks Function()
+    >;
+typedef $$CustomSubjectsTableCreateCompanionBuilder =
+    CustomSubjectsCompanion Function({
+      Value<int> id,
+      required String subjectId,
+      required String name,
+      Value<String> icon,
+      Value<String> color,
+      required String createdAt,
+    });
+typedef $$CustomSubjectsTableUpdateCompanionBuilder =
+    CustomSubjectsCompanion Function({
+      Value<int> id,
+      Value<String> subjectId,
+      Value<String> name,
+      Value<String> icon,
+      Value<String> color,
+      Value<String> createdAt,
+    });
+
+class $$CustomSubjectsTableFilterComposer
+    extends Composer<_$OticDatabase, $CustomSubjectsTable> {
+  $$CustomSubjectsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CustomSubjectsTableOrderingComposer
+    extends Composer<_$OticDatabase, $CustomSubjectsTable> {
+  $$CustomSubjectsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get color => $composableBuilder(
+    column: $table.color,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CustomSubjectsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $CustomSubjectsTable> {
+  $$CustomSubjectsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
+
+  GeneratedColumn<String> get color =>
+      $composableBuilder(column: $table.color, builder: (column) => column);
+
+  GeneratedColumn<String> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$CustomSubjectsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $CustomSubjectsTable,
+          CustomSubject,
+          $$CustomSubjectsTableFilterComposer,
+          $$CustomSubjectsTableOrderingComposer,
+          $$CustomSubjectsTableAnnotationComposer,
+          $$CustomSubjectsTableCreateCompanionBuilder,
+          $$CustomSubjectsTableUpdateCompanionBuilder,
+          (
+            CustomSubject,
+            BaseReferences<_$OticDatabase, $CustomSubjectsTable, CustomSubject>,
+          ),
+          CustomSubject,
+          PrefetchHooks Function()
+        > {
+  $$CustomSubjectsTableTableManager(
+    _$OticDatabase db,
+    $CustomSubjectsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CustomSubjectsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CustomSubjectsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CustomSubjectsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> icon = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                Value<String> createdAt = const Value.absent(),
+              }) => CustomSubjectsCompanion(
+                id: id,
+                subjectId: subjectId,
+                name: name,
+                icon: icon,
+                color: color,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String subjectId,
+                required String name,
+                Value<String> icon = const Value.absent(),
+                Value<String> color = const Value.absent(),
+                required String createdAt,
+              }) => CustomSubjectsCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                name: name,
+                icon: icon,
+                color: color,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CustomSubjectsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $CustomSubjectsTable,
+      CustomSubject,
+      $$CustomSubjectsTableFilterComposer,
+      $$CustomSubjectsTableOrderingComposer,
+      $$CustomSubjectsTableAnnotationComposer,
+      $$CustomSubjectsTableCreateCompanionBuilder,
+      $$CustomSubjectsTableUpdateCompanionBuilder,
+      (
+        CustomSubject,
+        BaseReferences<_$OticDatabase, $CustomSubjectsTable, CustomSubject>,
+      ),
+      CustomSubject,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -6838,4 +8212,8 @@ class $OticDatabaseManager {
         _db,
         _db.translationCacheEntries,
       );
+  $$TopicResourcesTableTableManager get topicResources =>
+      $$TopicResourcesTableTableManager(_db, _db.topicResources);
+  $$CustomSubjectsTableTableManager get customSubjects =>
+      $$CustomSubjectsTableTableManager(_db, _db.customSubjects);
 }

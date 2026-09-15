@@ -18,6 +18,7 @@ import '../model/programming_model_manager.dart';
 import '../translate/afrislm_model_manager.dart';
 import '../translate/drift_translation_store.dart';
 import '../translate/follow_up_glossary.dart';
+import '../translate/supported_languages.dart';
 import '../translate/translation_pipeline.dart';
 import '../translate/translation_quality.dart';
 import '../tutor/programming_topic.dart';
@@ -112,19 +113,68 @@ final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
 class DualModelRuntime {
   DualModelRuntime({
     required this.reasoner,
-    this.translator,
+    InferenceEngine? translator,
     this.shared = false,
     this.programmingPath,
+    this.afrislmPath,
     InferenceEngine? programming,
-  }) : _programming = programming;
+  })  : _translator = translator,
+        _programming = programming;
 
   final InferenceEngine reasoner;
-  final InferenceEngine? translator;
+  InferenceEngine? _translator;
   final bool shared;
   String? programmingPath;
+
+  /// On-disk AfriSLM path for lazy / retry load after Install Packages.
+  String? afrislmPath;
   InferenceEngine? _programming;
 
+  InferenceEngine? get translator => _translator;
+
   InferenceEngine? get programming => _programming;
+
+  Future<InferenceEngine?>? _translatorLoad;
+
+  /// Load AfriSLM if missing. Never throws — translation stays soft-fail.
+  Future<InferenceEngine?> ensureTranslator() async {
+    final existing = _translator;
+    if (existing != null && existing.isReady) return existing;
+    if (shared && identical(existing, reasoner)) return existing;
+
+    final inflight = _translatorLoad;
+    if (inflight != null) return inflight;
+
+    final pending = _loadTranslator();
+    _translatorLoad = pending;
+    try {
+      return await pending;
+    } finally {
+      if (identical(_translatorLoad, pending)) _translatorLoad = null;
+    }
+  }
+
+  Future<InferenceEngine?> _loadTranslator() async {
+    try {
+      final info = await AfriSlmModelManager().checkModel();
+      if (!info.isReady || info.path == null) {
+        debugPrint('TRANSLATION OFF: AfriSLM GGUF not on disk yet.');
+        return null;
+      }
+      afrislmPath = info.path;
+      final engine = LlamaCppEngineImpl(
+        schedulerLane: EngineLane.translate,
+        backendLabel: 'llama.cpp · AfriSLM 0.8B',
+      );
+      await engine.loadModel(info.path!);
+      _translator = engine;
+      debugPrint('TRANSLATION ON: AfriSLM at ${info.path}');
+      return engine;
+    } catch (e, st) {
+      debugPrint('TRANSLATION LOAD FAILED: $e\n$st');
+      return null;
+    }
+  }
 
   Future<InferenceEngine?> ensureProgramming() async {
     if (_programming != null && _programming!.isReady) return _programming;
@@ -255,21 +305,30 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
 
     InferenceEngine? translator;
     var shared = false;
+    final afrislmPath = plan.afrislmPath;
     if (plan.canTranslate) {
       if (plan.sameFile) {
         debugPrint(
-          'TRANSLATION using the Qwen file (same path). '
-          'Install AfriSLM separately for a real translator.',
+          'TRANSLATION OFF: AfriSLM path collided with the chat brain. '
+          'Install the translation GGUF separately.',
         );
-        translator = reasoner;
-        shared = true;
       } else {
-        final engine = LlamaCppEngineImpl(
-          schedulerLane: EngineLane.translate,
-          backendLabel: 'llama.cpp · AfriSLM 0.8B',
-        );
-        await engine.loadModel(plan.afrislmPath!);
-        translator = engine;
+        // Soft-fail: never take down the chat brain if AfriSLM OOM / fails
+        // after Install Packages on a 4 GB phone.
+        try {
+          final engine = LlamaCppEngineImpl(
+            schedulerLane: EngineLane.translate,
+            backendLabel: 'llama.cpp · AfriSLM 0.8B',
+          );
+          await engine.loadModel(afrislmPath!);
+          translator = engine;
+          debugPrint('TRANSLATION ON: AfriSLM at $afrislmPath');
+        } catch (e, st) {
+          debugPrint(
+            'TRANSLATION LOAD FAILED (chat stays up; retry on demand): $e\n$st',
+          );
+          translator = null;
+        }
       }
     } else {
       debugPrint('TRANSLATION OFF: no AfriSLM GGUF. English-only tutor.');
@@ -293,11 +352,13 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       translator: translator,
       shared: shared,
       programmingPath: programmingPath,
+      afrislmPath: afrislmPath,
     );
     ref.onDispose(() async {
       await reasoner.dispose();
-      if (translator != null && !identical(translator, reasoner)) {
-        await translator.dispose();
+      final t = runtime.translator;
+      if (t != null && !identical(t, reasoner)) {
+        await t.dispose();
       }
       await runtime.coderService?.dispose();
       if (runtime.coderService == null) {
@@ -381,10 +442,11 @@ final translateModelInfoProvider = FutureProvider<ModelInfo>((ref) async {
 final translateEngineLoadedProvider = FutureProvider<InferenceEngine?>((ref) async {
   if (kIsWeb) return null;
   final dual = await ref.watch(dualModelRuntimeProvider.future);
-  if (dual.translator == null) {
+  final engine = await dual.ensureTranslator();
+  if (engine == null) {
     debugPrint('TRANSLATION OFF: no AfriSLM GGUF loaded.');
   }
-  return dual.translator;
+  return engine;
 });
 
 final translationPipelineProvider = FutureProvider<TranslationPipeline?>((ref) async {
@@ -425,18 +487,32 @@ final translationPipelineProvider = FutureProvider<TranslationPipeline?>((ref) a
 /// untranslated because the student row had not loaded yet.
 Future<String> studentLanguageCode(Ref ref) async {
   final override = ref.read(languageOverrideProvider);
-  if (override != null) return override;
+  String? persisted;
+  try {
+    persisted = await ref.read(persistedLanguageProvider.future);
+  } catch (e) {
+    debugPrint('TRANSLATION: persisted language unread: $e');
+  }
+  String? studentLanguage;
   try {
     final student = await ref.read(activeStudentProvider.future);
+    studentLanguage = student?.language;
     if (student == null) {
-      debugPrint('TRANSLATION OFF: no active student, defaulting to English.');
-      return 'en';
+      debugPrint('TRANSLATION: no active student row (prefs/override still apply).');
     }
-    return student.language;
   } catch (e) {
     debugPrint('TRANSLATION OFF: could not read active student: $e');
-    return 'en';
   }
+  final resolved = resolveLearningLanguage(
+    override: override,
+    persisted: persisted,
+    studentLanguage: studentLanguage,
+  );
+  debugPrint(
+    'TRANSLATION lang=$resolved (override=$override prefs=$persisted '
+    'student=$studentLanguage)',
+  );
+  return resolved;
 }
 
 /// Best-effort: local-language student text → English for the tutor.
@@ -572,8 +648,35 @@ Future<(String, String)> localizeIncomingPair(
 }
 
 /// Warm AfriSLM so the first non-English turn is not blocked on model load.
+///
+/// If the pipeline resolved to null (file was still downloading, or llama.cpp
+/// failed once), rediscover the GGUF and rebuild providers. Never unloads the
+/// chat brain.
 Future<TranslationPipeline?> ensureTranslationPipeline(Ref ref) async {
   try {
+    final existing = await ref.read(translationPipelineProvider.future);
+    if (existing != null) return existing;
+
+    final runtime = await ref.read(dualModelRuntimeProvider.future);
+    var engine = await runtime.ensureTranslator();
+    if (engine == null) {
+      ref.invalidate(translateModelInfoProvider);
+      final info = await ref.read(translateModelInfoProvider.future);
+      if (info.isReady) {
+        runtime.afrislmPath = info.path;
+        engine = await runtime.ensureTranslator();
+      }
+    }
+    if (engine == null) {
+      debugPrint('ensureTranslationPipeline: AfriSLM still unavailable.');
+      return null;
+    }
+
+    ref.invalidate(translateEngineLoadedProvider);
+    ref.invalidate(translationPipelineProvider);
+    ref.invalidate(afrislmTranslationServiceProvider);
+    ref.invalidate(aiEngineServiceProvider);
+    ref.invalidate(chatInferencePipelineProvider);
     return await ref.read(translationPipelineProvider.future);
   } catch (e) {
     debugPrint('ensureTranslationPipeline failed: $e');
@@ -831,6 +934,11 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       state = AsyncData(cur.copyWith(streamingText: cumulative));
     }
 
+    final lang = await studentLanguageCode(ref);
+    if (lang != 'en') {
+      await ensureTranslationPipeline(ref);
+    }
+
     final ChatInferencePipeline cascade;
     try {
       cascade = await ref.read(chatInferencePipelineProvider.future);
@@ -851,8 +959,6 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       ));
       return;
     }
-
-    final lang = await studentLanguageCode(ref);
 
     String englishForSafety = message;
     if (lang != 'en' &&
@@ -881,14 +987,19 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
     }
 
     try {
+      final hasTranslator =
+          cascade.translator != null && cascade.translator!.isAvailable;
       final turn = await cascade.completeTurn(
         userText: message,
         languageCode: lang,
         useCurriculum: useCurriculum,
         safetyNote: safety.tutorNote,
+        // Never feed local-language text to Qwen as "English" when AfriSLM
+        // is still missing after Install Packages — let the cascade soft-fail.
         pretranslatedEnglish: queryLooksLikeMath(message) ||
                 isMathPassThrough(message) ||
-                lang == 'en'
+                lang == 'en' ||
+                !hasTranslator
             ? null
             : englishForSafety,
         onUiToken: pushUi,

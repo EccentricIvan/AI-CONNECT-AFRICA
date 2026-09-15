@@ -8,6 +8,7 @@ import '../ai_core/inference/runtime_config.dart';
 import '../ai_core/tutor/conversation_memory.dart';
 import '../ai_core/tutor/tutor_contract.dart';
 import 'ai_model_manager.dart';
+import 'grounded_tutor_prompt.dart';
 import 'hybrid_model_orchestrator.dart';
 
 /// Conversational chat/tutor brain.
@@ -110,6 +111,58 @@ class QwenChatService {
         onToken: onToken,
       );
     });
+  }
+
+  // ── Hardgrounded retrieval path ──────────────────────────────────────
+  //
+  // The student's question is intercepted here, before it reaches the GGUF /
+  // LiteRT runtime, and wrapped in the fact-book frame from
+  // [grounded_tutor_prompt.dart].
+  //
+  // Retrieval itself deliberately does NOT happen in this class: it takes an
+  // [InferenceEngine] and owns no database handle, and keeping it that way is
+  // what lets the whole chat brain be unit-tested with a mock engine and no
+  // SQLite at all. The caller runs `OfflineRagService.retrieveContextForQuery`
+  // and passes the result in as [retrievedDbChunks]; `GroundedTutorService`
+  // does exactly that in one place.
+
+  /// Streams a tutor answer grounded in the teacher's lesson notes.
+  ///
+  /// [retrievedDbChunks] may be empty — that is the ordinary case for a topic
+  /// with no uploaded material, and the frame substitutes the
+  /// "use global core textbook definitions" fallback rather than an empty
+  /// section.
+  Stream<String> streamGroundedAnswer({
+    required String studentQuestion,
+    required String retrievedDbChunks,
+    int maxTokens = kMaxNewTokens,
+  }) {
+    return streamAnswer(
+      englishUser: buildGroundedUserPrompt(
+        retrievedDbChunks: retrievedDbChunks,
+        studentQuestion: studentQuestion,
+      ),
+      systemPrompt: kGroundedTutorSystemPrompt,
+      maxTokens: maxTokens,
+    );
+  }
+
+  /// Non-streaming counterpart of [streamGroundedAnswer].
+  Future<String> generateGroundedAnswer({
+    required String studentQuestion,
+    required String retrievedDbChunks,
+    int maxTokens = kMaxNewTokens,
+    TokenCallback? onToken,
+  }) {
+    return generateAnswer(
+      englishUser: buildGroundedUserPrompt(
+        retrievedDbChunks: retrievedDbChunks,
+        studentQuestion: studentQuestion,
+      ),
+      systemPrompt: kGroundedTutorSystemPrompt,
+      maxTokens: maxTokens,
+      onToken: onToken,
+    );
   }
 
   Future<void> resetSession() async {

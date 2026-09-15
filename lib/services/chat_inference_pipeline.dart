@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../ai_core/inference/inference_engine.dart';
+import '../ai_core/inference/llama_cpp_engine.dart';
 import '../ai_core/inference/runtime_config.dart';
 import '../ai_core/inference/sanitize_llm_response.dart';
 import '../ai_core/inference/stream_cascade.dart';
@@ -61,7 +62,10 @@ class ChatInferencePipeline {
 
   bool get canOverlapNative {
     final t = translator?.engine;
-    return t != null && !identical(t, reasoner.engine);
+    if (t == null || identical(t, reasoner.engine)) return false;
+    // LiteRT + AfriSLM on phones must stay sequential (4 GB RAM). Only
+    // dual llama.cpp instances safely overlap decode.
+    return reasoner.engine is LlamaCppEngineImpl && t is LlamaCppEngineImpl;
   }
 
   void reset() {

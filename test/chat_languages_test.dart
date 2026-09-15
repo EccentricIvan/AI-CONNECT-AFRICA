@@ -9,8 +9,9 @@ void main() {
 
   test('coerceChatLanguage maps unsupported codes to English', () {
     expect(coerceChatLanguage('lg'), 'lg');
-    expect(coerceChatLanguage('yo'), 'en');
-    expect(coerceChatLanguage('zu'), 'en');
+    expect(coerceChatLanguage('yo'), 'yo');
+    expect(coerceChatLanguage('zu'), 'zu');
+    expect(coerceChatLanguage('fr'), 'en');
   });
 
   test('chatTranslatePromptName is distinct per language', () {

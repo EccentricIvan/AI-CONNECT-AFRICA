@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "build",
+			"path": "tools/.cache/llama.cpp/tools/ui",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": [],
+			"label": "npm: build - tools/.cache/llama.cpp/tools/ui",
+			"detail": "npm run build-pwa-assets && vite build"
+		}
+	]
+}

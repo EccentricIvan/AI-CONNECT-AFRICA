@@ -27,6 +27,7 @@ import '../../features/practice/practice_screen.dart';
 import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teach/teach_screen.dart';
+import '../../features/teacher/lesson_materials_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
 import '../../features/web_dev_lab/web_dev_lab_screen.dart';
@@ -84,6 +85,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             redirect: (_, __) => '/',
           ),
           GoRoute(path: '/learn', builder: (_, __) => const SubjectsScreen()),
+          GoRoute(
+            path: '/teacher/materials',
+            builder: (_, __) => const LessonMaterialsScreen(),
+          ),
           GoRoute(
             path: '/learn/subject/:id',
             builder: (_, state) => UnitsScreen(

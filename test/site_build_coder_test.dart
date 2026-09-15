@@ -41,10 +41,18 @@ Here you go:
     expect(extractHtmlDocument(raw), contains('Ok'));
   });
 
-  test('extractHtmlDocument salvages non-HTML chatter into interactive shell', () {
-    final out = extractHtmlDocument('Just an explanation with no markup.');
+  test('extractHtmlDocument rejects prose instead of dressing it as a site', () {
+    // The caller has a deterministic fallback; handing it null is how that
+    // gets used. Wrapping a refusal in a document would show the student a
+    // "website" that is really the model apologising.
+    expect(extractHtmlDocument('Just an explanation with no markup.'), isNull);
+    expect(extractHtmlDocument('Sorry, I cannot help.'), isNull);
+  });
+
+  test('extractHtmlDocument still salvages a real markup fragment', () {
+    final out = extractHtmlDocument('<h1>Mary\'s Bakery</h1><p>Fresh bread</p>');
     expect(out, isNotNull);
     expect(out, contains('<!DOCTYPE html>'));
-    expect(out!.toLowerCase(), contains('otic_interactive_runtime'));
+    expect(out, contains("Mary's Bakery"));
   });
 }

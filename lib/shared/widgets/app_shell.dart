@@ -37,6 +37,12 @@ class AppShell extends StatelessWidget {
       '/certificates',
     ),
     _NavDest('Teacher', Icons.groups_outlined, Icons.groups_rounded, '/teacher'),
+    _NavDest(
+      'Lesson Materials',
+      Icons.folder_copy_outlined,
+      Icons.folder_copy_rounded,
+      '/teacher/materials',
+    ),
     _NavDest('Settings', Icons.settings_outlined, Icons.settings_rounded, '/settings'),
   ];
 

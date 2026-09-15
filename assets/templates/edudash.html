@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --blue:#2f5fe0; --indigo:#4433c4; --sky:#e8effe; --ink:#131a2b;
+  --paper:#f4f6fb; --card:#ffffff; --line:#e2e8f4; --muted:#6a7488;
+  --green:#22a06b; --amber:#f0a92b;
+}
+*{margin:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);background:var(--paper)}
+
+.topbar{
+  background:var(--card);border-bottom:1px solid var(--line);padding:14px 22px;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:17px}
+.brand .mark{
+  width:30px;height:30px;border-radius:9px;background:var(--blue);color:#fff;
+  display:grid;place-items:center;font-size:15px
+}
+.topbar nav{display:flex;gap:18px;flex-wrap:wrap}
+.topbar nav a{color:var(--muted);text-decoration:none;font-size:13px;font-weight:600}
+
+.wrap{max-width:1060px;margin:0 auto;padding:22px}
+
+.welcome{
+  background:linear-gradient(120deg,var(--blue),var(--indigo));color:#fff;
+  border-radius:22px;padding:26px;display:flex;justify-content:space-between;
+  gap:20px;flex-wrap:wrap;align-items:center;
+  box-shadow:0 14px 30px rgba(47,95,224,.22)
+}
+.welcome h1{font-size:23px;line-height:1.2;margin-bottom:8px}
+.welcome p{opacity:.9;font-size:14px;line-height:1.55;max-width:460px}
+.welcome .btn{
+  background:#fff;color:var(--blue);border:none;border-radius:999px;
+  padding:12px 24px;font-weight:800;font-size:13px;cursor:pointer
+}
+
+.grid{display:grid;gap:14px;margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.stat{
+  background:var(--card);border:1px solid var(--line);border-radius:18px;padding:18px;
+  box-shadow:0 6px 18px rgba(19,26,43,.05)
+}
+.stat .ico{
+  width:34px;height:34px;border-radius:10px;background:var(--sky);
+  display:grid;place-items:center;font-size:16px;margin-bottom:10px
+}
+.stat .val{font-size:25px;font-weight:800;letter-spacing:-.5px}
+.stat .lbl{font-size:12px;color:var(--muted);margin-top:3px}
+
+.cols{display:grid;gap:14px;margin-top:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.panel{
+  background:var(--card);border:1px solid var(--line);border-radius:20px;padding:20px;
+  box-shadow:0 6px 18px rgba(19,26,43,.05)
+}
+.panel h2{font-size:15px;margin-bottom:16px}
+
+.meter{margin-bottom:16px}
+.meter .top{display:flex;justify-content:space-between;font-size:13px;margin-bottom:7px}
+.meter .top b{font-weight:700}
+.bar{height:9px;border-radius:999px;background:#eef1f7;overflow:hidden}
+.bar span{display:block;height:100%;border-radius:999px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{
+  text-align:left;color:var(--muted);font-size:11px;letter-spacing:.5px;
+  text-transform:uppercase;padding-bottom:10px;border-bottom:1px solid var(--line)
+}
+td{padding:11px 0;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:none}
+.tag{
+  display:inline-block;background:var(--sky);color:var(--blue);font-size:11px;
+  font-weight:700;padding:4px 11px;border-radius:999px
+}
+
+.contact{
+  background:var(--ink);color:#fff;border-radius:20px;padding:26px;
+  margin-top:16px;text-align:center
+}
+.contact h2{font-size:18px;margin-bottom:12px}
+.contact p{color:#aab3c6;font-size:13px;margin-bottom:6px}
+
+footer{text-align:center;padding:20px;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="mark">🎓</span> {{school_name}}</div>
+  <nav>
+    <a href="#overview">Overview</a>
+    <a href="#progress">Progress</a>
+    <a href="#students">Students</a>
+    <a href="#contact">Contact</a>
+  </nav>
+</div>
+
+<div class="wrap">
+  <div class="welcome" id="overview">
+    <div>
+      <h1>{{motto}}</h1>
+      <p>{{description}}</p>
+    </div>
+    <button class="btn" type="button">Explore Courses</button>
+  </div>
+
+  <div class="grid">
+    <div class="stat">
+      <div class="ico">👩‍🎓</div>
+      <div class="val">{{students}}</div>
+      <div class="lbl">Enrolled students</div>
+    </div>
+    <div class="stat">
+      <div class="ico">👨‍🏫</div>
+      <div class="val">{{teachers}}</div>
+      <div class="lbl">Teaching staff</div>
+    </div>
+    <div class="stat">
+      <div class="ico">📚</div>
+      <div class="val">{{courses}}</div>
+      <div class="lbl">Courses offered</div>
+    </div>
+    <div class="stat">
+      <div class="ico">🏆</div>
+      <div class="val">{{pass_rate}}</div>
+      <div class="lbl">Pass rate</div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="panel" id="progress">
+      <h2>Progress this term</h2>
+      <div class="meter">
+        <div class="top"><span>Attendance</span><b>{{attendance}}</b></div>
+        <div class="bar"><span style="width:88%;background:var(--green)"></span></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span>Coursework completed</span><b>{{coursework}}</b></div>
+        <div class="bar"><span style="width:72%;background:var(--blue)"></span></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span>Student retention</span><b>{{retention}}</b></div>
+        <div class="bar"><span style="width:63%;background:var(--amber)"></span></div>
+      </div>
+    </div>
+
+    <div class="panel" id="students">
+      <h2>Top performers</h2>
+      <table>
+        <tr><th>Student</th><th>Class</th><th>Status</th></tr>
+        <tr>
+          <td>{{student1_name}}</td>
+          <td>{{student1_class}}</td>
+          <td><span class="tag">Excellent</span></td>
+        </tr>
+        <tr>
+          <td>{{student2_name}}</td>
+          <td>{{student2_class}}</td>
+          <td><span class="tag">Excellent</span></td>
+        </tr>
+        <tr>
+          <td>{{student3_name}}</td>
+          <td>{{student3_class}}</td>
+          <td><span class="tag">Improving</span></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="contact" id="contact">
+    <h2>Visit or call us</h2>
+    <p>📍 {{address}}</p>
+    <p>📞 {{phone}}</p>
+    <p>✉️ {{email}}</p>
+  </div>
+</div>
+
+<footer>&copy; 2026 {{school_name}} — Built with AI Connect Africa</footer>
+
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#14231b;--muted:#6f8378;--line:#e4ece7}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);
+  background:#eef3ef;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:#fff;border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(20,35,27,.22);display:flex;flex-direction:column
+}
+.status{
+  display:flex;justify-content:space-between;padding:12px 22px 4px;
+  font-size:12px;font-weight:700;color:#fff;background:var(--primary)
+}
+.hero{background:var(--primary);color:#fff;padding:10px 22px 26px}
+.who{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+.avatar{
+  width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.22);
+  display:grid;place-items:center;font-size:18px
+}
+.who .hi{font-size:12px;opacity:.85}
+.who .nm{font-size:16px;font-weight:800}
+.bell{margin-left:auto;font-size:17px;opacity:.9}
+.weather{
+  background:rgba(255,255,255,.14);border-radius:18px;padding:16px;
+  backdrop-filter:blur(4px)
+}
+.weather .loc{font-size:12px;opacity:.9;margin-bottom:8px}
+.weather .temp{font-size:34px;font-weight:800;line-height:1}
+.wrow{display:flex;justify-content:space-between;margin-top:14px;gap:8px}
+.wrow div{font-size:11px;opacity:.9;text-align:center;flex:1}
+.wrow b{display:block;font-size:14px;margin-top:3px;opacity:1}
+
+.body{padding:20px 20px 12px;flex:1}
+.sect{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.sect h2{font-size:16px}
+.sect a{font-size:12px;color:var(--primary);text-decoration:none;font-weight:700}
+
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:12px}
+.chip{
+  border:1px solid var(--line);border-radius:999px;padding:8px 16px;font-size:12px;
+  font-weight:600;white-space:nowrap;background:#fff;cursor:pointer
+}
+.chip.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+.cards{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+.card{
+  border:1px solid var(--line);border-radius:18px;overflow:hidden;background:#fff;
+  box-shadow:0 5px 14px rgba(20,35,27,.05)
+}
+.card .pic{height:74px;background:linear-gradient(135deg,var(--primary),#9ccf7a);display:grid;place-items:center;font-size:26px}
+.card .txt{padding:11px}
+.card h3{font-size:13px;line-height:1.3;margin-bottom:5px}
+.card p{font-size:11px;color:var(--muted);line-height:1.45}
+
+.stats{display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-top:16px}
+.stat{background:#f4f8f5;border-radius:15px;padding:13px}
+.stat .l{font-size:11px;color:var(--muted)}
+.stat .v{font-size:19px;font-weight:800;margin-top:3px}
+
+.feat{margin-top:16px}
+.feat h2{font-size:15px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:#f4f8f5;border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.nav{
+  display:flex;justify-content:space-around;align-items:center;padding:12px 8px 18px;
+  background:var(--primary);color:#fff;margin-top:12px
+}
+.nav div{font-size:10px;text-align:center;opacity:.75}
+.nav div.on{opacity:1;font-weight:800}
+.nav span{display:block;font-size:17px;margin-bottom:3px}
+.fab{
+  width:42px;height:42px;border-radius:50%;background:#fff;color:var(--primary);
+  display:grid;place-items:center;font-size:22px;font-weight:700
+}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="hero">
+    <div class="who">
+      <div class="avatar">🧑🏾‍🌾</div>
+      <div>
+        <div class="hi">Welcome back,</div>
+        <div class="nm">{{owner_name}}</div>
+      </div>
+      <div class="bell">🔔</div>
+    </div>
+    <div class="weather">
+      <div class="loc">📍 {{location}}</div>
+      <div class="temp">{{temperature}}</div>
+      <div class="wrow">
+        <div>Humidity<b>{{humidity}}</b></div>
+        <div>Rainfall<b>{{rainfall}}</b></div>
+        <div>Wind<b>{{wind}}</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="sect"><h2>My Fields</h2><a href="#">See all</a></div>
+    <div class="chips">
+      <div class="chip on">All</div>
+      <div class="chip">{{crop1}}</div>
+      <div class="chip">{{crop2}}</div>
+      <div class="chip">{{crop3}}</div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="pic">🌽</div>
+        <div class="txt">
+          <h3>{{field1_name}}</h3>
+          <p>{{field1_note}}</p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="pic">🌱</div>
+        <div class="txt">
+          <h3>{{field2_name}}</h3>
+          <p>{{field2_note}}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="l">Total area</div><div class="v">{{total_area}}</div></div>
+      <div class="stat"><div class="l">Plant age</div><div class="v">{{plant_age}}</div></div>
+      <div class="stat"><div class="l">Soil quality</div><div class="v">{{soil_quality}}</div></div>
+      <div class="stat"><div class="l">Expected yield</div><div class="v">{{yield_amount}}</div></div>
+    </div>
+
+    <div class="feat">
+      <h2>{{app_name}} features</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="on"><span>🏠</span>Home</div>
+    <div><span>🌾</span>Fields</div>
+    <div class="fab">+</div>
+    <div><span>📋</span>Reports</div>
+    <div><span>👤</span>Profile</div>
+  </div>
+</div>
+</body>
+</html>

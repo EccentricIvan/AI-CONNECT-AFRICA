@@ -5,8 +5,10 @@ import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart';
+import '../../shared/coding/code_lab_session.dart';
+import '../../shared/coding/python_tutor.dart';
 import '../../shared/widgets/code_autocorrect_button.dart';
-import '../../shared/widgets/studio_page.dart';
+import '../../shared/widgets/code_instruction_bar.dart';
 import '../settings/coder_package_prompt.dart';
 
 class _PyLesson {
@@ -229,20 +231,90 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
   String _output = '';
   bool _hasRun = false;
   bool _autocorrectBusy = false;
+  bool _askBusy = false;
+
+  /// The tutor's last answer, shown under the output. Never written into the
+  /// editor - see [explainPythonCode].
+  String _tutorAnswer = '';
 
   @override
   void initState() {
     super.initState();
     scheduleLiteRtMode(ActiveModelMode.appCoder);
     _tabController = TabController(length: 2, vsync: this);
-    _codeController.text = _lessons[0].starterCode;
+
+    final saved =
+        ref.read(codeLabSessionProvider.notifier).read(CodeLabSections.python);
+    if (saved != null && !saved.isEmpty) {
+      _currentLesson = saved.lessonIndex.clamp(0, _lessons.length - 1);
+      _codeController.text = saved.code;
+      _output = saved.result;
+      _hasRun = saved.hasRun;
+      _tabController.index = saved.tab.clamp(0, 1);
+    } else {
+      _codeController.text = _lessons[0].starterCode;
+    }
+
+    _codeController.addListener(_persistCode);
+    _tabController.addListener(_persistTab);
   }
 
   @override
   void dispose() {
+    _codeController.removeListener(_persistCode);
+    _tabController.removeListener(_persistTab);
     _tabController.dispose();
     _codeController.dispose();
     super.dispose();
+  }
+
+  void _persistCode() => ref
+      .read(codeLabSessionProvider.notifier)
+      .update(CodeLabSections.python, code: _codeController.text);
+
+  void _persistTab() {
+    if (_tabController.indexIsChanging) return;
+    ref
+        .read(codeLabSessionProvider.notifier)
+        .update(CodeLabSections.python, tab: _tabController.index);
+  }
+
+  /// Asks the coding model about the student's Python. The reply is shown
+  /// beside the code; it is never applied to it.
+  Future<void> _askTutor(String question) async {
+    if (_askBusy) return;
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return;
+    setState(() => _askBusy = true);
+    try {
+      final engine = await ref.read(programmingEngineProvider.future);
+      final answer = await explainPythonCode(
+        source: _codeController.text,
+        question: question,
+        engine: engine,
+      );
+      if (!mounted) return;
+      if (answer == null) {
+        showInstructionNoticeSnack(
+          context,
+          tr(context, "Couldn't answer that - try asking it a different way."),
+        );
+        return;
+      }
+      setState(() {
+        _tutorAnswer = answer;
+        _hasRun = true;
+      });
+      _tabController.animateTo(1);
+    } catch (_) {
+      if (!mounted) return;
+      showInstructionNoticeSnack(
+        context,
+        tr(context, 'Something went wrong. Please try again.'),
+      );
+    } finally {
+      if (mounted) setState(() => _askBusy = false);
+    }
   }
 
   void _runCode() {
@@ -263,6 +335,13 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
         _hasRun = true;
       });
     }
+    ref.read(codeLabSessionProvider.notifier).update(
+          CodeLabSections.python,
+          code: _codeController.text,
+          result: _output,
+          lessonIndex: _currentLesson,
+          hasRun: true,
+        );
     _tabController.animateTo(1);
   }
 
@@ -350,8 +429,16 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
       _showHint = false;
       _hasRun = false;
       _output = '';
+      _tutorAnswer = '';
       _codeController.text = _lessons[index].starterCode;
     });
+    ref.read(codeLabSessionProvider.notifier).update(
+          CodeLabSections.python,
+          lessonIndex: index,
+          code: _codeController.text,
+          result: '',
+          hasRun: false,
+        );
     _tabController.animateTo(0);
   }
 
@@ -415,7 +502,6 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
             busy: _autocorrectBusy,
             onPressed: _autocorrect,
           ),
-          const StudioDrawerButton(),
           IconButton(
             icon: const Icon(Icons.list),
             tooltip: tr(context, 'All lessons'),
@@ -479,8 +565,28 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
                         : null,
                   ),
                   Expanded(child: _CodeEditor(controller: _codeController)),
+                  // Same bar as the other labs, but this one asks rather than
+                  // edits: the answer appears beside the output and the
+                  // student's code is never touched.
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+                      child: CodeInstructionBar(
+                        busy: _askBusy,
+                        onSubmit: _askTutor,
+                        hintText: 'Ask AI about your code',
+                        icon: Icons.school_outlined,
+                        tooltip: 'Ask',
+                      ),
+                    ),
+                  ),
                 ]),
-                _OutputView(output: _output, hasRun: _hasRun),
+                _OutputView(
+                  output: _output,
+                  hasRun: _hasRun,
+                  tutorAnswer: _tutorAnswer,
+                ),
               ],
             ),
           ),
@@ -515,9 +621,17 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
 // ── Output view ──────────────────────────────────────────────────────────────
 
 class _OutputView extends StatelessWidget {
-  const _OutputView({required this.output, required this.hasRun});
+  const _OutputView({
+    required this.output,
+    required this.hasRun,
+    this.tutorAnswer = '',
+  });
   final String output;
   final bool hasRun;
+
+  /// The tutor's explanation, shown under the output in its own block so a
+  /// student never mistakes the model's prose for what Python printed.
+  final String tutorAnswer;
 
   @override
   Widget build(BuildContext context) {
@@ -556,6 +670,41 @@ class _OutputView extends StatelessWidget {
                 height: 1.6,
               ),
             ),
+            if (tutorAnswer.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              const Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 14, color: Color(0xFFF9E2AF)),
+                  SizedBox(width: 6),
+                  Text(
+                    'Your tutor says',
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: Color(0xFFF9E2AF),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF282A3A),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF45475A)),
+                ),
+                child: SelectableText(
+                  tutorAnswer,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFFCDD6F4),
+                    height: 1.55,
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

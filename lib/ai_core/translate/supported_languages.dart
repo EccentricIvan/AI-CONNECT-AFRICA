@@ -67,3 +67,28 @@ String languagePromptName(String code) {
   }
   return code;
 }
+
+/// True for English plus every AfriSLM pair (and Kirundi → Kinyarwanda).
+bool isSupportedLearningLanguage(String code) {
+  for (final lang in supportedLanguages) {
+    if (lang.code == code) return true;
+  }
+  return false;
+}
+
+/// Session override, then the student profile, then the on-disk preference.
+/// Prefs cover guests and the first launch after downloading the app.
+String resolveLearningLanguage({
+  String? override,
+  String? persisted,
+  String? studentLanguage,
+}) {
+  for (final code in [override, studentLanguage, persisted]) {
+    if (code != null &&
+        code.isNotEmpty &&
+        isSupportedLearningLanguage(code)) {
+      return code;
+    }
+  }
+  return 'en';
+}

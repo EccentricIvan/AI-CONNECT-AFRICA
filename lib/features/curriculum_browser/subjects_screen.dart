@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
-import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/custom_subject_service.dart';
 import '../../shared/widgets/localized_text.dart';
 import '../../shared/widgets/studio_page.dart';
 
@@ -34,7 +34,7 @@ class SubjectsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsAsync = ref.watch(allSubjectsProvider);
+    final subjectsAsync = ref.watch(mergedSubjectsProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -57,8 +57,6 @@ class SubjectsScreen extends ConsumerWidget {
                 context,
                 'Browse courses and keep building skills one lesson at a time.',
               ),
-              ctaLabel: tr(context, 'Open AI Chat'),
-              onCta: () => context.go('/chat?section=learn'),
             ),
             const SizedBox(height: 20),
             StudioSectionHeader(title: tr(context, 'All subjects')),

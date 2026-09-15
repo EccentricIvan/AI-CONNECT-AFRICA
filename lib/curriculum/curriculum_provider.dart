@@ -26,6 +26,13 @@ class CurriculumService {
     'ignite_ai',
   ];
 
+  /// The bundled subject ids, readable from outside.
+  ///
+  /// Additive alias for [_subjects] — the list itself is unchanged. Exposed so
+  /// `CustomSubjectService` can refuse to create a teacher subject whose slug
+  /// would collide with a shipped one.
+  static const bundledSubjectIds = _subjects;
+
   Future<List<Subject>> loadAll() async {
     if (_cache.length == _subjects.length) return _cache.values.toList();
     for (final id in _subjects) {

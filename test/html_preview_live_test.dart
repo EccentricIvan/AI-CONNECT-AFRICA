@@ -43,11 +43,12 @@ void main() {
     expect(html, isNot(contains('{{salon_name}}')));
   });
 
-  test('htmlBodyForFlutterHtml extracts body for in-app fallback', () async {
+  test('the filled salon site reaches the preview unaltered', () async {
     final html = await filledSalonHtml();
-    final body = htmlBodyForFlutterHtml(html);
-    expect(body, contains('Glow Beauty Salon'));
-    expect(body, contains('Acacia Mall'));
+    final prepared = prepareHtmlForPreview(html);
+    expect(prepared.trim(), html.trim());
+    expect(prepared, contains('Glow Beauty Salon'));
+    expect(prepared, contains('Acacia Mall'));
   });
 
   test('file:// preview target is written for Simple Browser load', () async {
@@ -77,11 +78,16 @@ void main() {
     expect(loadHtmlPreview, isA<Function>());
   });
 
-  test('plain-text fallback extracts salon name for Android WebView failure',
-      () async {
+  test('the document title drives the browser address bar', () async {
+    expect(
+      htmlDocumentTitle('<html><head><title>Glow Beauty Salon</title></head>'
+          '<body>hi</body></html>'),
+      'Glow Beauty Salon',
+    );
+    // salon.html ships without a <title>; the bar falls back rather than
+    // inventing a name from the page's headings.
     final html = await filledSalonHtml();
-    final plain = htmlPlainText(html);
-    expect(plain, contains('Glow Beauty Salon'));
-    expect(plain, contains('Acacia Mall'));
+    expect(html, isNot(contains('<title>')));
+    expect(htmlDocumentTitle(html), 'index.html');
   });
 }

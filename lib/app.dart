@@ -9,6 +9,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_colors.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_provider.dart';
+import 'db/providers/db_provider.dart';
 import 'features/model_setup/model_not_installed_screen.dart';
 import 'l10n/app_locale.dart';
 import 'l10n/language_provider.dart';
@@ -34,7 +35,19 @@ class _OticAppState extends ConsumerState<OticApp> {
   Future<void> _init() async {
     // Small delay to let Flutter render the splash first
     await Future.delayed(const Duration(milliseconds: 100));
-    setState(() => _ready = true);
+    try {
+      final persisted = await readPersistedLearningLanguage();
+      Object? student;
+      try {
+        student = await ref.read(activeStudentProvider.future);
+      } catch (_) {}
+      if (mounted && student == null && persisted != null) {
+        ref.read(languageOverrideProvider.notifier).adoptSaved(persisted);
+      }
+    } catch (e) {
+      debugPrint('OticApp language seed failed: $e');
+    }
+    if (mounted) setState(() => _ready = true);
   }
 
   Future<void> _warmTranslationPipeline() async {

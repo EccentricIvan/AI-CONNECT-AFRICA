@@ -8,6 +8,12 @@ import 'engine_scheduler.dart';
 
 const int kLlamaContextSize = 2048;
 
+/// AfriSLM prompts are short (clause / sentence). A smaller KV keeps the
+/// translator loadable beside LiteRT on 4 GB Android devices after
+/// Install Packages.
+const int kLlamaTranslateContextSize = 1024;
+const int kLlamaTranslateBatchSize = 512;
+
 /// Prefill batch must cover the tokenized chat template (system + user).
 ///
 /// At 512, the hybrid Africa AI Connect contract + curriculum notes already
