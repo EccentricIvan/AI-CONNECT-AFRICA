@@ -42,8 +42,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      # GitHub ubuntu-latest already has an Android SDK. android-actions/setup-android
+      # currently fails with `Failed to find package 'tools'` (obsolete package).
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null || true
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
