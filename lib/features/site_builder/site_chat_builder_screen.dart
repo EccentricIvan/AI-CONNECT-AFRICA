@@ -4,14 +4,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../ai_core/providers/ai_provider.dart';
-import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/ai_model_manager.dart';
-import '../../shared/coding/code_autocorrect.dart';
-import '../../shared/widgets/code_autocorrect_button.dart';
+import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
+import '../../shared/coding/code_instruction_edit.dart';
+import '../../shared/coding/interactive_html.dart' show escapeHtml;
+import '../../shared/widgets/code_instruction_bar.dart';
 import '../../shared/widgets/html_preview.dart';
-import '../../shared/widgets/studio_page.dart';
 import '../create/dev_l10n.dart';
 import '../settings/coder_package_prompt.dart';
 import 'site_build_coder.dart';
@@ -190,6 +190,121 @@ final _templates = [
     'pass_rate': ['92%', '88%', '95%', '90%'],
     'email': ['info@school.ac.ug', 'admissions@academy.ac.ug', 'office@school.edu'],
   }),
+  const _Template('agritech', '🌱 Farm / Agribusiness', Icons.agriculture, [
+    _QField('business_name', "What's the name of your farm or agribusiness?", 'e.g. Green Valley Farms'),
+    _QField('phone', "Phone number?", 'e.g. +256 700 123 456'),
+    _QField('address', "Where are your fields?", 'e.g. Mukono District, Uganda'),
+  ], {
+    'tagline': ['Your farm, smarter.', 'Growing more with less', 'Smart farming for better harvests', 'From our soil to your table'],
+    'description': ['We monitor crop health, manage water use, and plan every season with data — so every hectare produces more.', 'A modern farm using soil data, weather tracking, and careful planning to grow healthy, high-yield crops all year round.', 'Empowering our community with sustainable farming practices, quality produce, and fair prices for every harvest.'],
+    'total_fields': ['12', '24', '8', '16'],
+    'total_area': ['45 acres', '125 acres', '30 acres', '60 acres'],
+    'yield_amount': ['15 tons', '22 tons', '9 tons', '30 tons'],
+    'health_score': ['86/100', '92/100', '78/100', '88/100'],
+    'crop1': ['🌽 Maize', '🌾 Rice', '☕ Coffee', '🍌 Matooke'],
+    'crop2': ['🫘 Beans', '🥜 Groundnuts', '🍠 Sweet potato', '🌻 Sunflower'],
+    'crop3': ['🥬 Vegetables', '🍅 Tomatoes', '🥕 Carrots', '🌶️ Chilli'],
+    'soil_note': ['Healthy', 'Good', 'Improving'],
+    'season_note': ['On target', 'Strong', 'Above average'],
+    'email': ['info@farm.ug', 'harvest@agro.ug', 'hello@greenfields.ug'],
+  }),
+  const _Template('saasai', '🤖 AI / Software Product', Icons.auto_awesome, [
+    _QField('company_name', "Company or product name?", 'e.g. Optivize AI'),
+    _QField('email', "Contact email?", 'e.g. hello@company.io'),
+  ], {
+    'pill_text': ['Your all-in-one AI platform', 'Built for growing teams', 'Automation that just works'],
+    'tagline': ['Supercharge your business with AI-powered automation', 'Smarter decisions, made automatic', 'Do more, with far less busywork', 'The AI workspace your team deserves'],
+    'description': ['Our platform helps teams save time, cut costs, and unlock smarter decision-making — without the complexity.', 'Automate the repetitive work, surface the insights that matter, and give your team back hours every week.', 'Everything your team needs to plan, automate, and measure — in one calm, fast workspace.'],
+    'stat1_value': ['12,500', '8,400', '20,000'],
+    'stat1_label': ['Daily tasks automated for our customers'],
+    'stat2_value': ['\$480,000', '\$250,000', '\$1.2M'],
+    'stat2_label': ['Cost savings generated for clients'],
+    'stat3_value': ['150K+', '80K+', '210K+'],
+    'stat3_label': ['Users across 40+ countries'],
+    'stat4_value': ['98%', '99.9%', '96%'],
+    'stat4_label': ['Predictions validated against real data'],
+    'feat1_title': ['Lightning fast', 'Instant setup', 'Built for speed'],
+    'feat1_desc': ['Loads in under a second and never makes your team wait on a spinner.', 'Connect your tools and see results in minutes, not months.'],
+    'feat2_title': ['Bank-level security', 'Private by default', 'Enterprise ready'],
+    'feat2_desc': ['End-to-end encryption keeps every record safe, on every device.', 'Your data stays yours — encrypted in transit and at rest, always.'],
+    'feat3_title': ['Works with your tools', 'Easy integration', 'Fits your workflow'],
+    'feat3_desc': ['Connects to the apps your team already uses — no migration headaches.', 'Plug it in alongside what you have and keep working the way you like.'],
+    'cta_text': ['Join thousands of teams already building better products, faster.', 'Start free today — no card needed. See results in your first week.', 'Ready to cut the busywork? Get set up in under five minutes.'],
+  }),
+  const _Template('taskflow', '✅ Productivity / SaaS Tool', Icons.checklist_rounded, [
+    _QField('company_name', "Product name?", 'e.g. TaskFlow'),
+    _QField('email', "Contact email?", 'e.g. hello@taskflow.app'),
+    _QField('phone', "Phone number?", 'e.g. +256 700 123 456'),
+  ], {
+    'pill_text': ['New: AI task summaries', 'Now with shared goals', 'New: weekly auto-reports'],
+    'tagline': ['The productivity OS for modern teams', 'One workspace for everything your team ships', 'Where scattered work finally comes together'],
+    'description': ['Stop switching apps. Manage tasks, docs, and goals in one unified workspace designed for speed.', 'Plans, progress, and people in one place — so nobody has to ask what happened this week.', 'Everything your team is working on, visible at a glance, updated as the work happens.'],
+    'trusted_count': ['5,000+', '2,400+', '10,000+'],
+    'project_name': ['Product Launch Q4', 'Term 2 Rollout', 'Website Redesign', 'Field Team Sprint'],
+    'metric1_value': ['78%', '64%', '91%'],
+    'metric1_label': ['Total progress'],
+    'metric2_value': ['12', '7', '23'],
+    'metric2_label': ['Pending tasks'],
+    'metric3_value': ['42h', '28h', '61h'],
+    'metric3_label': ['Time tracked'],
+    'task1': ['Update branding', 'Client meeting notes', 'Finalize budget'],
+    'task2': ['Review submissions', 'Prepare demo', 'Draft newsletter'],
+    'task3': ['Q4 budgeting', 'Team retro', 'Ship release notes'],
+    'why_text': ['The difference is not just another tool. It is the difference between chaos and clarity — see how we change your daily grind.', 'Most teams lose hours every week to status-chasing. We give those hours back.'],
+    'old_way': ['Updates scattered across chat, email, and three spreadsheets nobody trusts.', 'Endless status meetings just to find out what actually moved this week.'],
+    'new_way': ['One shared board everybody updates as they work — always current, always visible.', 'Progress updates itself, so meetings become decisions instead of roll calls.'],
+  }),
+  const _Template('edudash', '📊 School Dashboard', Icons.insights, [
+    _QField('school_name', "School name?", 'e.g. Bright Future Academy'),
+    _QField('phone', "School phone?", 'e.g. +256 700 123 456'),
+    _QField('address', "School address?", 'e.g. Plot 23, Education Road, Kampala'),
+  ], {
+    'motto': ['What do you want to learn today?', 'Building tomorrow\'s leaders', 'Excellence through education', 'Every learner, every day'],
+    'description': ['Track progress, celebrate results, and keep every learner moving forward with clear, shared insight.', 'A complete picture of how our school is doing — attendance, coursework, and results in one place.', 'Nurturing young minds with academic excellence, character, and practical skills for the future.'],
+    'students': ['3,500', '850', '1,200', '620'],
+    'teachers': ['145', '45', '60', '38'],
+    'courses': ['24', '12', '31', '18'],
+    'pass_rate': ['92%', '88%', '95%', '90%'],
+    'attendance': ['94%', '88%', '91%'],
+    'coursework': ['72%', '81%', '66%'],
+    'retention': ['63%', '78%', '85%'],
+    'student1_name': ['Emily Carter', 'Aisha Nakato', 'Samuel Okello'],
+    'student1_class': ['Senior 4', 'Primary 7', 'Senior 6'],
+    'student2_name': ['Alex Johnson', 'Brian Mugisha', 'Grace Achieng'],
+    'student2_class': ['Senior 3', 'Primary 6', 'Senior 5'],
+    'student3_name': ['Sophia Martinez', 'Daniel Ssempa', 'Mercy Atim'],
+    'student3_class': ['Senior 2', 'Primary 5', 'Senior 4'],
+    'email': ['info@school.ac.ug', 'admissions@academy.ac.ug', 'office@school.edu'],
+  }),
+  const _Template('smartedu', '🎓 Student Portal', Icons.dashboard_customize, [
+    _QField('school_name', "School or platform name?", 'e.g. Smart Learning'),
+    _QField('phone', "Contact phone?", 'e.g. +256 700 123 456'),
+    _QField('address', "Address?", 'e.g. Plot 12, Kampala'),
+  ], {
+    'greeting': ['Hello, welcome back!', 'Good to see you again!', 'Ready to learn today?'],
+    'description': ['Track your attendance, homework, and classes — all in one place.', 'Your classes, teachers, and progress, at a glance.'],
+    'student_name': ['Alex Parker', 'Grace Nabirye', 'Daniel Ochieng'],
+    'attendance': ['90%', '85%', '95%'],
+    'homework': ['70%', '60%', '80%'],
+    'rating': ['75%', '68%', '82%'],
+    'completed': ['40%', '55%', '35%'],
+    'class1_name': ['Python Programming', 'Mathematics', 'English'],
+    'class1_time': ['10:00 · 2/10 lessons', '9:00 · 5/12 lessons'],
+    'class2_name': ['Data Science', 'Physics', 'Biology'],
+    'class2_time': ['14:00 · 4/9 lessons', '11:00 · 3/8 lessons'],
+    'class3_name': ['Artificial Intelligence', 'Chemistry', 'History'],
+    'class3_time': ['10:00 · 8/8 lessons', '13:00 · 6/6 lessons'],
+    'teacher1_name': ['Adam Potter', 'Grace Auma', 'John Kato'],
+    'teacher1_initial': ['A', 'G', 'J'],
+    'teacher1_subject': ['Python Programming', 'Mathematics', 'English'],
+    'teacher2_name': ['Brian Green', 'Susan Nakato', 'Peter Owino'],
+    'teacher2_initial': ['B', 'S', 'P'],
+    'teacher2_subject': ['Data Science', 'Physics', 'Biology'],
+    'teacher3_name': ['Peter Nelson', 'Mary Achan', 'James Mubiru'],
+    'teacher3_initial': ['P', 'M', 'J'],
+    'teacher3_subject': ['Artificial Intelligence', 'Chemistry', 'History'],
+    'email': ['hello@smartlearning.ac.ug', 'info@school.edu', 'office@academy.ug'],
+  }),
 ];
 
 // ── Chat messages ────────────────────────────────────────────────────────────
@@ -214,6 +329,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _codeController = TextEditingController();
+  final _studioKey = GlobalKey<LiveHtmlStudioState>();
   final List<_ChatMsg> _messages = [];
   final Map<String, String> _answers = {};
   /// Auto-picked template copy, locked in before Build so the coder sees it.
@@ -227,6 +343,9 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
   bool _building = false;
   bool _showStudio = false;
   String _buildNote = '';
+
+  /// Code as it stood before the last AI change, so it can be reverted.
+  String? _undoSnapshot;
   bool _autocorrectBusy = false;
 
   static const _colorThemes = {
@@ -250,7 +369,11 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
       "Hi! I'm going to help you build a website. 🚀\n\nWhat type of site do you want?",
     );
     await _sayBot(
-      "1️⃣ Bakery / Restaurant\n2️⃣ Hotel / Lodge\n3️⃣ Gym / Fitness\n4️⃣ Salon / Spa\n5️⃣ Church / Ministry\n6️⃣ Real Estate\n7️⃣ Tech Startup\n8️⃣ NGO / Charity\n9️⃣ Personal Portfolio\n🔟 School Website\n\nJust type the number or name!",
+      // Circled numerals, not keycap emoji: Unicode has no keycap for 11-15,
+      // so those had to be spelled as two boxes (1️⃣1️⃣) and broke the column.
+      // U+2460-U+246E is one glyph per number all the way to 15, so every row
+      // starts at the same width.
+      "① Bakery / Restaurant\n② Hotel / Lodge\n③ Gym / Fitness\n④ Salon / Spa\n⑤ Church / Ministry\n⑥ Real Estate\n⑦ Tech Startup\n⑧ NGO / Charity\n⑨ Personal Portfolio\n⑩ School Website\n⑪ Farm / Agribusiness\n⑫ AI / Software Product\n⑬ Productivity / SaaS Tool\n⑭ School Dashboard\n⑮ Student Portal\n\nJust type the number or name!",
     );
   }
 
@@ -335,32 +458,52 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     final lower = text.toLowerCase();
     _Template? chosen;
 
-    final matchers = <int, List<String>>{
-      0: ['1', 'bakery', 'restaurant', 'food', 'cafe'],
-      1: ['2', 'hotel', 'lodge', 'guest house', 'accommodation'],
-      2: ['3', 'gym', 'fitness', 'workout'],
-      3: ['4', 'salon', 'spa', 'beauty', 'hair'],
-      4: ['5', 'church', 'ministry', 'chapel', 'worship'],
-      5: ['6', 'real estate', 'property', 'realtor', 'house'],
-      6: ['7', 'tech', 'startup', 'saas', 'software'],
-      7: ['8', 'ngo', 'charity', 'foundation', 'nonprofit'],
-      8: ['9', 'portfolio', 'personal', 'resume', 'cv'],
-      9: ['10', 'school', 'academy', 'college', 'education'],
+    // A typed number wins outright. Substring matching cannot be used for
+    // digits: "10" contains "1", so it would always resolve to template 1.
+    final digits = RegExp(r'^\s*(\d{1,2})\s*$').firstMatch(lower)?.group(1);
+    final picked = digits == null ? null : int.tryParse(digits);
+    if (picked != null && picked >= 1 && picked <= _templates.length) {
+      chosen = _templates[picked - 1];
+    }
+
+    // Specific phrases first, so "school dashboard" cannot be eaten by "school".
+    const matchers = <int, List<String>>{
+      14: ['student portal', 'portal'],
+      13: ['school dashboard', 'dashboard', 'admin panel'],
+      10: ['farm', 'agri', 'crop', 'harvest', 'garden', 'produce'],
+      12: ['productivity', 'task', 'project management', 'workspace', 'to-do app'],
+      11: ['artificial intelligence', 'saas', 'automation', 'software product'],
+      0: ['bakery', 'restaurant', 'food', 'cafe'],
+      1: ['hotel', 'lodge', 'guest house', 'accommodation'],
+      2: ['gym', 'fitness', 'workout'],
+      3: ['salon', 'spa', 'beauty', 'hair'],
+      4: ['church', 'ministry', 'chapel', 'worship'],
+      5: ['real estate', 'property', 'realtor', 'house'],
+      6: ['tech', 'startup', 'software'],
+      7: ['ngo', 'charity', 'foundation', 'nonprofit'],
+      8: ['portfolio', 'personal', 'resume', 'cv'],
+      9: ['school', 'academy', 'college', 'education'],
     };
 
-    for (final entry in matchers.entries) {
-      for (final keyword in entry.value) {
-        if (lower.contains(keyword)) {
-          chosen = _templates[entry.key];
-          break;
+    if (chosen == null && lower.trim() == 'ai') {
+      chosen = _templates[11];
+    }
+
+    if (chosen == null) {
+      for (final entry in matchers.entries) {
+        for (final keyword in entry.value) {
+          if (lower.contains(keyword)) {
+            chosen = _templates[entry.key];
+            break;
+          }
         }
+        if (chosen != null) break;
       }
-      if (chosen != null) break;
     }
 
     if (chosen == null) {
       await _sayBot(
-        "I didn't catch that. Please type a number (1-10) or the name:\n\n1 Bakery  2 Hotel  3 Gym  4 Salon  5 Church\n6 Real Estate  7 Tech  8 NGO  9 Portfolio  10 School",
+        "I didn't catch that. Please type a number (1-15) or the name:\n\n1 Bakery  2 Hotel  3 Gym  4 Salon  5 Church\n6 Real Estate  7 Tech  8 NGO  9 Portfolio  10 School\n11 Farm  12 AI Product  13 Productivity  14 School Dashboard  15 Student Portal",
       );
       return;
     }
@@ -372,7 +515,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     await _sayBot("Great choice — ${chosen.name}! 🎨\n\nPick a color theme:");
     await Future<void>.delayed(const Duration(milliseconds: 350));
     await _sayBot(
-      "1️⃣ Default (template colors)\n2️⃣ Ocean Blue 🔵\n3️⃣ Forest Green 🟢\n4️⃣ Royal Purple 🟣\n5️⃣ Sunset Orange 🟠\n6️⃣ Rose Pink 🩷\n\nType a number!",
+      "① Default (template colors)\n② Ocean Blue 🔵\n③ Forest Green 🟢\n④ Royal Purple 🟣\n⑤ Sunset Orange 🟠\n⑥ Rose Pink 🩷\n\nType a number!",
     );
   }
 
@@ -392,8 +535,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
       _recordAutoContent();
       final recorded = tr(
         context,
-        'Perfect! All features recorded. ✅ '
-        'Coding model is building your site…',
+        'Perfect! All features recorded. ✅ Building your site…',
       );
       setState(() => _messages.add(_ChatMsg(recorded, true)));
       _scrollDown();
@@ -425,14 +567,17 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     );
   }
 
-  Future<String> _templateFallbackHtml(SiteBuildIntent intent) async {
+  /// Maps the learner's answers + recorded copy onto the matching static
+  /// template. Every value is HTML-escaped — a `<` or `&` typed into a
+  /// business name or phone number must render as text, not markup.
+  Future<String> _assembleTemplateHtml(SiteBuildIntent intent) async {
     var html =
         await rootBundle.loadString('assets/templates/${intent.templateId}.html');
     for (final e in intent.answers.entries) {
-      html = html.replaceAll('{{${e.key}}}', e.value);
+      html = html.replaceAll('{{${e.key}}}', escapeHtml(e.value));
     }
     for (final e in intent.content.entries) {
-      html = html.replaceAll('{{${e.key}}}', e.value);
+      html = html.replaceAll('{{${e.key}}}', escapeHtml(e.value));
     }
     if (intent.themePrimary != null) {
       final colorCSS =
@@ -449,7 +594,18 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     setState(() {});
   }
 
-  Future<void> _autocorrectCode() async {
+  Future<void> _undoLastInstruction() async {
+    final previous = _undoSnapshot;
+    if (previous == null) return;
+    _undoSnapshot = null;
+    _codeController.text = previous;
+    _studioKey.currentState?.applyNow();
+  }
+
+  /// Runs a free-form instruction ("center the text", "change color to
+  /// blue") through the coder model and, on success, repaints the preview
+  /// immediately — no separate manual "Apply" tap needed for an AI edit.
+  Future<void> _applyInstruction(String instruction) async {
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
@@ -458,110 +614,62 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
-      final fixed = await autocorrectCode(
+      final fixed = await applyCodeInstruction(
         source: before,
+        instruction: instruction,
         kind: CodeAutocorrectKind.html,
         engine: engine,
       );
       if (!mounted) return;
-      _codeController.text = fixed;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            fixed == before ? 'No changes needed' : 'Autocorrect applied',
+      if (fixed == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tr(context, "Couldn't apply that — try describing it a different way."),
+            ),
           ),
-        ),
-      );
+        );
+        return;
+      }
+      _undoSnapshot = before;
+      _codeController.text = fixed;
+      _studioKey.currentState?.applyNow();
+      if (!mounted) return;
+      showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
     } catch (_) {
       if (!mounted) return;
-      _codeController.text =
-          applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'Something went wrong. Please try again.'))),
+      );
     } finally {
       if (mounted) setState(() => _autocorrectBusy = false);
     }
   }
 
+  /// Deterministic build: map the learner's answers straight onto the
+  /// matching static template — no LLM on this path, so it paints in
+  /// milliseconds and always renders (the coding model is only ever an
+  /// optional, explicit follow-up via the Autocorrect button in the code
+  /// view, never a gate on seeing a working preview).
   Future<void> _buildSite() async {
     if (_template == null) return;
     if (!mounted) return;
 
-    final coderOk = await promptAndFetchCoderPackage(context, ref);
-    if (!coderOk || !mounted) return;
-
     setState(() {
       _building = true;
-      _buildNote = tr(context, 'Loading coding model…');
+      _buildNote = tr(context, 'Building your site…');
     });
 
     final intent = _currentIntent();
-    final fallback = await _templateFallbackHtml(intent);
-    var html = fallback;
-    var usedCoder = false;
-
-    try {
-      final info = await ref.read(programmingModelInfoProvider.future);
-      if (!mounted) return;
-
-      if (info.status != ModelStatus.ready) {
-        setState(() {
-          _buildNote = tr(
-            context,
-            'Coding model not found — using template shell.',
-          );
-        });
-      } else {
-        setState(() {
-          _buildNote = tr(context, 'Coding model writing your HTML…');
-        });
-        final coder = await ref.read(aiCoderServiceProvider.future);
-        if (!mounted) return;
-
-        var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
-        final generated = await coder.generateSiteHtml(
-          intent: intent,
-          onToken: (cumulative) {
-            final now = DateTime.now();
-            if (now.difference(lastUi).inMilliseconds < 400) return;
-            lastUi = now;
-            if (!mounted) return;
-            final n = cumulative.length;
-            setState(() {
-              _buildNote = tr(
-                context,
-                'Coding model writing your HTML… ($n chars)',
-              );
-            });
-          },
-        ).timeout(
-          const Duration(minutes: 3),
-          onTimeout: () => null,
-        );
-
-        if (generated != null && generated.length > 200) {
-          html = generated;
-          usedCoder = true;
-        }
-      }
-    } catch (_) {
-      html = fallback;
-      usedCoder = false;
-    }
+    final html = await _assembleTemplateHtml(intent);
 
     if (!mounted) return;
     _codeController.text = html;
 
-    final ready = usedCoder
-        ? tr(
-            context,
-            'Your website is ready! 🎉 Built by the coding model. '
-            'Toggle Preview / Code to view or edit.',
-          )
-        : tr(
-            context,
-            'Your website is ready! 🎉 '
-            '(Template shell — coding model was slow or incomplete.) '
-            'Toggle Preview / Code to edit.',
-          );
+    final ready = tr(
+      context,
+      'Your website is ready! 🎉 Toggle Preview / Code to view or edit.',
+    );
 
     setState(() {
       _messages.add(_ChatMsg(ready, true));
@@ -583,7 +691,6 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
           Text(tr(context, 'Website Builder')),
         ]),
         actions: [
-          const StudioDrawerButton(),
           TextButton(
             onPressed: () => context.push('/website'),
             child: Text(tr(context, 'Block canvas')),
@@ -610,9 +717,11 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
               tr(
                 context,
                 _showStudio
-                    ? 'Use Apply Changes & Preview to paint Base64 WebView, or Full Screen Preview for an unconstrained view.'
-                    : 'Pick a site type and features. Build runs the coding model '
-                        '(Qwen 1.5B), then opens Preview Layout | View Source Code.',
+                    ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
+                    : 'Pick a site type and features — your site builds instantly '
+                        'from a professional template, then opens Preview Layout | '
+                        'View Source Code. Want the coding model to refine the code? '
+                        'Use Autocorrect from the code view.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),
@@ -621,11 +730,12 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
           if (_showStudio) ...[
             Expanded(
               child: LiveHtmlStudio(
+                key: _studioKey,
                 controller: _codeController,
                 onApply: _applyCodeEdits,
-                toolbar: CodeAutocorrectButton(
+                toolbar: CodeInstructionBar(
                   busy: _autocorrectBusy,
-                  onPressed: _autocorrectCode,
+                  onSubmit: _applyInstruction,
                 ),
               ),
             ),

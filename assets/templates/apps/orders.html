@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#151b2b;--muted:#78819a;--line:#e8ecf4;--wash:#f4f7fb}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);
+  background:#e7ebf2;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:var(--wash);border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(21,27,43,.2);display:flex;flex-direction:column
+}
+.status{display:flex;justify-content:space-between;padding:13px 22px 6px;font-size:12px;font-weight:700}
+
+.head{padding:6px 18px 14px;display:flex;align-items:center;gap:11px}
+.logo{
+  width:40px;height:40px;border-radius:12px;background:var(--primary);color:#fff;
+  display:grid;place-items:center;font-size:18px;font-weight:800
+}
+.head .nm{font-size:16px;font-weight:800}
+.head .sub{font-size:11px;color:var(--muted);margin-top:2px}
+.head .bell{margin-left:auto;font-size:17px}
+
+.body{padding:0 16px;flex:1}
+.card{
+  background:#fff;border-radius:20px;padding:17px;margin-bottom:13px;
+  box-shadow:0 5px 16px rgba(21,27,43,.06)
+}
+.card .hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card h2{font-size:16px}
+.card .go{
+  width:30px;height:30px;border-radius:50%;background:var(--wash);
+  display:grid;place-items:center;font-size:14px
+}
+
+.stage{
+  display:flex;align-items:center;gap:10px;background:var(--wash);
+  border-radius:13px;padding:12px 14px;margin-bottom:8px;font-size:13px
+}
+.stage.warm{background:#fff3e6}
+.stage.hot{background:#ffeaea}
+.stage .label{flex:1;font-weight:600}
+.stage .new{font-size:11px;color:var(--muted)}
+.stage .dot{width:8px;height:8px;border-radius:50%;background:var(--primary)}
+
+.rev{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}
+.rev div .v{font-size:19px;font-weight:800}
+.rev div .l{font-size:10px;color:var(--muted);margin-top:3px}
+
+.chart{display:flex;align-items:flex-end;gap:9px;height:86px}
+.chart .g{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%}
+.chart .g i{flex:1;border-radius:4px 4px 0 0;display:block}
+.chart .x{display:flex;gap:9px;margin-top:7px}
+.chart .x span{flex:1;text-align:center;font-size:9px;color:var(--muted)}
+
+.feat{margin:16px 0 12px}
+.feat h2{font-size:14px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:#fff;border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.nav{
+  display:flex;justify-content:space-around;padding:13px 8px 18px;
+  background:#fff;border-top:1px solid var(--line)
+}
+.nav div{font-size:19px;opacity:.35}
+.nav div.on{opacity:1;color:var(--primary)}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="head">
+    <div class="logo">{{initial}}</div>
+    <div>
+      <div class="nm">{{app_name}}</div>
+      <div class="sub">{{purpose}}</div>
+    </div>
+    <div class="bell">🔔</div>
+  </div>
+
+  <div class="body">
+    <div class="card">
+      <div class="hd"><h2>Orders</h2><div class="go">→</div></div>
+      <div class="stage">
+        <span class="label">{{stage1_name}} ({{stage1_count}})</span>
+        <span class="new">{{stage1_new}} new</span><span class="dot"></span>
+      </div>
+      <div class="stage warm">
+        <span class="label">{{stage2_name}} ({{stage2_count}})</span>
+        <span class="new">{{stage2_new}} new</span><span class="dot"></span>
+      </div>
+      <div class="stage hot">
+        <span class="label">{{stage3_name}} ({{stage3_count}})</span>
+        <span class="new">{{stage3_new}} new</span><span class="dot"></span>
+      </div>
+      <div class="stage">
+        <span class="label">{{stage4_name}} ({{stage4_count}})</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="hd"><h2>Revenue</h2><div class="go">→</div></div>
+      <div class="rev">
+        <div>
+          <div class="v">{{revenue_total}}</div>
+          <div class="l">Total revenue</div>
+        </div>
+        <div>
+          <div class="v">{{revenue_today}}</div>
+          <div class="l">Today</div>
+        </div>
+      </div>
+      <div class="chart">
+        <div class="g"><i style="height:55%;background:var(--primary)"></i><i style="height:40%;background:#b9d3f7"></i></div>
+        <div class="g"><i style="height:32%;background:var(--primary)"></i><i style="height:48%;background:#b9d3f7"></i></div>
+        <div class="g"><i style="height:78%;background:var(--primary)"></i><i style="height:60%;background:#b9d3f7"></i></div>
+        <div class="g"><i style="height:45%;background:var(--primary)"></i><i style="height:70%;background:#b9d3f7"></i></div>
+        <div class="g"><i style="height:66%;background:var(--primary)"></i><i style="height:52%;background:#b9d3f7"></i></div>
+      </div>
+      <div class="x">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span>
+      </div>
+    </div>
+
+    <div class="feat">
+      <h2>What {{app_name}} does</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="on">▦</div><div>🏠</div><div>💳</div><div>🔔</div><div>👤</div>
+  </div>
+</div>
+</body>
+</html>

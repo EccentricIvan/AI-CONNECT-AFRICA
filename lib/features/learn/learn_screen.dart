@@ -10,6 +10,7 @@ import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../l10n/ui_registry.dart';
 import '../../services/ai_model_manager.dart';
+import '../../shared/widgets/chat_html_preview.dart';
 import '../../shared/widgets/curriculum_diagram.dart';
 import '../../shared/widgets/generating_indicator.dart';
 import '../../shared/widgets/responsive.dart';
@@ -284,6 +285,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                                 stage: null,
                                 math: state.streamingMath,
                                 codingCoach: widget.programmingSubject,
+                                isStreaming: true,
                               );
                             }
                             if (text.isNotEmpty) {
@@ -291,6 +293,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                                 text: text,
                                 stage: null,
                                 codingCoach: widget.programmingSubject,
+                                isStreaming: true,
                               );
                             }
                             return const GeneratingIndicator();
@@ -451,6 +454,7 @@ class _TutorBubble extends StatelessWidget {
     this.onReadAloud,
     this.isSpeaking = false,
     this.translationFailure,
+    this.isStreaming = false,
   });
 
   final String text;
@@ -462,6 +466,11 @@ class _TutorBubble extends StatelessWidget {
   final VoidCallback? onReadAloud;
   final bool isSpeaking;
   final String? translationFailure;
+
+  /// True while this turn is still streaming tokens — the HTML browser
+  /// cards only mount once the reply (and its code fences) have settled,
+  /// so the WebView isn't torn down and rebuilt on every token.
+  final bool isStreaming;
 
   @override
   Widget build(BuildContext context) {
@@ -557,6 +566,9 @@ class _TutorBubble extends StatelessWidget {
                       height: 1.6,
                     ),
                   ),
+                if (!isStreaming)
+                  for (final block in extractHtmlBlocksFromChat(text))
+                    ChatHtmlPreviewCard(html: block),
                 if (onReadAloud != null)
                   Align(
                     alignment: Alignment.centerRight,

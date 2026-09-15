@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#15171c;--muted:#767c88;--line:#ebedf1;--wash:#f5f6f8}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);
+  background:#e9ebef;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:#fff;border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(21,23,28,.2);display:flex;flex-direction:column
+}
+.status{display:flex;justify-content:space-between;padding:13px 22px 6px;font-size:12px;font-weight:700}
+
+.head{padding:4px 20px 14px}
+.deliver{display:flex;align-items:center;gap:9px;margin-bottom:14px}
+.deliver .pin{
+  width:32px;height:32px;border-radius:10px;background:var(--wash);
+  display:grid;place-items:center;font-size:15px
+}
+.deliver .l{font-size:11px;color:var(--muted)}
+.deliver .v{font-size:13px;font-weight:700}
+.deliver .bell{margin-left:auto;font-size:17px}
+.search{
+  display:flex;align-items:center;gap:9px;background:var(--wash);
+  border-radius:14px;padding:12px 14px;font-size:13px;color:var(--muted)
+}
+
+.body{padding:0 20px;flex:1}
+.cats{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+.cat{text-align:center;min-width:76px}
+.cat .box{
+  height:64px;border-radius:15px;background:var(--wash);display:grid;
+  place-items:center;font-size:26px;margin-bottom:6px
+}
+.cat span{font-size:11px;font-weight:600}
+
+.promo{
+  background:var(--primary);color:#fff;border-radius:18px;padding:16px;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0
+}
+.promo h3{font-size:15px;margin-bottom:3px}
+.promo p{font-size:11px;opacity:.85}
+.promo .tag{
+  background:#fff;color:var(--primary);border-radius:10px;padding:8px 13px;
+  font-size:12px;font-weight:800;white-space:nowrap
+}
+
+.tabs{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.tab{
+  border-radius:999px;padding:8px 15px;font-size:12px;font-weight:700;
+  background:var(--wash);white-space:nowrap
+}
+.tab.on{background:var(--ink);color:#fff}
+.tabs a{margin-left:auto;font-size:12px;color:var(--muted);text-decoration:none}
+
+.grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+.item{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.item .pic{height:96px;background:var(--wash);display:grid;place-items:center;font-size:34px;position:relative}
+.item .heart{position:absolute;top:8px;right:8px;font-size:14px}
+.item .txt{padding:10px}
+.item h4{font-size:12px;font-weight:600;line-height:1.35;margin-bottom:5px}
+.item .price{font-size:14px;font-weight:800}
+
+.feat{margin:18px 0 12px}
+.feat h2{font-size:14px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:var(--wash);border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.nav{
+  display:flex;justify-content:space-around;padding:13px 8px 18px;
+  border-top:1px solid var(--line)
+}
+.nav div{font-size:19px;opacity:.35}
+.nav div.on{opacity:1;color:var(--primary)}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="head">
+    <div class="deliver">
+      <div class="pin">📍</div>
+      <div>
+        <div class="l">Delivering to</div>
+        <div class="v">{{location}}</div>
+      </div>
+      <div class="bell">🔔</div>
+    </div>
+    <div class="search">🔍 Search {{app_name}}…</div>
+  </div>
+
+  <div class="body">
+    <div class="cats">
+      <div class="cat"><div class="box">🪑</div><span>{{cat1}}</span></div>
+      <div class="cat"><div class="box">👕</div><span>{{cat2}}</span></div>
+      <div class="cat"><div class="box">💡</div><span>{{cat3}}</span></div>
+      <div class="cat"><div class="box">🪴</div><span>{{cat4}}</span></div>
+    </div>
+
+    <div class="promo">
+      <div>
+        <h3>{{promo_title}}</h3>
+        <p>{{promo_note}}</p>
+      </div>
+      <div class="tag">{{app_name}}</div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on">For you</div>
+      <div class="tab">Best prices</div>
+      <a href="#">View all ›</a>
+    </div>
+
+    <div class="grid">
+      <div class="item">
+        <div class="pic">🛋️<span class="heart">🤍</span></div>
+        <div class="txt">
+          <h4>{{product1_name}}</h4>
+          <div class="price">{{product1_price}}</div>
+        </div>
+      </div>
+      <div class="item">
+        <div class="pic">🪟<span class="heart">🤍</span></div>
+        <div class="txt">
+          <h4>{{product2_name}}</h4>
+          <div class="price">{{product2_price}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <h2>What {{app_name}} does</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="on">🏠</div><div>🔖</div><div>🛍️</div><div>🤍</div><div>⚙️</div>
+  </div>
+</div>
+</body>
+</html>

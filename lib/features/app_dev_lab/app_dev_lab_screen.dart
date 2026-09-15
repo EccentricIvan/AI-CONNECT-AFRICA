@@ -1,21 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../ai_core/providers/ai_provider.dart';
-import '../../core/theme/app_colors.dart';
-import '../../l10n/app_locale.dart';
 import '../../services/ai_model_manager.dart';
-import '../../shared/coding/code_autocorrect.dart';
-import '../../shared/widgets/code_autocorrect_button.dart';
-import '../../shared/widgets/studio_page.dart';
-import '../settings/coder_package_prompt.dart';
-import 'app_build_controller.dart';
-import 'app_build_intent.dart';
-import 'app_schema_studio.dart';
-import 'ui_schema_interpreter.dart';
+import '../../shared/coding/code_lab.dart';
+import '../../shared/coding/code_lab_session.dart';
 
-/// Interactive App Dev Lab: feature picker → Qwen 1.5B Build → Preview/Code.
+/// App Dev Lab: guided lessons → edit the code → RUN → the real page.
+///
+/// Same architecture as the Web Dev Lab, on the same [CodeLabScaffold]. The
+/// coding model no longer builds the app: the student writes the code and a
+/// browser engine paints exactly that code, so the preview always appears
+/// instantly and always matches the editor. Autocorrect is the only route to
+/// the model, and it is an explicit, optional step.
 class AppDevLabScreen extends ConsumerStatefulWidget {
   const AppDevLabScreen({super.key});
 
@@ -24,397 +20,427 @@ class AppDevLabScreen extends ConsumerStatefulWidget {
 }
 
 class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
-  String _typeId = kAppLabTypes.first.id;
-  String _themeId = kAppLabThemes.first.id;
-  final Set<String> _features = {};
-  final _nameCtrl = TextEditingController();
-  final _purposeCtrl = TextEditingController();
-  final _audienceCtrl = TextEditingController();
-  final _codeCtrl = TextEditingController();
-  var _autocorrectBusy = false;
-  var _previewEpoch = 0;
-
   @override
   void initState() {
     super.initState();
+    // Autocorrect still reaches the coder; nothing else on this screen does.
     scheduleLiteRtMode(ActiveModelMode.appCoder);
   }
 
   @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _purposeCtrl.dispose();
-    _audienceCtrl.dispose();
-    _codeCtrl.dispose();
-    super.dispose();
-  }
-
-  AppLabType get _type => appLabTypeById(_typeId) ?? kAppLabTypes.first;
-  AppLabTheme get _theme => appLabThemeById(_themeId) ?? kAppLabThemes.first;
-
-  AppBuildIntent _lockIntent() {
-    final opts = _type.featureOptions;
-    final selected =
-        _features.isEmpty ? opts.take(2).toList() : _features.toList();
-    return AppBuildIntent(
-      appTypeId: _type.id,
-      appTypeName: _type.name,
-      themeId: _theme.id,
-      themeName: _theme.name,
-      themePrimary: _theme.primaryHex,
-      answers: {
-        'app_name': _nameCtrl.text.trim().isEmpty
-            ? _type.name
-            : _nameCtrl.text.trim(),
-        'purpose': _purposeCtrl.text.trim(),
-        'audience': _audienceCtrl.text.trim(),
-      },
-      features: selected,
-    );
-  }
-
-  Future<void> _onBuild() async {
-    final ok = await promptAndFetchCoderPackage(context, ref);
-    if (!ok || !mounted) return;
-    final intent = _lockIntent();
-    await ref.read(appBuildControllerProvider.notifier).buildFromIntent(intent);
-    final ready = ref.read(appBuildControllerProvider);
-    if (!mounted) return;
-    _codeCtrl.text = ready.previewHtml;
-    setState(() => _previewEpoch++);
-  }
-
-  Future<void> _autocorrect() async {
-    if (_autocorrectBusy) return;
-    final before = _codeCtrl.text;
-    if (before.trim().isEmpty) return;
-    // UI schema source must not go through HTML tag-closers / HTML coder.
-    if (before.trimLeft().startsWith('OTIC_UI_V1')) {
-      final soft = before
-          .replaceAll('\u201C', '"')
-          .replaceAll('\u201D', '"')
-          .replaceAll('\u2018', "'")
-          .replaceAll('\u2019', "'")
-          .replaceAll('\u00A0', ' ');
-      if (!mounted) return;
-      _codeCtrl.text = soft;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            soft == before
-                ? tr(context, 'No changes needed')
-                : tr(context, 'Autocorrect applied'),
-          ),
-        ),
-      );
-      return;
-    }
-    final coderOk = await promptAndFetchCoderPackage(context, ref);
-    if (!coderOk || !mounted) return;
-    setState(() => _autocorrectBusy = true);
-    try {
-      final engine = await ref.read(programmingEngineProvider.future);
-      final fixed = await autocorrectCode(
-        source: before,
-        kind: CodeAutocorrectKind.html,
-        engine: engine,
-      );
-      if (!mounted) return;
-      _codeCtrl.text = fixed.isNotEmpty ? fixed : before;
-    } catch (_) {
-      if (!mounted) return;
-      final intent = ref.read(appBuildControllerProvider).intent;
-      if (parseUiSchema(before) == null && intent != null) {
-        _codeCtrl.text = fallbackUiSchemaSource(intent);
-      } else {
-        _codeCtrl.text =
-            applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
-      }
-    } finally {
-      if (mounted) setState(() => _autocorrectBusy = false);
-    }
-  }
-
-  void _apply() {
-    ref.read(appBuildControllerProvider.notifier).applyCodeEdits(_codeCtrl.text);
-    setState(() => _previewEpoch++);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final studio = ref.watch(appBuildControllerProvider);
-    final building = studio.phase == AppBuildPhase.building;
-    final ready =
-        studio.phase == AppBuildPhase.ready && studio.previewHtml.isNotEmpty;
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            const Icon(Icons.phone_android, size: 20, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Text(tr(context, 'App Dev Lab')),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => context.push('/appchat'),
-            child: Text(tr(context, 'Chat builder')),
-          ),
-          const StudioDrawerButton(),
-          if (ready)
-            TextButton(
-              onPressed: () {
-                ref.read(appBuildControllerProvider.notifier).reset();
-              },
-              child: Text(tr(context, 'Edit features')),
-            ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Text(
-              tr(
-                context,
-                ready
-                    ? 'Preview Layout maps your UI schema to native Flutter widgets. '
-                        'Edit View Source Code and tap Apply Changes.'
-                    : 'Pick app type, theme, and features. Build runs the coding '
-                        'model, then opens Preview Layout | View Source Code.',
-              ),
-              style: const TextStyle(fontSize: 12, height: 1.35),
-            ),
-          ),
-          if (building)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      studio.buildNote.isEmpty
-                          ? tr(context, 'Building your app...')
-                          : studio.buildNote,
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: ready && studio.intent != null
-                ? AppSchemaStudio(
-                    key: ValueKey('app-studio-$_previewEpoch'),
-                    controller: _codeCtrl,
-                    intent: studio.intent!,
-                    initialSource: studio.previewHtml,
-                    onApply: _apply,
-                    toolbar: Row(
-                      children: [
-                        CodeAutocorrectButton(
-                          busy: _autocorrectBusy,
-                          onPressed: _autocorrect,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed: _apply,
-                            icon: const Icon(Icons.play_arrow),
-                            label: Text(tr(context, 'Apply Changes')),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        OutlinedButton.icon(
-                          onPressed: building ? null : _onBuild,
-                          icon: const Icon(Icons.refresh, size: 18),
-                          label: Text(tr(context, 'Rebuild')),
-                        ),
-                      ],
-                    ),
-                  )
-                : _FeaturePicker(
-                    typeId: _typeId,
-                    themeId: _themeId,
-                    features: _features,
-                    nameCtrl: _nameCtrl,
-                    purposeCtrl: _purposeCtrl,
-                    audienceCtrl: _audienceCtrl,
-                    building: building,
-                    onType: (id) => setState(() {
-                      _typeId = id;
-                      _features.clear();
-                    }),
-                    onTheme: (id) => setState(() => _themeId = id),
-                    onToggleFeature: (f) => setState(() {
-                      if (_features.contains(f)) {
-                        _features.remove(f);
-                      } else {
-                        _features.add(f);
-                      }
-                    }),
-                    onBuild: building ? null : _onBuild,
-                  ),
-          ),
-        ],
-      ),
+    return const CodeLabScaffold(
+      title: 'App Dev Lab',
+      icon: Icons.phone_android,
+      lessons: appLabLessons,
+      sessionId: CodeLabSections.app,
+      editorHint: 'Build your app screen here — HTML, CSS and JavaScript...',
     );
   }
 }
 
-class _FeaturePicker extends StatelessWidget {
-  const _FeaturePicker({
-    required this.typeId,
-    required this.themeId,
-    required this.features,
-    required this.nameCtrl,
-    required this.purposeCtrl,
-    required this.audienceCtrl,
-    required this.building,
-    required this.onType,
-    required this.onTheme,
-    required this.onToggleFeature,
-    required this.onBuild,
-  });
+// ── Lessons ──────────────────────────────────────────────────────────────────
 
-  final String typeId;
-  final String themeId;
-  final Set<String> features;
-  final TextEditingController nameCtrl;
-  final TextEditingController purposeCtrl;
-  final TextEditingController audienceCtrl;
-  final bool building;
-  final ValueChanged<String> onType;
-  final ValueChanged<String> onTheme;
-  final ValueChanged<String> onToggleFeature;
-  final VoidCallback? onBuild;
+/// Every starter is a complete document with a charset, phone-width, and no
+/// network reference — it has to render on a plane, on a bus, in a village
+/// with no signal, on both Android and Windows.
+///
+/// Data is kept in plain JavaScript variables rather than `localStorage`: the
+/// Android preview loads pages on an `about:blank` origin, where storage
+/// throws, so a storage lesson would fail on one platform and not the other.
+const appLabLessons = <CodeLabLesson>[
+  CodeLabLesson(
+    title: 'Lesson 1: Your First App Screen',
+    instruction:
+        'Every app screen has a bar at the top with a title, and content below '
+        'it. This is the whole shape of an app. Change the app name and the '
+        'welcome text, then tap RUN.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px; font-size: 18px;
+              font-weight: 700; }
+    .content { padding: 16px; }
+  </style>
+</head>
+<body>
 
-  @override
-  Widget build(BuildContext context) {
-    final type = appLabTypeById(typeId) ?? kAppLabTypes.first;
+  <div class="topbar">My First App</div>
+  <div class="content">
+    <h2>Welcome!</h2>
+    <p>This is my app screen.</p>
+  </div>
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          tr(context, 'Application type'),
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final t in kAppLabTypes)
-              ChoiceChip(
-                avatar: Icon(t.icon, size: 16),
-                label: Text(t.name),
-                selected: typeId == t.id,
-                onSelected: building ? null : (_) => onType(t.id),
-              ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Text(
-          tr(context, 'Visual style'),
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final th in kAppLabThemes)
-              ChoiceChip(
-                avatar: CircleAvatar(backgroundColor: th.primary, radius: 8),
-                label: Text(th.name),
-                selected: themeId == th.id,
-                onSelected: building ? null : (_) => onTheme(th.id),
-              ),
-          ],
-        ),
-        const SizedBox(height: 20),
-        Text(
-          tr(context, 'Core app details'),
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: nameCtrl,
-          enabled: !building,
-          decoration: InputDecoration(
-            labelText: tr(context, 'App name'),
-            hintText: 'e.g. StudySpark',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: purposeCtrl,
-          enabled: !building,
-          maxLines: 2,
-          decoration: InputDecoration(
-            labelText: tr(context, 'Purpose'),
-            hintText: 'e.g. Helps students track daily tasks',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: audienceCtrl,
-          enabled: !building,
-          decoration: InputDecoration(
-            labelText: tr(context, 'Who is it for?'),
-            hintText: 'e.g. Secondary school students',
-            border: const OutlineInputBorder(),
-          ),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          tr(context, 'Features'),
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 8),
-        ...type.featureOptions.map(
-          (f) => CheckboxListTile(
-            value: features.contains(f),
-            onChanged: building ? null : (_) => onToggleFeature(f),
-            title: Text(f),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-        const SizedBox(height: 20),
-        FilledButton.icon(
-          onPressed: onBuild,
-          icon: const Icon(Icons.auto_awesome),
-          label: Text(tr(context, 'Build Application')),
-        ),
-        const SizedBox(height: 12),
-        TextButton(
-          onPressed: building
-              ? null
-              : () => context.push('/learn/subject/app_development'),
-          child: Text(tr(context, 'Open curriculum lessons')),
-        ),
-      ],
-    );
-  }
-}
+</body>
+</html>''',
+    hint: 'Change #2563eb to #16a34a to make the top bar green.',
+    challenge: 'Add a second paragraph telling the user what your app does.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 2: Cards Hold Your Content',
+    instruction:
+        'Apps group information into cards — a white box with rounded corners '
+        'and a soft shadow. Cards are what make a screen look like an app '
+        'instead of a document. Try adding a third card.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .content { padding: 16px; }
+    .card { background: white; border-radius: 12px; padding: 16px;
+            margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .card h3 { margin: 0 0 6px 0; }
+    .card p { margin: 0; color: #64748b; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">My Notes</div>
+  <div class="content">
+    <div class="card">
+      <h3>Maths homework</h3>
+      <p>Finish questions 1 to 10.</p>
+    </div>
+    <div class="card">
+      <h3>Science project</h3>
+      <p>Bring a plant for the experiment.</p>
+    </div>
+  </div>
+
+</body>
+</html>''',
+    hint: 'Copy one whole <div class="card">…</div> block and change the text.',
+    challenge: 'Give one card a coloured left border using border-left.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 3: A List of Items',
+    instruction:
+        'Most apps are a list of things — messages, tasks, products, students. '
+        'A list is rows stacked on top of each other, each with a line under '
+        'it. Add two more rows to the list.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: white; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .row { padding: 14px 16px; border-bottom: 1px solid #e5e7eb;
+           display: flex; justify-content: space-between; }
+    .name { font-weight: 600; }
+    .price { color: #16a34a; font-weight: 700; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">Market Prices</div>
+
+  <div class="row"><span class="name">Maize (1 kg)</span><span class="price">2,500</span></div>
+  <div class="row"><span class="name">Beans (1 kg)</span><span class="price">4,000</span></div>
+  <div class="row"><span class="name">Rice (1 kg)</span><span class="price">5,200</span></div>
+
+</body>
+</html>''',
+    hint: 'Copy a whole <div class="row">…</div> line and change the two values.',
+    challenge: 'Make the prices red instead of green by changing the colour.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 4: A Button That Does Something',
+    instruction:
+        'An app reacts when you tap it. addEventListener listens for a tap, '
+        'then runs your code. Here the button changes the counter. Tap RUN, '
+        'then tap the button in the preview.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8;
+           text-align: center; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; text-align: left; }
+    .count { font-size: 64px; font-weight: 800; margin: 40px 0 20px; }
+    button { background: #2563eb; color: white; border: none; padding: 14px 28px;
+             border-radius: 10px; font-size: 16px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">Counter App</div>
+  <div class="count" id="count">0</div>
+  <button id="addBtn">Add one</button>
+
+  <script>
+    let count = 0;
+    const label = document.getElementById('count');
+
+    document.getElementById('addBtn').addEventListener('click', () => {
+      count = count + 1;
+      label.textContent = count;
+    });
+  </script>
+
+</body>
+</html>''',
+    hint: 'Change count + 1 to count + 5 to jump by five each tap.',
+    challenge: 'Add a second button that takes one away.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 5: Taking Input From the User',
+    instruction:
+        'Real apps let people type. Read what they typed with .value, then do '
+        'something with it. Type your name in the preview and tap the button.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .content { padding: 16px; }
+    input { width: 100%; padding: 12px; border: 1px solid #cbd5e1;
+            border-radius: 8px; font-size: 15px; box-sizing: border-box; }
+    button { width: 100%; margin-top: 10px; background: #2563eb; color: white;
+             border: none; padding: 13px; border-radius: 8px; font-size: 15px;
+             font-weight: 600; }
+    .greeting { margin-top: 18px; font-size: 18px; font-weight: 700;
+                color: #2563eb; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">Greeting App</div>
+  <div class="content">
+    <input id="nameBox" placeholder="Type your name">
+    <button id="greetBtn">Say hello</button>
+    <div class="greeting" id="out"></div>
+  </div>
+
+  <script>
+    document.getElementById('greetBtn').addEventListener('click', () => {
+      const name = document.getElementById('nameBox').value;
+      document.getElementById('out').textContent = 'Hello, ' + name + '!';
+    });
+  </script>
+
+</body>
+</html>''',
+    hint: "Try changing 'Hello, ' to 'Welcome back, '.",
+    challenge: 'Show a warning if the box is empty instead of greeting nobody.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 6: Adding Items to a List',
+    instruction:
+        'This is the heart of a to-do app, a notes app, a shopping list. The '
+        'items live in a JavaScript array, and the screen is redrawn from that '
+        'array every time it changes.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .content { padding: 16px; }
+    .bar { display: flex; gap: 8px; }
+    input { flex: 1; padding: 12px; border: 1px solid #cbd5e1;
+            border-radius: 8px; font-size: 15px; }
+    button { background: #2563eb; color: white; border: none; padding: 12px 18px;
+             border-radius: 8px; font-weight: 600; }
+    .task { background: white; border-radius: 10px; padding: 14px;
+            margin-top: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">My To-Do List</div>
+  <div class="content">
+    <div class="bar">
+      <input id="taskBox" placeholder="What do you need to do?">
+      <button id="addBtn">Add</button>
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <script>
+    const tasks = ['Read one chapter'];
+
+    function draw() {
+      const list = document.getElementById('list');
+      list.innerHTML = '';
+      tasks.forEach(task => {
+        const row = document.createElement('div');
+        row.className = 'task';
+        row.textContent = task;
+        list.appendChild(row);
+      });
+    }
+
+    document.getElementById('addBtn').addEventListener('click', () => {
+      const box = document.getElementById('taskBox');
+      if (box.value.trim() === '') return;
+      tasks.push(box.value);
+      box.value = '';
+      draw();
+    });
+
+    draw();
+  </script>
+
+</body>
+</html>''',
+    hint: 'Add another starting task inside the tasks = [ ] brackets.',
+    challenge: 'Show the number of tasks above the list.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 7: A Bottom Navigation Bar',
+    instruction:
+        'Phone apps put their main sections in a bar at the bottom, where your '
+        'thumb reaches. Tapping a tab swaps the content above it. Tap the tabs '
+        'in the preview.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .content { padding: 20px; min-height: 260px; }
+    .tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex;
+            background: white; border-top: 1px solid #e5e7eb; }
+    .tab { flex: 1; padding: 14px; text-align: center; font-size: 14px;
+           font-weight: 600; color: #94a3b8; }
+    .tab.active { color: #2563eb; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">My App</div>
+  <div class="content" id="screen">Welcome to the Home screen.</div>
+
+  <div class="tabs">
+    <div class="tab active" data-text="Welcome to the Home screen.">Home</div>
+    <div class="tab" data-text="Here are your saved items.">Saved</div>
+    <div class="tab" data-text="This is your profile.">Profile</div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('screen').textContent = tab.dataset.text;
+      });
+    });
+  </script>
+
+</body>
+</html>''',
+    hint: 'Change the data-text of a tab to change what that screen says.',
+    challenge: 'Add a fourth tab called Settings.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 8: A Dashboard of Numbers',
+    instruction:
+        'Business and school apps open on a dashboard — a few big numbers the '
+        'user cares about, side by side in a grid. Change the numbers and the '
+        'labels to fit an app of your own.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #16a34a; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+            padding: 16px; }
+    .stat { background: white; border-radius: 12px; padding: 16px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    .value { font-size: 26px; font-weight: 800; color: #16a34a; }
+    .label { font-size: 13px; color: #64748b; margin-top: 4px; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">Shop Dashboard</div>
+  <div class="grid">
+    <div class="stat"><div class="value">42</div><div class="label">Sales today</div></div>
+    <div class="stat"><div class="value">18</div><div class="label">Items left</div></div>
+    <div class="stat"><div class="value">7</div><div class="label">New customers</div></div>
+    <div class="stat"><div class="value">3</div><div class="label">Low stock</div></div>
+  </div>
+
+</body>
+</html>''',
+    hint: 'Change 1fr 1fr to 1fr to stack the cards in one column.',
+    challenge: 'Add two more stat cards that matter for your own app.',
+  ),
+  CodeLabLesson(
+    title: 'Lesson 9: Build Your Own App',
+    instruction:
+        'No instructions this time — this is yours. Use what you learned: a '
+        'top bar, cards, a list, a button that reacts, an input box, a bottom '
+        'nav. Build an app for your school, your home, or your business.',
+    starterCode: '''<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; }
+    .topbar { background: #2563eb; color: white; padding: 16px;
+              font-size: 18px; font-weight: 700; }
+    .content { padding: 16px; }
+    .card { background: white; border-radius: 12px; padding: 16px;
+            margin-bottom: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+    button { background: #2563eb; color: white; border: none; padding: 12px 20px;
+             border-radius: 8px; font-size: 15px; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">My App</div>
+  <div class="content">
+
+    <div class="card">
+      <h3>Start here</h3>
+      <p>Change this card into the first thing your app shows.</p>
+    </div>
+
+    <button id="goBtn">Tap me</button>
+
+  </div>
+
+  <script>
+    document.getElementById('goBtn').addEventListener('click', () => {
+      alert('Your app is working!');
+    });
+  </script>
+
+</body>
+</html>''',
+    hint: 'Stuck? Open Lesson 6 and reuse the add-to-a-list pattern.',
+    challenge: 'Show your finished app to someone and ask what they would add.',
+  ),
+];

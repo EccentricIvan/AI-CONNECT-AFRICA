@@ -303,32 +303,49 @@ class _SetupView extends ConsumerWidget {
     BuildContext context,
   ) =>
       [
+        // Two guided builders, then two code labs, then Python. No entry
+        // promises that a model builds the project any more: every section
+        // paints from the student's own code, and the coding model is an
+        // optional follow-up (Autocorrect / "change this") inside each screen.
         (
           title: tr(context, 'Build a Website'),
           subtitle: tr(
             context,
-            'Select features → coding model builds → Preview/Code edit',
+            'Answer a few questions → instant preview → edit the code',
           ),
           icon: Icons.language,
           color: AppColors.createColor,
           route: '/sitechat',
         ),
         (
-          title: tr(context, 'Build an App'),
+          title: tr(context, 'App chat builder'),
           subtitle: tr(
             context,
-            'Select features → coding model builds → Preview/Code edit',
+            'Guided chat → instant preview → edit the code',
+          ),
+          icon: Icons.widgets,
+          color: AppColors.teachColor,
+          route: '/appchat',
+        ),
+        (
+          title: tr(context, 'Web Dev Lab'),
+          subtitle: tr(
+            context,
+            'Guided lessons → edit the code → RUN to preview',
+          ),
+          icon: Icons.code,
+          color: AppColors.practiceColor,
+          route: '/weblab',
+        ),
+        (
+          title: tr(context, 'App Dev Lab'),
+          subtitle: tr(
+            context,
+            'Guided lessons → edit the code → RUN to preview',
           ),
           icon: Icons.phone_android,
           color: AppColors.learnColor,
           route: '/applab',
-        ),
-        (
-          title: tr(context, 'Web Dev Lab'),
-          subtitle: tr(context, 'HTML/CSS/JS editor with live preview'),
-          icon: Icons.code,
-          color: AppColors.practiceColor,
-          route: '/weblab',
         ),
         (
           title: tr(context, 'Python Lab'),
@@ -339,13 +356,6 @@ class _SetupView extends ConsumerWidget {
           icon: Icons.terminal,
           color: AppColors.accentDeep,
           route: '/pythonlab',
-        ),
-        (
-          title: tr(context, 'App chat builder'),
-          subtitle: tr(context, 'Guided chat → coding model → Preview/Code'),
-          icon: Icons.widgets,
-          color: AppColors.teachColor,
-          route: '/appchat',
         ),
       ];
 

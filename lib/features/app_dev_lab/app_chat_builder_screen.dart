@@ -1,31 +1,50 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ai_core/providers/ai_provider.dart';
-import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/ai_model_manager.dart';
-import '../../shared/coding/code_autocorrect.dart';
-import '../../shared/widgets/code_autocorrect_button.dart';
+import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
+import '../../shared/coding/code_instruction_edit.dart';
+import '../../shared/coding/interactive_html.dart' show escapeHtml;
+import '../../shared/widgets/code_instruction_bar.dart';
 import '../../shared/widgets/html_preview.dart';
-import '../../shared/widgets/studio_page.dart';
 import '../create/dev_l10n.dart';
 import '../settings/coder_package_prompt.dart';
 import 'app_build_coder.dart';
 
 class _AppType {
-  const _AppType(this.id, this.name, this.featureOptions);
+  const _AppType(
+    this.id,
+    this.name,
+    this.featureOptions, {
+    this.templateId = 'generic',
+    this.autoFields = const {},
+  });
   final String id;
   final String name;
   final List<String> featureOptions;
+
+  /// Screen template under `assets/templates/apps/` this type builds from.
+  final String templateId;
+
+  /// Sample copy pools filled in at build time, so a student's screen looks
+  /// like a real product instead of empty placeholders.
+  final Map<String, List<String>> autoFields;
 }
 
 class _QField {
   const _QField(this.key, this.question, this.hint);
   final String key, question, hint;
 }
+
+final _rng = Random();
+String _pick(List<String> options) => options[_rng.nextInt(options.length)];
 
 const _appTypes = [
   _AppType('notes', 'School Notes', [
@@ -64,6 +83,177 @@ const _appTypes = [
     'Search items',
     'Favorites',
   ]),
+  _AppType(
+    'farm',
+    'Farm / Crop Monitor',
+    ['Field list', 'Weather today', 'Crop health', 'Harvest log'],
+    templateId: 'farm',
+    autoFields: {
+      'owner_name': ['Annca', 'Harris', 'Joseph', 'Amina'],
+      'location': ['Mukono, Uganda', 'Central Valley', 'Jinja, Uganda', 'Nakuru, Kenya'],
+      'temperature': ['24°C', '32°C', '27°C'],
+      'humidity': ['85%', '78%', '64%'],
+      'rainfall': ['8 mm', '0 mm', '12 mm'],
+      'wind': ['13 km/h', '7 m/s', '9 km/h'],
+      'crop1': ['Maize', 'Rice', 'Carrots'],
+      'crop2': ['Beans', 'Wheat', 'Vegetable'],
+      'crop3': ['Coffee', 'Potato', 'Fruit'],
+      'field1_name': ['My Garden Field', 'North Field', 'Riverside Plot'],
+      'field1_note': ['Healthy growth, irrigation on schedule.', 'Ready for harvest in two weeks.'],
+      'field2_name': ['East Field', 'Hill Plot', 'Lower Field'],
+      'field2_note': ['Watch for pests this week.', 'Newly planted, germinating well.'],
+      'total_area': ['12 ha', '45 acres', '8 ha'],
+      'plant_age': ['45 days', '2 months', '18 days'],
+      'soil_quality': ['75%', '82%', '68%'],
+      'yield_amount': ['15 tons', '22 tons', '9 tons'],
+    },
+  ),
+  _AppType(
+    'shop',
+    'Online Shop / Store',
+    ['Product grid', 'Search items', 'Cart & checkout', 'Favorites'],
+    templateId: 'shop',
+    autoFields: {
+      'location': ['Kampala Road, 21', 'Main Street, Nairobi', 'Plot 8, Entebbe'],
+      'cat1': ['Home', 'Furniture', 'Fabrics'],
+      'cat2': ['Clothes', 'Fashion', 'Shoes'],
+      'cat3': ['Electronics', 'Lighting', 'Phones'],
+      'cat4': ['Plants', 'Decor', 'Garden'],
+      'promo_title': ['Pay in instalments', 'Free delivery this week', 'Save up to 30%'],
+      'promo_note': ['No deposit needed on selected items.', 'On every order above 50,000 UGX.'],
+      'product1_name': ['Swivel chair', 'Woven basket', 'Cushion cover'],
+      'product1_price': ['120,000 UGX', '35,000 UGX', '18,000 UGX'],
+      'product2_name': ['Table lamp', 'Glass tumbler', 'Wall clock'],
+      'product2_price': ['45,000 UGX', '9,000 UGX', '60,000 UGX'],
+    },
+  ),
+  _AppType(
+    'learn',
+    'Learning / Course App',
+    ['Course list', 'Lesson player', 'Progress tracker', 'Quizzes'],
+    templateId: 'learn',
+    autoFields: {
+      'learner_name': ['Sofia', 'Jerel', 'Amina', 'Daniel'],
+      'banner_title': ['Find your lesson for today', 'Learn something new today', 'Pick up where you left off'],
+      'banner_note': ['Over 100 offline lessons across every subject on your device.', 'Short lessons that work with no internet at all.'],
+      'cat1': ['Design', 'Art', 'Writing'],
+      'cat2': ['Coding', 'Web Design', 'ICT'],
+      'cat3': ['Maths', 'Numbers', 'Algebra'],
+      'cat4': ['Science', 'Biology', 'Physics'],
+      'course1_name': ['Intro to Web Design', 'Algebra Basics', 'Biology Foundations'],
+      'course1_meta': ['12 lessons · 6h 30m', '18 lessons · 4h 10m'],
+      'course2_name': ['JavaScript Fundamentals', 'Chemistry Basics', 'Creative Writing'],
+      'course2_meta': ['24 lessons · 8h 41m', '9 lessons · 3h 05m'],
+    },
+  ),
+  _AppType(
+    'pos',
+    'Shop Till / Sales Point',
+    ['Register sale', 'Product list', 'Daily totals', 'Receipts'],
+    templateId: 'pos',
+    autoFields: {
+      'owner_name': ['June', 'Peter', 'Sarah', 'Moses'],
+      'shop_name': ['The Craft Shop', 'Corner Store', 'Netro Creative'],
+      'today': ['Monday, 1 February', 'Today', 'Tuesday, 14 March'],
+      'receipts': ['4', '19', '27'],
+      'total_sales': ['362,290', '1,240,000', '86,400'],
+      'menu_label': ['Menu', 'Products', 'Stock'],
+    },
+  ),
+  _AppType(
+    'social',
+    'Community / Social App',
+    ['Feed', 'Groups', 'Discover', 'Profile'],
+    templateId: 'social',
+    autoFields: {
+      'community_tag': ['Community & Culture', 'Made for creators', 'Connect and share'],
+      'tab1': ['Following', 'For you', 'Trending'],
+      'tab2': ['Discover', 'Nearby', 'Popular'],
+      'tab3': ['Groups', 'Events', 'Saved'],
+      'post1_title': ['Culture Festival Highlights', 'Market Day Recap', 'Sunset Over the Hills'],
+      'post1_author': ['Amara K.', 'Kwame O.', 'Zanele M.'],
+      'post1_likes': ['1.5K', '820', '2.3K'],
+      'post2_title': ['DIY Traditional Fashion', 'Weekend Craft Fair', 'New Fabric Drop'],
+      'post2_author': ['Tendai M.', 'Aisha B.', 'Kofi A.'],
+      'post2_likes': ['183K', '4.2K', '9.6K'],
+      'post3_title': ['A Map of Our Roots', 'Where We Come From', 'Community Stories'],
+      'post3_author': ['Chidi N.', 'Fatima Y.', 'Noma S.'],
+      'post3_likes': ['100K', '15K', '6.8K'],
+      'post4_title': ['My First Vlog', 'Behind the Scenes', 'A Day in the Village'],
+      'post4_author': ['Nia F.', 'Emeka T.', 'Layla R.'],
+      'post4_likes': ['2.7M', '340K', '58K'],
+    },
+  ),
+  _AppType(
+    'eduplatform',
+    'Course Marketplace App',
+    ['Course catalog', 'Mentor profiles', 'Lesson progress', 'Enroll'],
+    templateId: 'eduplatform',
+    autoFields: {
+      'course1_name': ['Figma Master Class for Beginners', 'Intro to Bootstrap', 'UI/UX Fundamentals'],
+      'course1_tutor': ['Trolentik Korlen', 'Jane Achan', 'Marlin Reyes'],
+      'course1_due': ['28 lessons', 'Due Nov 2', '6h 30m'],
+      'course1_level': ['Beginner', 'Intermediate'],
+      'course2_name': ['Web Design Fundamentals', 'JavaScript Basics', 'Graphic Design Pro'],
+      'course2_tutor': ['Simons Lee', 'Peter Okot', 'Jesica Nabb'],
+      'course2_due': ['24 lessons', 'Due Nov 9', '8h 20m'],
+      'course2_level': ['Intermediate', 'Beginner'],
+      'course3_name': ['App Development', 'Prototype with Figma', 'Mobile UI Essentials'],
+      'course3_tutor': ['Marlin Torres', 'Grace Auma', 'David Oduya'],
+      'course3_due': ['15 lessons', 'Due Nov 16', '46 min'],
+      'course3_level': ['Advanced', 'Beginner'],
+      'mentor1_name': ['Marlin', 'Grace', 'David'],
+      'mentor1_subject': ['UI/UX Design', 'Mathematics', 'Web Design'],
+      'mentor2_name': ['Simons', 'Peter', 'Jesica'],
+      'mentor2_subject': ['Web Design', 'Physics', 'Graphic Design'],
+      'mentor3_name': ['Jesica', 'David', 'Simons'],
+      'mentor3_subject': ['UI/UX Design', 'App Dev', 'Illustration'],
+    },
+  ),
+  _AppType(
+    'orders',
+    'Order Pipeline App',
+    ['Order stages', 'Revenue chart', 'Client details', 'Notifications'],
+    templateId: 'orders',
+    autoFields: {
+      'stage1_name': ['Leads', 'New enquiries', 'Quotes sent'],
+      'stage1_count': ['4', '9', '6'],
+      'stage1_new': ['2', '3', '1'],
+      'stage2_name': ['Paid — Ready to Start', 'Confirmed orders', 'Deposit received'],
+      'stage2_count': ['23', '14', '31'],
+      'stage2_new': ['3', '2', '5'],
+      'stage3_name': ['In Progress', 'In Tailoring', 'Being Prepared'],
+      'stage3_count': ['4', '7', '3'],
+      'stage3_new': ['1', '2', '1'],
+      'stage4_name': ['Ready to Send', 'Waiting for Feedback', 'Completed'],
+      'stage4_count': ['3', '8', '12'],
+      'revenue_total': ['\$3,780,113', '\$1,240,500', '\$842,900'],
+      'revenue_today': ['\$604,355', '\$92,300', '\$38,600'],
+    },
+  ),
+  _AppType(
+    'products',
+    'Product & Sales Tracker',
+    ['Product list', 'Sales chart', 'Stock levels', 'Add product'],
+    templateId: 'products',
+    autoFields: {
+      'owner_role': ['Owner', 'Shop Manager', 'Store Admin'],
+      'product_count': ['6', '18', '42'],
+      'sales_count': ['19', '54', '112'],
+      'revenue': ['\$224', '\$1,840', '\$6,200'],
+      'returns': ['4', '2', '9'],
+      'chart_title': ["Today's sales", 'This week', 'Hourly sales'],
+      'product1_name': ['Black Shine Shampoo', 'Sunsilk Conditioner', 'Herbal Soap Bar'],
+      'product1_stock': ['340', '88', '210'],
+      'product1_price': ['699', '850', '250'],
+      'product2_name': ['Gaming Headphone', 'Wireless Earbuds', 'Bluetooth Speaker'],
+      'product2_stock': ['88', '15,888', '46'],
+      'product2_price': ['1000', '15888', '1200'],
+      'product3_name': ['Daily Soap', 'Body Lotion', 'Hand Sanitizer'],
+      'product3_stock': ['150', '60', '300'],
+      'product3_price': ['699', '450', '150'],
+    },
+  ),
 ];
 
 const _askFields = [
@@ -95,6 +285,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
   final _codeController = TextEditingController();
+  final _studioKey = GlobalKey<LiveHtmlStudioState>();
+
+  /// Code as it stood before the last AI change, so it can be reverted.
+  String? _undoSnapshot;
   final List<_ChatMsg> _messages = [];
   final Map<String, String> _answers = {};
   final List<String> _selectedFeatures = [];
@@ -123,8 +317,14 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
       "What kind of app do you want?",
     );
     await _sayBot(
-      "1️⃣ School Notes\n2️⃣ Budget Tracker\n3️⃣ Quiz Game\n"
-      "4️⃣ Habit Tracker\n5️⃣ To-Do List\n6️⃣ Local Market\n\n"
+      // Circled numerals (U+2460-U+246D): one glyph per number past 10, where
+      // keycap emoji would need two boxes and knock the column out of line.
+      "① School Notes\n② Budget Tracker\n③ Quiz Game\n"
+      "④ Habit Tracker\n⑤ To-Do List\n⑥ Local Market\n"
+      "⑦ Farm / Crop Monitor\n⑧ Online Shop / Store\n"
+      "⑨ Learning / Course App\n⑩ Shop Till / Sales Point\n"
+      "⑪ Community / Social App\n⑫ Course Marketplace\n"
+      "⑬ Order Pipeline\n⑭ Product & Sales Tracker\n\n"
       "Type the number or name!",
     );
   }
@@ -183,26 +383,48 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
 
   Future<void> _handleTypeChoice(String text) async {
     final lower = text.toLowerCase();
-    final matchers = <int, List<String>>{
-      0: ['1', 'note', 'school'],
-      1: ['2', 'budget', 'money', 'expense'],
-      2: ['3', 'quiz', 'game'],
-      3: ['4', 'habit'],
-      4: ['5', 'todo', 'to-do', 'task'],
-      5: ['6', 'market', 'shop', 'sell'],
-    };
     _AppType? chosen;
-    for (final e in matchers.entries) {
-      for (final k in e.value) {
-        if (lower.contains(k)) {
-          chosen = _appTypes[e.key];
-          break;
-        }
-      }
-      if (chosen != null) break;
+
+    // A typed number wins outright — substring matching cannot be used for
+    // digits, because "10" contains "1" and would resolve to the first type.
+    final digits = RegExp(r'^\s*(\d{1,2})\s*$').firstMatch(lower)?.group(1);
+    final picked = digits == null ? null : int.tryParse(digits);
+    if (picked != null && picked >= 1 && picked <= _appTypes.length) {
+      chosen = _appTypes[picked - 1];
     }
+
+    // Specific phrases first so "shop till" is not eaten by "shop".
+    const matchers = <int, List<String>>{
+      9: ['till', 'sales point', 'pos', 'cashier', 'register'],
+      13: ['sales tracker', 'product tracker', 'inventory'],
+      12: ['order pipeline', 'pipeline', 'orders'],
+      11: ['course marketplace', 'marketplace', 'mentor'],
+      10: ['social', 'community', 'feed'],
+      6: ['farm', 'crop', 'agri', 'harvest', 'garden'],
+      7: ['online shop', 'store', 'ecommerce', 'e-commerce', 'shop'],
+      8: ['learn', 'course', 'lesson', 'study', 'education'],
+      0: ['note', 'school notes'],
+      1: ['budget', 'money', 'expense'],
+      2: ['quiz', 'game'],
+      3: ['habit'],
+      4: ['todo', 'to-do', 'task'],
+      5: ['market', 'sell'],
+    };
+
     if (chosen == null) {
-      await _sayBot("I didn't catch that. Type 1–6 or the app name.");
+      for (final e in matchers.entries) {
+        for (final k in e.value) {
+          if (lower.contains(k)) {
+            chosen = _appTypes[e.key];
+            break;
+          }
+        }
+        if (chosen != null) break;
+      }
+    }
+
+    if (chosen == null) {
+      await _sayBot("I didn't catch that. Type 1–14 or the app name.");
       return;
     }
     _appType = chosen;
@@ -211,8 +433,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     await _sayBot("Great — ${chosen.name}! 🎨 Pick a color theme:");
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await _sayBot(
-      "1️⃣ Ocean Blue\n2️⃣ Forest Green\n3️⃣ Royal Purple\n"
-      "4️⃣ Sunset Orange\n5️⃣ Rose Pink\n\nType a number!",
+      "① Ocean Blue\n② Forest Green\n③ Royal Purple\n"
+      "④ Sunset Orange\n⑤ Rose Pink\n\nType a number!",
     );
   }
 
@@ -306,7 +528,17 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     setState(() {});
   }
 
-  Future<void> _autocorrectCode() async {
+  Future<void> _undoLastInstruction() async {
+    final previous = _undoSnapshot;
+    if (previous == null) return;
+    _undoSnapshot = null;
+    _codeController.text = previous;
+    _studioKey.currentState?.applyNow();
+  }
+
+  /// Runs a plain-English restyle request ("center the text", "make it
+  /// green") through the coder model and repaints the preview on success.
+  Future<void> _applyInstruction(String instruction) async {
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
@@ -315,110 +547,94 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
-      final fixed = await autocorrectCode(
+      final fixed = await applyCodeInstruction(
         source: before,
+        instruction: instruction,
         kind: CodeAutocorrectKind.html,
         engine: engine,
       );
       if (!mounted) return;
-      _codeController.text = fixed;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            fixed == before ? 'No changes needed' : 'Autocorrect applied',
+      if (fixed == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tr(context, "Couldn't apply that — try describing it a different way."),
+            ),
           ),
-        ),
-      );
+        );
+        return;
+      }
+      _undoSnapshot = before;
+      _codeController.text = fixed;
+      _studioKey.currentState?.applyNow();
+      if (!mounted) return;
+      showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
     } catch (_) {
       if (!mounted) return;
-      _codeController.text =
-          applyHeuristicAutocorrect(before, CodeAutocorrectKind.html);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'Something went wrong. Please try again.'))),
+      );
     } finally {
       if (mounted) setState(() => _autocorrectBusy = false);
     }
+  }
+
+  /// Maps the student's app name, purpose, theme, and chosen features onto
+  /// the screen template for this app type. Every value is HTML-escaped; the
+  /// feature list is markup this method builds itself, so it goes in raw.
+  Future<String> _assembleAppHtml(AppBuildIntent intent) async {
+    final type = _appType!;
+    var html = await rootBundle
+        .loadString('assets/templates/apps/${type.templateId}.html');
+
+    final appName = intent.appName.trim().isEmpty ? 'My App' : intent.appName;
+    final tokens = <String, String>{
+      'app_name': appName,
+      'type_name': type.name,
+      'purpose': intent.purpose.trim().isEmpty ? type.name : intent.purpose,
+      'primary': intent.themePrimary,
+      'initial': appName.trim().substring(0, 1).toUpperCase(),
+      'stat1': '3',
+      'stat2': '12',
+      'stat3': '48',
+      for (final entry in type.autoFields.entries)
+        entry.key: _pick(entry.value),
+    };
+
+    for (final entry in tokens.entries) {
+      html = html.replaceAll('{{${entry.key}}}', escapeHtml(entry.value));
+    }
+
+    final features = intent.features.isEmpty
+        ? ['Home screen']
+        : intent.features;
+    final list = StringBuffer('<ul>');
+    for (final feature in features) {
+      list.write('<li>${escapeHtml(feature)}</li>');
+    }
+    list.write('</ul>');
+    return html.replaceAll('{{features}}', list.toString());
   }
 
   Future<void> _buildApp() async {
     if (_appType == null) return;
     if (!mounted) return;
 
-    final coderOk = await promptAndFetchCoderPackage(context, ref);
-    if (!coderOk || !mounted) return;
-
     setState(() {
       _building = true;
-      _buildNote = tr(context, 'Loading coding model…');
+      _buildNote = tr(context, 'Building your app…');
     });
 
     final intent = _currentIntent();
-    final fallback = fallbackAppHtml(intent);
-    var html = fallback;
-    var usedCoder = false;
-
-    try {
-      final info = await ref.read(programmingModelInfoProvider.future);
-      if (!mounted) return;
-
-      if (info.status != ModelStatus.ready) {
-        setState(() {
-          _buildNote = tr(
-            context,
-            'Coding model not found — using app shell.',
-          );
-        });
-      } else {
-        setState(() {
-          _buildNote = tr(context, 'Coding model writing your app…');
-        });
-        final coder = await ref.read(aiCoderServiceProvider.future);
-        if (!mounted) return;
-
-        var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
-        final generated = await coder.generateAppHtml(
-          intent: intent,
-          onToken: (cumulative) {
-            final now = DateTime.now();
-            if (now.difference(lastUi).inMilliseconds < 400) return;
-            lastUi = now;
-            if (!mounted) return;
-            final n = cumulative.length;
-            setState(() {
-              _buildNote = tr(
-                context,
-                'Coding model writing your app… ($n chars)',
-              );
-            });
-          },
-        ).timeout(
-          const Duration(minutes: 3),
-          onTimeout: () => null,
-        );
-
-        if (generated != null && generated.length > 200) {
-          html = generated;
-          usedCoder = true;
-        }
-      }
-    } catch (_) {
-      html = fallback;
-      usedCoder = false;
-    }
+    final html = await _assembleAppHtml(intent);
 
     if (!mounted) return;
     _codeController.text = html;
 
-    final ready = usedCoder
-        ? tr(
-            context,
-            'Your app preview is ready! 🎉 Built by the coding model. '
-            'Toggle Preview / Code to view or edit.',
-          )
-        : tr(
-            context,
-            'Your app preview is ready! 🎉 '
-            '(App shell — coding model was slow or incomplete.) '
-            'Toggle Preview / Code to edit.',
-          );
+    final ready = tr(
+      context,
+      'Your app preview is ready! 🎉 Toggle Preview / Code to view or edit.',
+    );
 
     setState(() {
       _messages.add(_ChatMsg(ready, true));
@@ -442,7 +658,6 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
           ],
         ),
         actions: [
-          const StudioDrawerButton(),
           TextButton(
             onPressed: () => context.push('/applab'),
             child: Text(tr(context, 'Lessons')),
@@ -471,7 +686,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
               tr(
                 context,
                 _showStudio
-                    ? 'Use Apply Changes & Preview to paint Base64 WebView, or Full Screen Preview for an unconstrained view.'
+                    ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
                     : 'Answer the prompts to record features. Build runs the coding '
                         'model, then opens Preview Layout | View Source Code.',
               ),
@@ -481,11 +696,12 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
           if (_showStudio)
             Expanded(
               child: LiveHtmlStudio(
+                key: _studioKey,
                 controller: _codeController,
                 onApply: _applyCodeEdits,
-                toolbar: CodeAutocorrectButton(
+                toolbar: CodeInstructionBar(
                   busy: _autocorrectBusy,
-                  onPressed: _autocorrectCode,
+                  onSubmit: _applyInstruction,
                 ),
               ),
             )

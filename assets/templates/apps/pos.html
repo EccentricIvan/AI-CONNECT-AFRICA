@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#131826;--muted:#798092;--line:#e8ebf2;--wash:#f4f6fa}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);
+  background:#e7eaf1;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:#fff;border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(19,24,38,.2);display:flex;flex-direction:column
+}
+.status{
+  display:flex;justify-content:space-between;padding:13px 22px 6px;
+  font-size:12px;font-weight:700;color:#fff;background:var(--primary)
+}
+.hero{
+  background:linear-gradient(150deg,var(--primary),#1b2a6b);color:#fff;
+  padding:8px 22px 26px
+}
+.date{font-size:11px;opacity:.75;margin-bottom:14px}
+.who{display:flex;align-items:center;gap:11px;margin-bottom:20px}
+.logo{
+  width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.2);
+  display:grid;place-items:center;font-size:19px
+}
+.who .sh{font-size:11px;opacity:.85}
+.who .nm{font-size:17px;font-weight:800}
+.who .ico{margin-left:auto;font-size:16px;opacity:.85}
+
+.totals{
+  background:#fff;color:var(--ink);border-radius:16px;padding:15px;
+  display:flex;justify-content:space-around;box-shadow:0 8px 20px rgba(0,0,0,.12)
+}
+.totals div{text-align:center;flex:1}
+.totals .l{font-size:10px;letter-spacing:.7px;color:#78819a;text-transform:uppercase}
+.totals .v{font-size:21px;font-weight:800;margin-top:4px}
+.totals .sep{flex:0 0 1px;background:var(--line);margin:2px 0}
+
+.body{padding:22px 20px 12px;flex:1}
+.tiles{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+.tile{
+  border:1px solid var(--line);border-radius:17px;padding:18px 12px;text-align:center;
+  box-shadow:0 5px 14px rgba(19,24,38,.05);cursor:pointer
+}
+.tile span{display:block;font-size:26px;margin-bottom:8px;color:var(--primary)}
+.tile b{font-size:13px;font-weight:700}
+.tile.on{border-color:var(--primary);box-shadow:0 0 0 2px var(--primary) inset}
+
+.feat{margin-top:18px}
+.feat h2{font-size:14px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:var(--wash);border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.foot{
+  text-align:center;padding:14px;font-size:11px;color:#79819a;
+  border-top:1px solid var(--line)
+}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="hero">
+    <div class="date">{{today}}</div>
+    <div class="who">
+      <div class="logo">🛍️</div>
+      <div>
+        <div class="sh">{{shop_name}}</div>
+        <div class="nm">Hi, {{owner_name}}!</div>
+      </div>
+      <div class="ico">⚙️</div>
+    </div>
+    <div class="totals">
+      <div>
+        <div class="l">Receipts</div>
+        <div class="v">{{receipts}}</div>
+      </div>
+      <div class="sep"></div>
+      <div>
+        <div class="l">Total</div>
+        <div class="v">{{total_sales}}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="tiles">
+      <div class="tile"><span>🧾</span><b>Register</b></div>
+      <div class="tile"><span>📋</span><b>{{menu_label}}</b></div>
+      <div class="tile"><span>📦</span><b>Orders</b></div>
+      <div class="tile"><span>💵</span><b>Invoices</b></div>
+      <div class="tile"><span>👥</span><b>Customers</b></div>
+      <div class="tile on"><span>⚙️</span><b>Settings</b></div>
+    </div>
+
+    <div class="feat">
+      <h2>What {{app_name}} does</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <div class="foot">{{app_name}} — {{purpose}}</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--primary:{{primary}};--ink:#1a2036;--muted:#7b839c;--line:#e8ecf7;--wash:#f2f6fd}
+*{margin:0;box-sizing:border-box}
+body{
+  font-family:'Segoe UI',system-ui,Arial,sans-serif;color:var(--ink);
+  background:#e6ebf5;display:flex;justify-content:center;padding:20px 12px;min-height:100vh
+}
+.phone{
+  width:100%;max-width:400px;background:#fff;border-radius:34px;overflow:hidden;
+  box-shadow:0 26px 60px rgba(26,32,54,.2);display:flex;flex-direction:column
+}
+.status{display:flex;justify-content:space-between;padding:13px 22px 6px;font-size:12px;font-weight:700}
+
+.hero{
+  margin:6px 16px 0;background:linear-gradient(135deg,#dcecff,#eef4ff);
+  border-radius:20px;padding:20px
+}
+.hero h1{font-size:19px;line-height:1.25;margin-bottom:7px}
+.hero p{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:14px}
+.hero button{
+  background:var(--primary);color:#fff;border:none;border-radius:999px;
+  padding:10px 20px;font-size:12px;font-weight:800;cursor:pointer
+}
+
+.body{padding:16px 16px 0;flex:1}
+.switch{
+  display:flex;background:var(--wash);border-radius:999px;padding:4px;margin-bottom:16px
+}
+.switch div{
+  flex:1;text-align:center;padding:9px;font-size:12px;font-weight:700;
+  border-radius:999px;color:var(--muted)
+}
+.switch div.on{background:var(--primary);color:#fff}
+
+.course{
+  display:flex;gap:11px;align-items:center;border:1px solid var(--line);
+  border-radius:16px;padding:11px;margin-bottom:10px
+}
+.course .pic{
+  width:46px;height:46px;border-radius:12px;display:grid;place-items:center;
+  font-size:21px;flex-shrink:0
+}
+.course .info{flex:1;min-width:0}
+.course h4{font-size:13px;margin-bottom:3px}
+.course .tut{font-size:10px;color:var(--muted);margin-bottom:6px}
+.bar{height:5px;border-radius:999px;background:var(--wash);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--primary)}
+.course .badge{
+  font-size:9px;font-weight:800;padding:4px 9px;border-radius:999px;
+  background:var(--wash);color:var(--primary);white-space:nowrap
+}
+
+.sect{display:flex;justify-content:space-between;align-items:center;margin:18px 0 11px}
+.sect h2{font-size:15px}
+.sect a{font-size:12px;color:var(--primary);text-decoration:none;font-weight:700}
+
+.mentors{display:flex;gap:14px;overflow-x:auto;padding-bottom:6px}
+.mentor{text-align:center;min-width:64px}
+.mentor .av{
+  width:52px;height:52px;border-radius:50%;margin:0 auto 7px;
+  display:grid;place-items:center;font-size:21px;background:var(--wash)
+}
+.mentor .nm{font-size:11px;font-weight:700}
+.mentor .sb{font-size:9px;color:var(--muted);margin-top:2px}
+
+.feat{margin:18px 0 12px}
+.feat h2{font-size:14px;margin-bottom:10px}
+.feat ul{list-style:none;display:flex;flex-direction:column;gap:8px}
+.feat li{
+  display:flex;align-items:center;gap:10px;font-size:13px;
+  background:var(--wash);border-radius:13px;padding:11px 13px
+}
+.feat li::before{content:'✓';color:var(--primary);font-weight:800}
+
+.nav{
+  display:flex;justify-content:space-around;padding:13px 8px 18px;
+  border-top:1px solid var(--line)
+}
+.nav div{font-size:19px;opacity:.35}
+.nav div.on{opacity:1;color:var(--primary)}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="status"><span>9:41</span><span>▮▮▮ ⚡</span></div>
+
+  <div class="hero">
+    <h1>{{app_name}}</h1>
+    <p>{{purpose}}</p>
+    <button type="button">Start Now</button>
+  </div>
+
+  <div class="body">
+    <div class="switch">
+      <div class="on">Ongoing</div>
+      <div>Complete</div>
+    </div>
+
+    <div class="course">
+      <div class="pic" style="background:#ffe7ef">🎨</div>
+      <div class="info">
+        <h4>{{course1_name}}</h4>
+        <div class="tut">{{course1_tutor}} · {{course1_due}}</div>
+        <div class="bar"><i style="width:70%"></i></div>
+      </div>
+      <div class="badge">{{course1_level}}</div>
+    </div>
+
+    <div class="course">
+      <div class="pic" style="background:#e4ecff">💻</div>
+      <div class="info">
+        <h4>{{course2_name}}</h4>
+        <div class="tut">{{course2_tutor}} · {{course2_due}}</div>
+        <div class="bar"><i style="width:45%"></i></div>
+      </div>
+      <div class="badge">{{course2_level}}</div>
+    </div>
+
+    <div class="course">
+      <div class="pic" style="background:#e8f7ec">📐</div>
+      <div class="info">
+        <h4>{{course3_name}}</h4>
+        <div class="tut">{{course3_tutor}} · {{course3_due}}</div>
+        <div class="bar"><i style="width:20%"></i></div>
+      </div>
+      <div class="badge">{{course3_level}}</div>
+    </div>
+
+    <div class="sect"><h2>Top mentors</h2><a href="#">See all</a></div>
+    <div class="mentors">
+      <div class="mentor">
+        <div class="av">🧑🏾‍🏫</div>
+        <div class="nm">{{mentor1_name}}</div>
+        <div class="sb">{{mentor1_subject}}</div>
+      </div>
+      <div class="mentor">
+        <div class="av">👩🏽‍🏫</div>
+        <div class="nm">{{mentor2_name}}</div>
+        <div class="sb">{{mentor2_subject}}</div>
+      </div>
+      <div class="mentor">
+        <div class="av">🧑🏼‍🏫</div>
+        <div class="nm">{{mentor3_name}}</div>
+        <div class="sb">{{mentor3_subject}}</div>
+      </div>
+    </div>
+
+    <div class="feat">
+      <h2>What {{app_name}} does</h2>
+      {{features}}
+    </div>
+  </div>
+
+  <div class="nav">
+    <div class="on">🏠</div><div>💬</div><div>🔍</div><div>👤</div>
+  </div>
+</div>
+</body>
+</html>

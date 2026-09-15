@@ -106,15 +106,21 @@ void main() {
     expect(appHtml!, contains('BrainBoost Quiz'));
     expect(appHtml, contains('Score tracker'));
 
-    // Incomplete coder output → app still builds via fallback.
+    // A refusal is not a website: the coder path reports failure so the
+    // caller can use its deterministic shell, instead of the student being
+    // shown the model's apology rendered as their app.
     final emptyEngine = _BuildEngine(['Sorry, I cannot help.']);
-    final fallback = await generateAppHtmlWithCoder(
+    final refused = await generateAppHtmlWithCoder(
       engine: emptyEngine,
       intent: appIntent,
     );
-    expect(fallback, isNotNull);
-    expect(fallback!, contains('<!DOCTYPE html>'));
-    expect(fallback, contains('Sorry, I cannot help.'));
-    expect(fallback, contains('OTIC_INTERACTIVE_RUNTIME'));
+    expect(refused, isNull);
+
+    // That deterministic shell is a complete, self-contained page.
+    final shell = fallbackAppHtml(appIntent);
+    expect(shell, contains('<!DOCTYPE html>'));
+    expect(shell, contains('BrainBoost Quiz'));
+    expect(shell, contains('Score tracker'));
+    expect(shell, isNot(contains('Sorry, I cannot help.')));
   });
 }

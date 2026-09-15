@@ -4,6 +4,8 @@ import 'package:ai_connect_africa/shared/coding/interactive_html.dart';
 import 'package:ai_connect_africa/shared/widgets/html_preview.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/preview_contract.dart';
+
 void main() {
   test('stripMarkdownHtmlNoise removes fences and keeps document', () {
     const raw = '''
@@ -30,13 +32,15 @@ Here is your site:
     expect(decoded, contains('Café'));
   });
 
-  test('prepareHtmlForPreview falls back when empty', () {
+  test('prepareHtmlForPreview shows a status page, not a sample site', () {
     final html = prepareHtmlForPreview('   ');
-    expect(html, contains('OTIC_INTERACTIVE_RUNTIME'));
-    expect(html, contains('<script'));
+    expect(html, contains('Nothing to preview yet'));
+    for (final invented in kInventedPreviewContent) {
+      expect(html, isNot(contains(invented)));
+    }
   });
 
-  test('ensureInteractiveHtmlDocument repairs truncated script', () {
+  test('ensureRenderableHtmlDocument closes a truncated script', () {
     const partial = '''
 <!DOCTYPE html><html><head><style>.a{color:red}</style></head>
 <body><button id="x">Go</button>
@@ -44,10 +48,46 @@ Here is your site:
 document.getElementById("x").addEventListener("click", function(){
   console.log("hi"
 ''';
-    final fixed = ensureInteractiveHtmlDocument(partial);
-    expect(fixed, contains('OTIC_INTERACTIVE_RUNTIME'));
+    final fixed = ensureRenderableHtmlDocument(partial);
     expect(fixed, contains('</script>'));
-    expect(htmlLooksInteractive(fixed), isTrue);
+    expect(fixed, contains('</html>'));
+    // Repaired, not replaced — the student's own button survives.
+    expect(fixed, contains('<button id="x">Go</button>'));
+  });
+
+  test('ensureRenderableHtmlDocument leaves a complete static template as-is', () {
+    // assets/templates/*.html are hand-authored static pages with no <script>
+    // at all — these used to be swapped out for a generic tabs/checkout/quiz
+    // demo shell, which destroyed the real design.
+    const template = '''
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><style>:root{--ink:#10121a}</style></head>
+<body>
+<nav><a href="#why">Why switch</a></nav>
+<h1>The productivity OS for modern teams</h1>
+<a href="#contact" class="btn">Start Free</a>
+</body>
+</html>
+''';
+    final fixed = ensureRenderableHtmlDocument(template);
+    expect(fixed.trim(), template.trim());
+  });
+
+  test('a dead onclick keeps the real page instead of a fabricated one', () {
+    // The button does nothing because the student's script is missing. That is
+    // truthful and teachable; inventing a working checkout calculator is not.
+    const broken = '''
+<!DOCTYPE html>
+<html><head><style>.a{color:red}</style></head>
+<body><h1>My shop</h1><button onclick="doThing()">Go</button></body></html>
+''';
+    final fixed = ensureRenderableHtmlDocument(broken);
+    expect(fixed, contains('My shop'));
+    expect(fixed, contains('onclick="doThing()"'));
+    for (final invented in kInventedPreviewContent) {
+      expect(fixed, isNot(contains(invented)));
+    }
   });
 
   test('parseUiSchema maps Button/Alert/Cyberpunk lines', () {
