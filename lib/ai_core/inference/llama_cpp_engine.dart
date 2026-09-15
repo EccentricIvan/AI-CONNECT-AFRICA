@@ -20,9 +20,19 @@ class LlamaCppEngineImpl extends InferenceEngine {
     String backendLabel = 'llama.cpp · GGUF',
     int? nGpuLayers,
     int? threads,
+    int? contextSize,
+    int? batchSize,
   })  : _backendLabel = backendLabel,
         nGpuLayers = nGpuLayers ?? llamaGpuLayersForLane(schedulerLane),
-        threads = threads ?? kLlamaThreads;
+        threads = threads ?? kLlamaThreads,
+        contextSize = contextSize ??
+            (schedulerLane == EngineLane.translate
+                ? kLlamaTranslateContextSize
+                : kLlamaContextSize),
+        batchSize = batchSize ??
+            (schedulerLane == EngineLane.translate
+                ? kLlamaTranslateBatchSize
+                : kLlamaBatchSize);
 
   final String schedulerLane;
   final String _backendLabel;
@@ -32,6 +42,9 @@ class LlamaCppEngineImpl extends InferenceEngine {
 
   /// llama.cpp thread count (`null` = package auto-detect).
   final int? threads;
+
+  final int contextSize;
+  final int batchSize;
 
   llama.LlamaCppChatRepository? _repo;
   String? _modelPath;
@@ -74,8 +87,8 @@ class LlamaCppEngineImpl extends InferenceEngine {
     _repo?.dispose();
     _repo = llama.LlamaCppChatRepository.withModelPath(
       modelPath,
-      contextSize: kLlamaContextSize,
-      batchSize: kLlamaBatchSize,
+      contextSize: contextSize,
+      batchSize: batchSize,
       threads: threads,
       nGpuLayers: nGpuLayers,
     );

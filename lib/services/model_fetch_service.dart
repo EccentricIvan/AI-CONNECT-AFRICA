@@ -540,6 +540,27 @@ class ModelFetchController extends StateNotifier<ModelFetchUiState> {
     _ref.invalidate(programmingModelInfoProvider);
     _ref.invalidate(dualModelRuntimeProvider);
     _ref.invalidate(engineLoadedProvider);
+    _ref.invalidate(translateEngineLoadedProvider);
+    _ref.invalidate(translationPipelineProvider);
+    _ref.invalidate(afrislmTranslationServiceProvider);
+    _ref.invalidate(aiEngineServiceProvider);
+    _ref.invalidate(tutorPipelineProvider);
+    _ref.invalidate(qwenReasoningServiceProvider);
+    _ref.invalidate(qwenChatServiceProvider);
+    _ref.invalidate(chatInferencePipelineProvider);
+    _ref.invalidate(programmingEngineProvider);
+    _ref.invalidate(aiCoderServiceProvider);
+    // Warm tutor + AfriSLM so the first local-language Learn turn works
+    // without an English-only cold start after Install Packages.
+    unawaited(() async {
+      try {
+        await _ref.read(dualModelRuntimeProvider.future);
+        await ensureTranslationPipeline(_ref);
+        await _ref.read(chatInferencePipelineProvider.future);
+      } catch (e) {
+        debugPrint('post-fetch AI warm failed: $e');
+      }
+    }());
   }
 
   void _invalidateCoderStack() {

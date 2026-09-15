@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../ai_core/providers/ai_provider.dart';
 import '../core/theme/app_colors.dart';
 import '../l10n/app_locale.dart';
 import '../services/model_fetch_service.dart';
@@ -107,13 +106,8 @@ class _PackageFetchScreenState extends ConsumerState<PackageFetchScreen> {
     final state = ref.read(modelFetchControllerProvider);
     if (!state.isReady) return;
 
-    // Controllers already invalidate providers; give the gate a beat to reload.
+    // Controllers already invalidate + warm; refresh gate readiness.
     ref.invalidate(classroomPackagesReadyProvider);
-    ref.invalidate(modelInfoProvider);
-    ref.invalidate(translateModelInfoProvider);
-    ref.invalidate(programmingModelInfoProvider);
-    ref.invalidate(dualModelRuntimeProvider);
-    ref.invalidate(engineLoadedProvider);
 
     if (widget.embedded) {
       widget.onInstalled?.call();

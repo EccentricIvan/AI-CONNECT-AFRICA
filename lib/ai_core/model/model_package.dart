@@ -1,5 +1,4 @@
 import 'model_manager.dart';
-import '../translate/afrislm_model_manager.dart';
 
 /// A model the app can fetch at runtime from the `model-pack` release.
 ///
@@ -52,11 +51,14 @@ class ModelPackage {
     essential: true,
   );
 
+  /// GitHub `model-pack` ships `translate-afrislm.gguf` (discovered via
+  /// [AfriSlmModelManager.alternateFileNames]). Install Packages uses the
+  /// HF Q4 filename from [ModelFetchFiles.translate] instead.
   static const translate = ModelPackage(
     id: 'translate',
     label: 'Translation model',
-    fileName: AfriSlmModelManager.modelFileName,
-    url: '$_base/${AfriSlmModelManager.modelFileName}',
+    fileName: 'translate-afrislm.gguf',
+    url: '$_base/translate-afrislm.gguf',
     sha256: '4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc',
     approxBytes: 642 * 1024 * 1024,
     essential: false,

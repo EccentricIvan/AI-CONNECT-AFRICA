@@ -117,26 +117,22 @@ appBar: StudioAppBar(
             // ── Learning language ────────────────────────────────────────────
             _Section(tr(context, 'Learning language'), [
               // Drives labels and model routing together: appLanguageProvider
-              // is the same value the AfriSLM round-trip reads. Works without
-              // a profile too — a guest's choice is held in memory only, so
-              // the demo speaks their language without saving state.
+              // is the same value the AfriSLM round-trip reads. The choice is
+              // written to SharedPreferences so it survives Install Packages
+              // and an app restart on Android and Windows.
               Builder(builder: (context) {
                 final language = ref.watch(appLanguageProvider);
-                final isGuest = studentAsync.valueOrNull == null;
                 return ListTile(
                   leading: const Icon(Icons.language, color: AppColors.primary),
                   title: Text(tr(context, 'Learning language')),
                   subtitle: Text(
-                    isGuest
-                        ? 'Chat uses ${languageName(language)} — '
-                            'create a profile to save this'
-                        : 'Chat uses ${languageName(language)}',
+                    'Chat uses ${languageName(language)}',
                   ),
                   trailing: DropdownButton<String>(
                     value: coerceChatLanguage(language),
                     underline: const SizedBox.shrink(),
                     items: [
-                      for (final lang in chatLanguages)
+                      for (final lang in supportedLanguages)
                         DropdownMenuItem(value: lang.code, child: Text(lang.name)),
                     ],
                     onChanged: (code) {

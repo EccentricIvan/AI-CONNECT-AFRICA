@@ -47,8 +47,12 @@ class BundledModelBootstrap {
 
   static const _channelName = 'ai_connect_africa/bundled_models';
   static const chatAssetPath = 'models/${ModelManager.chatModelFileName}';
-  static const translateAssetPath =
-      'models/${AfriSlmModelManager.modelFileName}';
+
+  /// Fat APK / asset-pack names. Install Packages uses Q4; Windows zips and
+  /// older fat APKs still ship `translate-afrislm.gguf`.
+  static List<String> get translateAssetCandidates => [
+        for (final name in AfriSlmModelManager.allFileNames) 'models/$name',
+      ];
 
   final ModelManager _chat;
   final AfriSlmModelManager _translate;
@@ -82,7 +86,13 @@ class BundledModelBootstrap {
       final chatInfo = await _chat.checkModel();
       final translateInfo = await _translate.checkModel();
       final hasChatAsset = await _hasAsset(chatAssetPath);
-      final hasTranslateAsset = await _hasAsset(translateAssetPath);
+      String? translateAsset;
+      for (final asset in translateAssetCandidates) {
+        if (await _hasAsset(asset)) {
+          translateAsset = asset;
+          break;
+        }
+      }
 
       var extracted = false;
       String? error;
@@ -92,9 +102,9 @@ class BundledModelBootstrap {
       // be a second ~600 MB of the same bytes. Translation still needs a
       // real file: llama.cpp opens a path, not an AssetManager entry.
       final steps = <({String asset, String dest, String label})>[];
-      if (!translateInfo.isReady && hasTranslateAsset) {
+      if (!translateInfo.isReady && translateAsset != null) {
         steps.add((
-          asset: translateAssetPath,
+          asset: translateAsset,
           dest: await _translate.modelFilePath(),
           label: 'Translation model',
         ));

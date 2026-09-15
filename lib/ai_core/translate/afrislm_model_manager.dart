@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../model/gguf_file.dart';
 import '../model/model_locations.dart';
 import '../model/model_manager.dart' show ModelInfo, ModelStatus;
 
@@ -13,20 +14,26 @@ import '../model/model_manager.dart' show ModelInfo, ModelStatus;
 /// [LlamaCppEngineImpl] loads this file in-process via llama.cpp on every
 /// supported platform. One on-disk name regardless of platform or quant.
 class AfriSlmModelManager {
-  static const modelFileName = 'afrislm-0.8b-q8_0.gguf';
+  /// Canonical on-disk name — matches Hugging Face Install Packages
+  /// (`ModelFetchFiles.translate`) and `assets/models/` tooling.
+  static const modelFileName = 'afrislm-0.8b-q4_k_m.gguf';
 
-  /// USB / older quants accepted so a Q4 copy still loads.
+  /// USB / release / older quants still accepted so a fat APK or
+  /// `translate-afrislm.gguf` next to the exe keeps working.
   static const alternateFileNames = [
+    'translate-afrislm.gguf',
+    'afrislm-0.8b-q8_0.gguf',
+    'afrislm-0.8b-q5_k_m.gguf',
     'TranslatePsy-AfriSLM-0.8B.Q4_K_M.gguf',
     'TranslatePsy-AfriSLM-0.8B-Q8_0-imat.gguf',
-    'afrislm-0.8b-q5_k_m.gguf',
-    'afrislm-0.8b-q4_k_m.gguf',
     'TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf',
-    'translate-afrislm.gguf',
   ];
   static const _markerFileName = 'translate-afrislm.install.json';
   // AfriSLM 0.8B Q4 is roughly 500MB-1GB; reject obvious truncations.
   static const _minSizeBytes = 300 * 1024 * 1024; // 300 MB
+
+  /// Canonical name first, then every USB / fat-APK / Windows-zip alias.
+  static List<String> get allFileNames => [modelFileName, ...alternateFileNames];
 
   /// Canonical install target — where [installFromFile] and
   /// [downloadModel] write the file.
@@ -63,6 +70,10 @@ class AfriSlmModelManager {
       final appFiles = await getApplicationDocumentsDirectory();
       paths.add(p.join(appFiles.path, 'models', fileName));
     } catch (_) {}
+    try {
+      final support = await getApplicationSupportDirectory();
+      paths.add(p.join(support.path, 'models', fileName));
+    } catch (_) {}
     final seen = <String>{};
     return [
       for (final path in paths)
@@ -71,7 +82,7 @@ class AfriSlmModelManager {
   }
 
   Future<List<String>> _candidatePaths() async {
-    final names = [modelFileName, ...alternateFileNames];
+    final names = allFileNames;
     final out = <String>[];
     for (final name in names) {
       out.addAll(await _candidatePathsFor(name));
@@ -92,6 +103,15 @@ class AfriSlmModelManager {
       }
       final size = await file.length();
       if (size < _minSizeBytes) {
+        truncated ??= ModelInfo(
+          status: ModelStatus.corrupted,
+          path: path,
+          sizeBytes: size,
+        );
+        continue;
+      }
+      if (!await fileLooksLikeGguf(file)) {
+        debugPrint('TRANSLATE MODEL skipped (not GGUF): $path');
         truncated ??= ModelInfo(
           status: ModelStatus.corrupted,
           path: path,

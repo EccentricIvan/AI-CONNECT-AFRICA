@@ -1,7 +1,40 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ai_core/translate/supported_languages.dart';
 import '../db/providers/db_provider.dart';
+
+/// Survives app restart on Android and Windows even before a student row
+/// exists — otherwise the first Learn turn after Install Packages is English.
+const kLearningLanguagePrefKey = 'otic_learning_language';
+
+Future<void> persistLearningLanguage(String code) async {
+  if (!isSupportedLearningLanguage(code)) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kLearningLanguagePrefKey, code);
+  } catch (e) {
+    debugPrint('persistLearningLanguage failed: $e');
+  }
+}
+
+Future<String?> readPersistedLearningLanguage() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final code = prefs.getString(kLearningLanguagePrefKey);
+    if (code == null || code.isEmpty) return null;
+    if (!isSupportedLearningLanguage(code)) return null;
+    return code;
+  } catch (e) {
+    debugPrint('readPersistedLearningLanguage failed: $e');
+    return null;
+  }
+}
+
+final persistedLanguageProvider = FutureProvider<String?>((ref) async {
+  return readPersistedLearningLanguage();
+});
 
 /// Single source of truth for "what language is this app speaking right now".
 ///
@@ -23,18 +56,19 @@ import '../db/providers/db_provider.dart';
 /// itself from the DB would push the stored value back over an unsaved guest
 /// choice whenever an unrelated field (name, age, interests) was touched.
 class LanguageOverride extends Notifier<String?> {
-  /// Null means "nothing chosen this session" — fall through to the profile.
+  /// Null means "nothing chosen this session" — fall through to prefs / profile.
   @override
   String? build() => null;
 
   /// Flips the whole app — labels and model routing — to [code].
   ///
-  /// Applies to the UI synchronously, then persists to the student profile so
-  /// it survives a restart. Guests (no profile yet) keep the choice in memory
-  /// only, matching the "no saved state" rule for that role: the demo speaks
-  /// their language, nothing is written to disk.
+  /// Applies to the UI synchronously, writes SharedPreferences so a downloaded
+  /// APK / Windows zip keeps the language after restart, then persists to the
+  /// student profile when one exists.
   Future<void> setLanguage(String code) async {
     state = code;
+    await persistLearningLanguage(code);
+    ref.invalidate(persistedLanguageProvider);
     try {
       final student = await ref.read(activeStudentProvider.future);
       if (student == null) return;
@@ -44,8 +78,6 @@ class LanguageOverride extends Notifier<String?> {
             language: code,
           );
     } catch (e) {
-      // The UI has already switched; failing to persist is not worth
-      // interrupting a lesson over. It reverts on next launch.
       debugPrint('setLanguage: could not persist language "$code": $e');
     }
   }
@@ -58,23 +90,24 @@ class LanguageOverride extends Notifier<String?> {
   /// profile it was meant to defer to.
   void adoptSaved(String code) => state = code;
 
-  /// Drops back to whatever the profile says (used when switching profiles).
+  /// Drops back to whatever prefs / the profile says (used when switching profiles).
   void clear() => state = null;
 }
 
 final languageOverrideProvider =
     NotifierProvider<LanguageOverride, String?>(LanguageOverride.new);
 
-/// The resolved language code for **UI rendering**: explicit choice, else the
-/// saved profile, else English.
+/// The resolved language code for **UI rendering**: explicit choice, else
+/// the saved profile, else the on-disk preference, else English.
 ///
 /// Synchronous on purpose — a widget cannot await, and rendering English for
-/// the frame or two before the profile loads is what the previous inline
-/// `maybeWhen(orElse: 'en')` in `app.dart` already did. The engine side must
-/// *not* use this: see [studentLanguageCode], which awaits the profile so the
-/// very first message of a session is routed in the right language.
+/// the frame or two before prefs/profile load is harmless. The engine side
+/// must *not* use this: see [studentLanguageCode], which awaits prefs and
+/// the profile so the first message of a session is routed correctly.
 final appLanguageProvider = Provider<String>((ref) {
-  final override = ref.watch(languageOverrideProvider);
-  if (override != null) return override;
-  return ref.watch(activeStudentProvider).valueOrNull?.language ?? 'en';
+  return resolveLearningLanguage(
+    override: ref.watch(languageOverrideProvider),
+    persisted: ref.watch(persistedLanguageProvider).valueOrNull,
+    studentLanguage: ref.watch(activeStudentProvider).valueOrNull?.language,
+  );
 });
