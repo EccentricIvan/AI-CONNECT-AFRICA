@@ -6,10 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AI Connect Africa is a **fully offline AI-powered Learning Operating System**. It runs entirely on-device — no internet, no cloud, no external APIs, ever. Two on-device models are bundled and run locally:
 
-- **Chat/tutor — Qwen3-0.6B (`.litertlm`)** → LiteRT-LM (Google's on-device LLM runtime, via `flutter_gemma`/`flutter_gemma_litertlm`) with GPU/NPU acceleration. One engine, one model file format, identical on **Android, Windows, and Linux** — see `lib/ai_core/inference/litert_lm_engine.dart`. Apache-2.0, no license click-through needed (`litert-community/Qwen3-0.6B` on Hugging Face).
-- **Translation — TranslatePsy-AfriSLM (GGUF)** → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. Windows/Linux run it via a local Ollama server; Android runs the GGUF directly through a llama.cpp binding. See `lib/ai_core/inference/ollama_engine.dart` and the Android AfriSLM engine.
+- **Chat/tutor — Qwen3-0.6B** → **Android**: LiteRT-LM (`.litertlm`, via `flutter_gemma`/`flutter_gemma_litertlm`) with NNAPI/GPU acceleration — see `lib/ai_core/inference/litert_lm_engine.dart`. **Windows/Linux**: the same Qwen3-0.6B as a GGUF running in-process via llama.cpp (`llm_llamacpp`), CPU-only — see `lib/ai_core/inference/llama_cpp_engine.dart`. Apache-2.0, no license click-through needed (`litert-community/Qwen3-0.6B` on Hugging Face).
+- **Translation — TranslatePsy-AfriSLM (GGUF)** → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. Runs in-process via llama.cpp (`llm_llamacpp`) on **every platform** (Android, Windows, Linux) — one engine, no Ollama server, no separate runtime install. See `lib/ai_core/translate/afrislm_model_manager.dart` and `lib/ai_core/inference/llama_cpp_engine.dart`.
 
-Both models expose the same Dart inference interface from `lib/ai_core/inference/inference_engine.dart`. (Chat/Qwen3-0.6B is wired up; the AfriSLM translation engine — Ollama on desktop, llama.cpp on Android — is planned but not yet implemented.)
+Both models expose the same Dart inference interface from `lib/ai_core/inference/inference_engine.dart`. Chat and translation are both wired up and shipping. On Windows, llama.cpp's `ggml.dll` carries a load-time import on `ggml-vulkan.dll` → `vulkan-1.dll` even though inference runs CPU-only (`nGpuLayers: 0`); the build ships a bundled Vulkan loader (`tools/fetch_vulkan_loader.ps1`, `windows/CMakeLists.txt`) so machines without a Vulkan-capable display driver can still load llama.cpp at all.
 
 Target platforms: Android (4 GB RAM / 32 GB storage minimum), Windows (8 GB RAM), Ubuntu (8 GB RAM).
 
@@ -93,19 +93,19 @@ Store compressed summaries only — never full conversation logs. Stored fields:
 Model files are large and are never committed to git — always gitignored. Two distribution paths now exist:
 
 1. **USB / local school server** (original, still supported) — the model file is transferred by hand and dropped into the platform's expected folder (see `ModelManager`/`AfriSlmModelManager`). No internet needed anywhere in this path.
-2. **Bundled in the GitHub Release zip** (Windows, added for a plug-and-play download) — the release zip ships with a `models/` folder next to the executable, containing `chat-model.litertlm` and `translate-afrislm.gguf`. Both model managers check this bundled path automatically (`<exe dir>/models/...`), so the app works immediately after extracting, no manual install step. The app itself still runs fully offline once downloaded — this only changes how the model bytes are *obtained*, not the offline runtime constraint.
+2. **Bundled in the GitHub Release zip** (Windows, added for a plug-and-play download) — the release zip ships with a `models/` folder next to the executable, containing the Qwen chat GGUF (`qwen-0.6b-instruct.gguf` on Windows/Linux; `chat-model.litertlm` is the Android-only LiteRT name) and `afrislm-0.8b-q4_k_m.gguf`. Both model managers check this bundled path automatically (`<exe dir>/models/...`), so the app works immediately after extracting, no manual install step. The app itself still runs fully offline once downloaded — this only changes how the model bytes are *obtained*, not the offline runtime constraint.
 
 Bundling a model into a public release requires its license to permit redistribution — verify before adding a new model here (Qwen3-0.6B is confirmed Apache-2.0).
 
 | Role | Platform | Format | Model | Size |
 |------|----------|--------|-------|------|
-| Chat/tutor | Android, Windows, Linux | `.litertlm` (LiteRT-LM) | Qwen3-0.6B | ~330–590 MB |
-| Translation | Windows / Linux | GGUF 4-bit (Ollama) | AfriTranslate 0.8B Q4 | ~0.5–1 GB |
-| Translation | Android | GGUF 4-bit (llama.cpp) | AfriTranslate 0.8B Q4 | ~0.5–1 GB |
+| Chat/tutor | Android | `.litertlm` (LiteRT-LM) | Qwen3-0.6B | ~330–590 MB |
+| Chat/tutor | Windows / Linux | GGUF 4-bit (llama.cpp) | Qwen3-0.6B | ~330–590 MB |
+| Translation | Android, Windows, Linux | GGUF 4-bit (llama.cpp) | AfriSLM 0.8B Q4 | ~0.5–1 GB |
 
 The app must detect whether the model file is present at startup (checking the bundled path before falling back to the USB-installed path) and show a clear "Model not installed — transfer via USB" screen rather than failing silently when neither is found.
 
-Translation additionally requires a local Ollama server on Windows/Linux — the model file alone isn't enough. When a translation GGUF is found but its Ollama tag (`ai-connect-africa-translate`) isn't registered yet, `translateEngineLoadedProvider` auto-runs `ollama create` once. Ollama itself (the runtime) still has to be installed by the user — that one step can't be bundled into a plain zip.
+Translation needs no external server — `llm_llamacpp` loads the AfriSLM GGUF in-process on every platform, the same way the desktop chat brain loads Qwen. There is no separate runtime to install.
 
 ## Local History (Student Memory)
 
