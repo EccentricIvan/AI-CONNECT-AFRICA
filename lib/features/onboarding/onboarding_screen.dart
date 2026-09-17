@@ -308,7 +308,7 @@ class _NamePage extends StatelessWidget {
               prefixIcon: Icon(Icons.language),
             ),
             items: [
-              for (final lang in supportedLanguages)
+              for (final lang in pickableLanguages)
                 DropdownMenuItem(value: lang.code, child: Text(lang.name)),
             ],
             onChanged: (code) {

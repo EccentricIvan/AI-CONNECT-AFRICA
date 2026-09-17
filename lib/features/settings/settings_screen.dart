@@ -132,7 +132,7 @@ appBar: StudioAppBar(
                     value: coerceChatLanguage(language),
                     underline: const SizedBox.shrink(),
                     items: [
-                      for (final lang in supportedLanguages)
+                      for (final lang in pickableLanguages)
                         DropdownMenuItem(value: lang.code, child: Text(lang.name)),
                     ],
                     onChanged: (code) {
