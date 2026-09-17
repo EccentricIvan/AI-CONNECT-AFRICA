@@ -5,6 +5,7 @@ import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/custom_subject_service.dart';
 import '../../shared/widgets/localized_text.dart';
+import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 
 class SubjectsScreen extends ConsumerWidget {
@@ -35,6 +36,8 @@ class SubjectsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(mergedSubjectsProvider);
+    final width = MediaQuery.sizeOf(context).width.clamp(0.0, 1000.0).toDouble();
+    final cols = adaptiveColumns(width, min: 2, max: 5, itemWidth: 200);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -47,44 +50,47 @@ class SubjectsScreen extends ConsumerWidget {
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error loading subjects: $e')),
-        data: (subjects) => ListView(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
-          children: [
-            StudioHeroBanner(
-              eyebrow: tr(context, 'Curriculum'),
-              title: tr(context, 'Your subjects'),
-              body: tr(
-                context,
-                'Browse courses and keep building skills one lesson at a time.',
+        data: (subjects) => MaxWidth(
+          maxWidth: 1000,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
+            children: [
+              StudioHeroBanner(
+                eyebrow: tr(context, 'Curriculum'),
+                title: tr(context, 'Your subjects'),
+                body: tr(
+                  context,
+                  'Browse courses and keep building skills one lesson at a time.',
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-            StudioSectionHeader(title: tr(context, 'All subjects')),
-            const SizedBox(height: 14),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: 1.32,
+              const SizedBox(height: 20),
+              StudioSectionHeader(title: tr(context, 'All subjects')),
+              const SizedBox(height: 14),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: cols,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.32,
+                ),
+                itemCount: subjects.length,
+                itemBuilder: (context, i) {
+                  final s = subjects[i];
+                  final color = _parseColor(s.color);
+                  final icon = _icons[s.icon] ?? Icons.menu_book;
+                  return _SubjectCard(
+                    name: s.name,
+                    icon: icon,
+                    color: color,
+                    lessonCount: s.totalLessons,
+                    onTap: () => context.push('/learn/subject/${s.id}'),
+                  );
+                },
               ),
-              itemCount: subjects.length,
-              itemBuilder: (context, i) {
-                final s = subjects[i];
-                final color = _parseColor(s.color);
-                final icon = _icons[s.icon] ?? Icons.menu_book;
-                return _SubjectCard(
-                  name: s.name,
-                  icon: icon,
-                  color: color,
-                  lessonCount: s.totalLessons,
-                  onTap: () => context.push('/learn/subject/${s.id}'),
-                );
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

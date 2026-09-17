@@ -10,6 +10,7 @@ import '../../db/providers/db_provider.dart';
 import '../../features/learn/path/path_models.dart';
 import '../../features/learn/path/path_provider.dart';
 import '../../l10n/app_locale.dart';
+import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 
 final _desktopNameProvider = FutureProvider<String>((ref) async {
@@ -35,12 +36,17 @@ class HomeScreen extends ConsumerWidget {
     final paths = ref.watch(studentPathsProvider).valueOrNull ?? const [];
     final parsedPaths = paths.map(parsedFromRow).toList();
     final continuePath = _pickContinuePath(parsedPaths);
-    final lessonsCompleted =
-        parsedPaths.fold<int>(0, (sum, p) => sum + p.completedLessons);
-    final lessonsTotal =
-        parsedPaths.fold<int>(0, (sum, p) => sum + p.totalLessons);
-    final overallProgress =
-        lessonsTotal == 0 ? 0.0 : lessonsCompleted / lessonsTotal;
+    final lessonsCompleted = parsedPaths.fold<int>(
+      0,
+      (sum, p) => sum + p.completedLessons,
+    );
+    final lessonsTotal = parsedPaths.fold<int>(
+      0,
+      (sum, p) => sum + p.totalLessons,
+    );
+    final overallProgress = lessonsTotal == 0
+        ? 0.0
+        : lessonsCompleted / lessonsTotal;
     // Nothing here is date-filtered — these are the active path's lifetime
     // counts, so the strip reports the path's real progress rather than a
     // "today" figure it cannot compute.
@@ -54,56 +60,59 @@ class HomeScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       body: SafeArea(
         bottom: false,
-        child: SingleChildScrollView(
-          padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              StudioPageHeader(
-                title: trFill(context, 'Welcome, {name}!', {'name': name}),
-                subtitle: tr(context, 'Learn, Create & Build'),
-                showNotifications: true,
-                padding: EdgeInsets.zero,
-              ),
-              const SizedBox(height: 18),
-              _ProgressStrip(
-                progress: activeProgress,
-                completed: activeDone,
-                total: activeTotal,
-                onContinue: () => _openContinue(context, continuePath),
-              ),
-              const SizedBox(height: 16),
-              _StatsRow(
-                streakDays: student?.streakDays ?? 0,
-                lessonsCompleted: lessonsCompleted,
-                points: student?.totalPoints ?? 0,
-                overallProgress: overallProgress,
-              ),
-              const SizedBox(height: 26),
-              StudioSectionHeader(
-                title: tr(context, 'Learn'),
-                actionLabel: tr(context, 'View all'),
-                onAction: () => context.go('/learn'),
-              ),
-              const SizedBox(height: 14),
-              _TileGrid(items: _TileGrid.learnItems(context)),
-              const SizedBox(height: 26),
-              StudioSectionHeader(title: tr(context, 'MY PATHS')),
-              const SizedBox(height: 14),
-              _ContinueLearningCard(
-                path: continuePath,
-                onTap: () => _openContinue(context, continuePath),
-              ),
-              const SizedBox(height: 26),
-              StudioSectionHeader(title: tr(context, 'CREATE')),
-              const SizedBox(height: 14),
-              _TileGrid(items: _TileGrid.createItems(context)),
-              const SizedBox(height: 26),
-              StudioSectionHeader(title: tr(context, 'MORE')),
-              const SizedBox(height: 14),
-              _TileGrid(items: _TileGrid.moreItems(context)),
-              const SizedBox(height: 8),
-            ],
+        child: MaxWidth(
+          maxWidth: 1000,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 10, 20, bottomPad),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                StudioPageHeader(
+                  title: trFill(context, 'Welcome, {name}!', {'name': name}),
+                  subtitle: tr(context, 'Learn, Create & Build'),
+                  showNotifications: true,
+                  padding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 18),
+                _ProgressStrip(
+                  progress: activeProgress,
+                  completed: activeDone,
+                  total: activeTotal,
+                  onContinue: () => _openContinue(context, continuePath),
+                ),
+                const SizedBox(height: 16),
+                _StatsRow(
+                  streakDays: student?.streakDays ?? 0,
+                  lessonsCompleted: lessonsCompleted,
+                  points: student?.totalPoints ?? 0,
+                  overallProgress: overallProgress,
+                ),
+                const SizedBox(height: 26),
+                StudioSectionHeader(
+                  title: tr(context, 'Learn'),
+                  actionLabel: tr(context, 'View all'),
+                  onAction: () => context.go('/learn'),
+                ),
+                const SizedBox(height: 14),
+                _TileGrid(items: _TileGrid.learnItems(context)),
+                const SizedBox(height: 26),
+                StudioSectionHeader(title: tr(context, 'MY PATHS')),
+                const SizedBox(height: 14),
+                _ContinueLearningCard(
+                  path: continuePath,
+                  onTap: () => _openContinue(context, continuePath),
+                ),
+                const SizedBox(height: 26),
+                StudioSectionHeader(title: tr(context, 'CREATE')),
+                const SizedBox(height: 14),
+                _TileGrid(items: _TileGrid.createItems(context)),
+                const SizedBox(height: 26),
+                StudioSectionHeader(title: tr(context, 'MORE')),
+                const SizedBox(height: 14),
+                _TileGrid(items: _TileGrid.moreItems(context)),
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
@@ -195,11 +204,10 @@ class _ProgressStrip extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   hasPath
-                      ? trFill(
-                          context,
-                          '{done} / {total} lessons',
-                          {'done': '$completed', 'total': '$total'},
-                        )
+                      ? trFill(context, '{done} / {total} lessons', {
+                          'done': '$completed',
+                          'total': '$total',
+                        })
                       : tr(context, 'What would you like to do today?'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -438,98 +446,96 @@ class _TileGrid extends StatelessWidget {
   final List<_TileItem> items;
 
   static List<_TileItem> learnItems(BuildContext context) => [
-        _TileItem(
-          title: tr(context, 'Subjects'),
-          subtitle: tr(context, 'Explore your courses'),
-          icon: Icons.auto_stories_rounded,
-          color: AppColors.accentBlue,
-          route: '/learn',
-        ),
-        _TileItem(
-          title: tr(context, 'Practice'),
-          subtitle: tr(context, 'Sharpen your skills'),
-          icon: Icons.fact_check_rounded,
-          color: AppColors.accentGreen,
-          route: '/practice',
-        ),
-        _TileItem(
-          title: tr(context, 'AI Chat'),
-          subtitle: tr(context, 'Get instant help'),
-          icon: Icons.auto_awesome_rounded,
-          color: AppColors.accentViolet,
-          route: '/chat',
-        ),
-        _TileItem(
-          title: tr(context, 'Teach'),
-          subtitle: tr(context, 'Share your knowledge'),
-          icon: Icons.school_rounded,
-          color: AppColors.accentTeal,
-          route: '/teach',
-        ),
-      ];
+    _TileItem(
+      title: tr(context, 'Subjects'),
+      subtitle: tr(context, 'Explore your courses'),
+      icon: Icons.auto_stories_rounded,
+      color: AppColors.accentBlue,
+      route: '/learn',
+    ),
+    _TileItem(
+      title: tr(context, 'Practice'),
+      subtitle: tr(context, 'Sharpen your skills'),
+      icon: Icons.fact_check_rounded,
+      color: AppColors.accentGreen,
+      route: '/practice',
+    ),
+    _TileItem(
+      title: tr(context, 'AI Chat'),
+      subtitle: tr(context, 'Get instant help'),
+      icon: Icons.auto_awesome_rounded,
+      color: AppColors.accentViolet,
+      route: '/chat',
+    ),
+    _TileItem(
+      title: tr(context, 'Teach'),
+      subtitle: tr(context, 'Share your knowledge'),
+      icon: Icons.school_rounded,
+      color: AppColors.accentTeal,
+      route: '/teach',
+    ),
+  ];
 
   static List<_TileItem> createItems(BuildContext context) => [
-        _TileItem(
-          title: tr(context, 'Website'),
-          icon: Icons.web_rounded,
-          color: AppColors.brandCyan,
-          route: '/sitechat',
-        ),
-        _TileItem(
-          title: tr(context, 'Web Lab'),
-          icon: Icons.code_rounded,
-          color: AppColors.brandCyan,
-          route: '/weblab',
-        ),
-        _TileItem(
-          title: tr(context, 'Python*'),
-          icon: Icons.terminal_rounded,
-          color: AppColors.accentDeep,
-          route: '/pythonlab',
-        ),
-        _TileItem(
-          title: tr(context, 'App Lab*'),
-          icon: Icons.phone_android_rounded,
-          color: AppColors.accentBlue,
-          route: '/applab',
-        ),
-      ];
+    _TileItem(
+      title: tr(context, 'Website'),
+      icon: Icons.web_rounded,
+      color: AppColors.brandCyan,
+      route: '/sitechat',
+    ),
+    _TileItem(
+      title: tr(context, 'Web Lab'),
+      icon: Icons.code_rounded,
+      color: AppColors.brandCyan,
+      route: '/weblab',
+    ),
+    _TileItem(
+      title: tr(context, 'Python*'),
+      icon: Icons.terminal_rounded,
+      color: AppColors.accentDeep,
+      route: '/pythonlab',
+    ),
+    _TileItem(
+      title: tr(context, 'App Lab*'),
+      icon: Icons.phone_android_rounded,
+      color: AppColors.accentBlue,
+      route: '/applab',
+    ),
+  ];
 
   static List<_TileItem> moreItems(BuildContext context) => [
-        _TileItem(
-          title: tr(context, 'Projects'),
-          icon: Icons.folder_rounded,
-          color: AppColors.brandCyan,
-          route: '/projects',
-        ),
-        _TileItem(
-          title: tr(context, 'Badges'),
-          icon: Icons.emoji_events_rounded,
-          color: AppColors.accentOrange,
-          route: '/achievements',
-        ),
-        _TileItem(
-          title: tr(context, 'Certs'),
-          icon: Icons.workspace_premium_rounded,
-          color: AppColors.accentViolet,
-          route: '/certificates',
-        ),
-        _TileItem(
-          title: tr(context, 'Settings'),
-          icon: Icons.settings_rounded,
-          color: AppColors.accentSlate,
-          route: '/settings',
-        ),
-      ];
+    _TileItem(
+      title: tr(context, 'Projects'),
+      icon: Icons.folder_rounded,
+      color: AppColors.brandCyan,
+      route: '/projects',
+    ),
+    _TileItem(
+      title: tr(context, 'Certs'),
+      icon: Icons.workspace_premium_rounded,
+      color: AppColors.accentViolet,
+      route: '/certificates',
+    ),
+    _TileItem(
+      title: tr(context, 'Settings'),
+      icon: Icons.settings_rounded,
+      color: AppColors.accentSlate,
+      route: '/settings',
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final width = MediaQuery.sizeOf(
+      context,
+    ).width.clamp(0.0, 1000.0).toDouble();
+    final cols = adaptiveColumns(width, min: 2, max: 5, itemWidth: 200);
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: items.length,
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
+        crossAxisCount: cols,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
         // Subtitle-less tiles need less vertical room.
@@ -609,9 +615,7 @@ class _Tile extends StatelessWidget {
                     ),
                   ),
                 ),
-                compact
-                    ? _compactBody(ac)
-                    : _fullBody(ac),
+                compact ? _compactBody(ac) : _fullBody(ac),
               ],
             ),
           ),
@@ -645,11 +649,7 @@ class _Tile extends StatelessWidget {
               ),
             ),
           ),
-          Icon(
-            Icons.arrow_forward_rounded,
-            size: 17,
-            color: item.color,
-          ),
+          Icon(Icons.arrow_forward_rounded, size: 17, color: item.color),
         ],
       ),
     );
@@ -687,18 +687,11 @@ class _Tile extends StatelessWidget {
                   item.subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    color: ac.textSecondary,
-                  ),
+                  style: TextStyle(fontSize: 11.5, color: ac.textSecondary),
                 ),
               ),
               const SizedBox(width: 6),
-              Icon(
-                Icons.arrow_forward_rounded,
-                size: 17,
-                color: item.color,
-              ),
+              Icon(Icons.arrow_forward_rounded, size: 17, color: item.color),
             ],
           ),
         ],
@@ -780,8 +773,9 @@ class _ContinueLearningCard extends StatelessWidget {
                           child: LinearProgressIndicator(
                             value: progress.clamp(0.0, 1.0),
                             minHeight: 7,
-                            backgroundColor:
-                                AppColors.primary.withValues(alpha: 0.12),
+                            backgroundColor: AppColors.primary.withValues(
+                              alpha: 0.12,
+                            ),
                             valueColor: const AlwaysStoppedAnimation(
                               AppColors.primary,
                             ),
@@ -789,11 +783,10 @@ class _ContinueLearningCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          trFill(
-                            context,
-                            '{done} / {total} lessons',
-                            {'done': '$done', 'total': '$total'},
-                          ),
+                          trFill(context, '{done} / {total} lessons', {
+                            'done': '$done',
+                            'total': '$total',
+                          }),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -835,10 +828,10 @@ class _ContinueLearningCard extends StatelessWidget {
 
   static String _chapterLabel(BuildContext context, ParsedPath path) {
     String label(int index, String title) => trFill(
-          context,
-          'Chapter {number}: {title}',
-          {'number': '${index + 1}', 'title': title},
-        );
+      context,
+      'Chapter {number}: {title}',
+      {'number': '${index + 1}', 'title': title},
+    );
 
     for (var u = 0; u < path.units.length; u++) {
       final unit = path.units[u];
@@ -887,11 +880,7 @@ class _PathThumbnail extends StatelessWidget {
           const Positioned(
             left: 10,
             top: 12,
-            child: Icon(
-              Icons.route_rounded,
-              size: 22,
-              color: Colors.white,
-            ),
+            child: Icon(Icons.route_rounded, size: 22, color: Colors.white),
           ),
           Positioned(
             left: 10,
