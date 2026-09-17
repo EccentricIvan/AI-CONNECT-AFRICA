@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
@@ -68,6 +69,7 @@ class _AchievementsBody extends ConsumerWidget {
                 total: allBadges.length,
               ),
             ),
+            const SliverToBoxAdapter(child: _CertificatesLink()),
             SliverPadding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               sliver: SliverGrid(
@@ -98,6 +100,65 @@ class _AchievementsBody extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Certificates no longer has its own sidebar entry — it lives here, under the
+/// badge stats, and opens as a pushed screen with a back button.
+class _CertificatesLink extends StatelessWidget {
+  const _CertificatesLink();
+
+  static const _color = Color(0xFF7B6CF6);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: InkWell(
+        onTap: () => GoRouter.of(context).push('/certificates'),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _color.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _color.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.workspace_premium_rounded,
+                  color: _color, size: 26),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tr(context, 'Certificates'),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      tr(context, 'Celebrate completed paths'),
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios,
+                  size: 15, color: Theme.of(context).hintColor),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

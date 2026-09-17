@@ -28,6 +28,7 @@ appBar: StudioAppBar(
         subtitle: tr(context, 'Celebrate completed paths'),
         icon: Icons.workspace_premium_rounded,
         iconColor: const Color(0xFF7B6CF6),
+        showBack: true,
       ),
       body: studentAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

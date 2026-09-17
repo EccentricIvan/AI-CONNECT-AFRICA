@@ -23,18 +23,11 @@ class AppShell extends StatelessWidget {
     _NavDest('Projects', Icons.folder_outlined, Icons.folder_rounded, '/projects'),
     _NavDest('AI Chat', Icons.chat_bubble_outline_rounded, Icons.chat_rounded, '/chat'),
     _NavDest('Teach back', Icons.school_outlined, Icons.school_rounded, '/teach'),
-    _NavDest('Nearby', Icons.wifi_tethering_outlined, Icons.wifi_tethering_rounded, '/collaborate'),
     _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,
       Icons.emoji_events_rounded,
       '/achievements',
-    ),
-    _NavDest(
-      'Certificates',
-      Icons.workspace_premium_outlined,
-      Icons.workspace_premium_rounded,
-      '/certificates',
     ),
     _NavDest('Teacher', Icons.groups_outlined, Icons.groups_rounded, '/teacher'),
     _NavDest(

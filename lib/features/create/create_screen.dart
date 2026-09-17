@@ -10,30 +10,10 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
-import '../../services/ai_model_manager.dart';
 import '../../shared/widgets/generating_indicator.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
-import '../settings/coder_package_prompt.dart';
 import 'package:drift/drift.dart' show Value;
-
-// ── Project types ─────────────────────────────────────────────────────────────
-
-const _projectTypes = [
-  _PType('Essay', Icons.article, 'Write a structured essay'),
-  _PType('Business Plan', Icons.trending_up, 'Plan a business idea'),
-  _PType('Experiment', Icons.science, 'Design a science experiment'),
-  _PType('Story', Icons.menu_book, 'Write a creative story'),
-  _PType('Code Plan', Icons.code, 'Plan an app or program'),
-  _PType('Other', Icons.lightbulb, 'Any creation project'),
-];
-
-class _PType {
-  const _PType(this.label, this.icon, this.hint);
-  final String label;
-  final IconData icon;
-  final String hint;
-}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -224,13 +204,11 @@ class CreateScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateScreenState extends ConsumerState<CreateScreen> {
-  final _topicController = TextEditingController();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
 
   @override
   void dispose() {
-    _topicController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -288,7 +266,7 @@ class _CreateScreenState extends ConsumerState<CreateScreen> {
               messageController: _messageController,
               onScrollToBottom: _scrollToBottom,
             )
-          : _SetupView(topicController: _topicController),
+          : const _SetupView(),
     );
   }
 }
@@ -296,8 +274,7 @@ class _CreateScreenState extends ConsumerState<CreateScreen> {
 // ── Setup view ────────────────────────────────────────────────────────────────
 
 class _SetupView extends ConsumerWidget {
-  const _SetupView({required this.topicController});
-  final TextEditingController topicController;
+  const _SetupView();
 
   static List<({String title, String subtitle, IconData icon, Color color, String route})> _labItems(
     BuildContext context,
@@ -361,7 +338,6 @@ class _SetupView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(_createProvider);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: MaxWidth(
@@ -440,66 +416,6 @@ class _SetupView extends ConsumerWidget {
                 ),
               ),
             )),
-            const SizedBox(height: 32),
-            Text(
-              'Or start your own project',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Tell the AI mentor what you want to build and it will guide you step by step.',
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _projectTypes.map((t) {
-                final selected = state.projectType == t.label;
-                return ChoiceChip(
-                  label: Text(t.label),
-                  avatar: Icon(t.icon, size: 16),
-                  selected: selected,
-                  onSelected: (_) =>
-                      ref.read(_createProvider.notifier).setType(t.label),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: topicController,
-              decoration: const InputDecoration(
-                hintText: 'What topic? e.g. "climate change"',
-                prefixIcon: Icon(Icons.edit_outlined),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: state.projectType.isEmpty
-                    ? null
-                    : () async {
-                        final topic = topicController.text.trim();
-                        if (topic.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Enter a topic first')),
-                          );
-                          return;
-                        }
-                        if (state.projectType == 'Code Plan') {
-                          final coderOk =
-                              await promptAndFetchCoderPackage(context, ref);
-                          if (!coderOk || !context.mounted) return;
-                          scheduleLiteRtMode(ActiveModelMode.appCoder);
-                        }
-                        final notifier = ref.read(_createProvider.notifier);
-                        notifier.setTopic(topic);
-                        notifier.start();
-                      },
-                child: const Text('Start creating'),
-              ),
-            ),
           ],
         ),
       ),
