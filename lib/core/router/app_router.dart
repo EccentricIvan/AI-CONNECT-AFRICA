@@ -12,7 +12,6 @@ import '../../features/achievements/achievements_screen.dart';
 import '../../features/admin/admin_screen.dart';
 import '../../features/certificates/certificates_screen.dart';
 import '../../features/create/create_screen.dart';
-import '../../features/home/home_screen.dart';
 import '../../features/app_dev_lab/app_chat_builder_screen.dart';
 import '../../features/app_dev_lab/app_dev_lab_screen.dart';
 import '../../features/curriculum_browser/lesson_screen.dart';
@@ -78,31 +77,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         navigatorKey: _shellKey,
         builder: (context, state, child) => AppShell(child: child),
         routes: [
-          GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
-          GoRoute(
-            path: '/home',
-            redirect: (_, __) => '/',
-          ),
-          GoRoute(path: '/learn', builder: (_, __) => const SubjectsScreen()),
-          GoRoute(
-            path: '/teacher/materials',
-            builder: (_, __) => const LessonMaterialsScreen(),
-          ),
-          GoRoute(
-            path: '/learn/subject/:id',
-            builder: (_, state) => UnitsScreen(
-              subjectId: state.pathParameters['id'] ?? '',
-            ),
-          ),
-          GoRoute(
-            path: '/learn/subject/:id/lesson/:unit/:lesson',
-            builder: (_, state) => LessonScreen(
-              subjectId: state.pathParameters['id'] ?? '',
-              unitIndex: int.tryParse(state.pathParameters['unit'] ?? '0') ?? 0,
-              lessonIndex: int.tryParse(state.pathParameters['lesson'] ?? '0') ?? 0,
-            ),
-          ),
-          GoRoute(path: '/chat', builder: (_, state) {
+          // Home is the AI chat workspace (formerly `/chat`).
+          GoRoute(path: '/', builder: (_, state) {
             final topic = state.uri.queryParameters['topic'];
             final sectionParam = state.uri.queryParameters['section'];
             final subject = state.uri.queryParameters['subject'];
@@ -128,6 +104,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               ),
             );
           }),
+          GoRoute(
+            path: '/home',
+            redirect: (_, __) => '/',
+          ),
+          GoRoute(
+            path: '/chat',
+            redirect: (_, state) {
+              final q = state.uri.query;
+              return q.isEmpty ? '/' : '/?$q';
+            },
+          ),
+          GoRoute(path: '/learn', builder: (_, __) => const SubjectsScreen()),
+          GoRoute(
+            path: '/teacher/materials',
+            builder: (_, __) => const LessonMaterialsScreen(),
+          ),
+          GoRoute(
+            path: '/learn/subject/:id',
+            builder: (_, state) => UnitsScreen(
+              subjectId: state.pathParameters['id'] ?? '',
+            ),
+          ),
+          GoRoute(
+            path: '/learn/subject/:id/lesson/:unit/:lesson',
+            builder: (_, state) => LessonScreen(
+              subjectId: state.pathParameters['id'] ?? '',
+              unitIndex: int.tryParse(state.pathParameters['unit'] ?? '0') ?? 0,
+              lessonIndex: int.tryParse(state.pathParameters['lesson'] ?? '0') ?? 0,
+            ),
+          ),
           GoRoute(
             path: '/path/:topic',
             builder: (_, state) => PathDetailScreen(

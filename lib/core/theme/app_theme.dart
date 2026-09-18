@@ -4,11 +4,10 @@ import 'app_colors.dart';
 class AppTheme {
   AppTheme._();
 
-  // Saira carries headings — a distinctive geometric display voice.
-  // PlusJakartaSans carries body copy — optimized for legibility on
-  // cheap, dim, low-DPI screens at small sizes.
-  static const _headingFont = 'Saira';
-  static const _bodyFont = 'PlusJakartaSans';
+  // Inter is the Home mockup system face (clean neo-grotesque).
+  // Bundled offline — never fetched at runtime.
+  static const _headingFont = 'Inter';
+  static const _bodyFont = 'Inter';
 
   static ThemeData get light {
     final base = ThemeData(
@@ -24,6 +23,9 @@ class AppTheme {
       scaffoldBackgroundColor: Colors.transparent,
       hintColor: AppColors.light.textHint,
       dividerColor: AppColors.light.border,
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      splashColor: Colors.transparent,
     );
 
     final textTheme = base.textTheme.apply(

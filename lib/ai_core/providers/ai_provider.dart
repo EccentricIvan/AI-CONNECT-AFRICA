@@ -41,7 +41,7 @@ import '../../services/chat_inference_pipeline.dart';
 import '../../services/qwen_chat_service.dart';
 import '../../services/qwen_reasoning_service.dart';
 
-/// Learn uses curriculum RAG. Wholesome chat (nav `/chat`) does not.
+/// Learn uses curriculum RAG. Wholesome chat (Home `/`) does not.
 enum ChatSection { learn, wholesomeChat }
 
 // ── Model status ────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/tutor/programming_topic.dart';
 import '../../ai_core/tutor/school_math.dart';
@@ -10,9 +11,11 @@ import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../l10n/ui_registry.dart';
 import '../../services/ai_model_manager.dart';
+import '../../shared/widgets/app_shell.dart';
 import '../../shared/widgets/chat_html_preview.dart';
 import '../../shared/widgets/curriculum_diagram.dart';
 import '../../shared/widgets/generating_indicator.dart';
+import '../../shared/widgets/home_atmosphere_background.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/science_rich_text.dart';
 import '../../shared/widgets/worked_solution.dart';
@@ -88,6 +91,31 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
         );
       }
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant LearnScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.section != oldWidget.section) {
+      ref.read(chatProvider.notifier).setSection(widget.section);
+    }
+    if (widget.programmingSubject != oldWidget.programmingSubject) {
+      ref.read(chatProvider.notifier).setProgrammingSubject(
+            widget.programmingSubject ||
+                looksLikeProgramming(widget.initialTopic ?? ''),
+          );
+    }
+    final topic = widget.initialTopic;
+    if (topic != null && topic != oldWidget.initialTopic) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _sendText(
+          widget.programmingSubject
+              ? codingLessonChatOpener(topic)
+              : topic,
+        );
+      });
+    }
   }
 
   void _send() {
@@ -201,42 +229,51 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
     // Re-resolve chrome + chat I/O the same frame the picker moves.
     ref.watch(appLanguageProvider);
     final chat = ref.watch(chatProvider);
+    final isLoading = chat.valueOrNull?.isGenerating ?? false;
+    final isWide = MediaQuery.sizeOf(context).width >= 640;
+    final bottomPad = isWide ? 16.0 : (AppShell.kNavBarHeight + 24);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: StudioAppBar(
-        title: tr(
-          context,
-          widget.programmingSubject ? 'Coding chat' : 'AI Chat',
-        ),
-        subtitle: tr(
-          context,
-          widget.programmingSubject
-              ? 'Talk through the curriculum, then try the code'
-              : 'Ask anything, learn together',
-        ),
-        icon: Icons.auto_awesome_rounded,
-        iconColor: AppColors.accentViolet,
-        actions: [
-          StudioHeaderIconButton(
-            icon: Icons.refresh_rounded,
-            tooltip: tr(context, UiRegistry.newSession),
-            onTap: () => ref.read(chatProvider.notifier).reset(),
-          ),
-        ],
-      ),
-      body: MaxWidth(
-        child: Column(
-          children: [
+      appBar: widget.programmingSubject
+          ? StudioAppBar(
+              title: tr(context, 'Coding chat'),
+              subtitle: tr(
+                context,
+                'Talk through the curriculum, then try the code',
+              ),
+              icon: Icons.auto_awesome_rounded,
+              iconColor: AppColors.accentViolet,
+              actions: [
+                StudioHeaderIconButton(
+                  icon: Icons.refresh_rounded,
+                  tooltip: tr(context, UiRegistry.newSession),
+                  onTap: () => ref.read(chatProvider.notifier).reset(),
+                ),
+              ],
+            )
+          : const _HomeChromeAppBar(),
+      body: ScrollConfiguration(
+        behavior: const NoScrollbarBehavior(),
+        child: MaxWidth(
+          maxWidth: 900,
+          child: Column(
+            children: [
             Expanded(
               child: chat.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Error: $e')),
                 data: (state) {
                   if (state.messages.isEmpty) {
-                    return _EmptyState(
+                    return _HomeEmptyWorkspace(
                       coding: widget.programmingSubject,
-                      onTopic: (t) {
+                      controller: _controller,
+                      isLoading: isLoading,
+                      isListening: ref.watch(voiceListeningProvider),
+                      onMicPressed: _toggleListening,
+                      onSend: _send,
+                      onQuickAction: _sendText,
+                      onCodingTopic: (t) {
                         _controller.text = t;
                         _send();
                       },
@@ -338,29 +375,36 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                 },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  tr(context, UiRegistry.offlineChip),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).hintColor,
+            if (chat.valueOrNull?.messages.isNotEmpty ?? false) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    tr(context, UiRegistry.offlineChip),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).hintColor,
+                    ),
                   ),
                 ),
               ),
-            ),
-            _InputBar(
-              controller: _controller,
-              onSend: _send,
-              isLoading: chat.valueOrNull?.isGenerating ?? false,
-              isListening: ref.watch(voiceListeningProvider),
-              onMicPressed: _toggleListening,
-              showMic: true,
-              coding: widget.programmingSubject,
-            ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
+                child: _ComposerBar(
+                  controller: _controller,
+                  onSend: _send,
+                  isLoading: isLoading,
+                  isListening: ref.watch(voiceListeningProvider),
+                  onMicPressed: _toggleListening,
+                  showMic: true,
+                  coding: widget.programmingSubject,
+                  compact: false,
+                ),
+              ),
+            ],
           ],
+          ),
         ),
       ),
     );
@@ -690,99 +734,137 @@ class _TutorBubble extends StatelessWidget {
 
 // ── Input bar ─────────────────────────────────────────────────────────────────
 
-class _InputBar extends StatelessWidget {
-  const _InputBar({
-    required this.controller,
-    required this.onSend,
-    required this.isLoading,
-    required this.isListening,
-    required this.onMicPressed,
-    this.showMic = true,
-    this.coding = false,
-  });
+class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _HomeChromeAppBar();
 
-  final TextEditingController controller;
-  final VoidCallback onSend;
-  final bool isLoading;
-  final bool isListening;
-  final VoidCallback onMicPressed;
-  final bool showMic;
-  final bool coding;
+  @override
+  Size get preferredSize => const Size.fromHeight(64);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
-        color: Theme.of(context).colorScheme.surface,
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 16),
-      child: Row(
-        children: [
-          if (showMic)
-            IconButton(
-              onPressed: isLoading ? null : onMicPressed,
-              icon: Icon(isListening ? Icons.mic : Icons.mic_none_outlined),
-              color: isListening ? AppColors.primary : null,
-              tooltip: isListening
-                  ? tr(context, 'Stop dictation')
-                  : tr(context, 'Speak your question'),
-            ),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              onSubmitted: (_) => onSend(),
-              decoration: InputDecoration(
-                hintText: isListening
-                    ? tr(context, UiRegistry.listening)
-                    : tr(
-                        context,
-                        coding
-                            ? 'Ask about this lesson or paste your code…'
-                            : UiRegistry.askPlaceholder,
-                      ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-              ),
-              maxLines: 3,
-              minLines: 1,
-              textInputAction: TextInputAction.send,
-            ),
-          ),
-          const SizedBox(width: 8),
-          isLoading
-              ? const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                )
-              : IconButton.filled(
-                  onPressed: onSend,
-                  tooltip: tr(context, UiRegistry.send),
-                  icon: const Icon(Icons.arrow_upward),
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                  ),
+    final ac = AppColors.of(context);
+    final isWide = MediaQuery.sizeOf(context).width >= 640;
+
+    return AppBar(
+      automaticallyImplyLeading: false,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      toolbarHeight: 64,
+      titleSpacing: 0,
+      title: Padding(
+        padding: EdgeInsets.fromLTRB(isWide ? 20 : 2, 0, 12, 0),
+        child: Row(
+          children: [
+            if (!isWide) ...[
+              IconButton(
+                tooltip: tr(context, 'Menu'),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 40),
+                onPressed: () =>
+                    AppShell.mobileScaffoldKey.currentState?.openDrawer(),
+                icon: const Icon(
+                  Icons.menu_rounded,
+                  color: Color(0xFF0B1220),
+                  size: 26,
                 ),
-        ],
+              ),
+              Image.asset(
+                'assets/branding/ai-connect-africa-logo.png',
+                width: 28,
+                height: 28,
+                semanticLabel: 'Logo',
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'CONNECT AFRICA',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.2,
+                  color: Color(0xFF0B1220),
+                ),
+              ),
+            ],
+            const Spacer(),
+            StudioHeaderIconButton(
+              icon: Icons.notifications_none_rounded,
+              badge: true,
+              tooltip: tr(context, 'Achievements'),
+              onTap: () => context.push('/achievements'),
+            ),
+            Container(
+              width: 1,
+              height: 24,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              color: ac.border,
+            ),
+            InkWell(
+              onTap: () => context.push('/settings'),
+              borderRadius: BorderRadius.circular(24),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: ac.border),
+                        color: Colors.white,
+                      ),
+                      child: const Icon(
+                        Icons.person_outline_rounded,
+                        size: 20,
+                        color: Color(0xFF0B1220),
+                      ),
+                    ),
+                    if (isWide) ...[
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 18,
+                        color: ac.textHint,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ── Empty / starter state ─────────────────────────────────────────────────────
+class _HomeEmptyWorkspace extends StatelessWidget {
+  const _HomeEmptyWorkspace({
+    required this.coding,
+    required this.controller,
+    required this.isLoading,
+    required this.isListening,
+    required this.onMicPressed,
+    required this.onSend,
+    required this.onQuickAction,
+    required this.onCodingTopic,
+  });
 
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.onTopic, this.coding = false});
-  final void Function(String) onTopic;
   final bool coding;
+  final TextEditingController controller;
+  final bool isLoading;
+  final bool isListening;
+  final VoidCallback onMicPressed;
+  final VoidCallback onSend;
+  final void Function(String) onQuickAction;
+  final void Function(String) onCodingTopic;
 
-  static const _starter = 'Ask me anything';
   static const _codingLessons = [
     'Variables and Data Types',
     'If/Else Decisions',
@@ -792,56 +874,165 @@ class _EmptyState extends StatelessWidget {
     'Introduction to CSS',
   ];
 
+  static const _quickActions = [
+    (
+      Icons.lightbulb_outline_rounded,
+      'Explain',
+      'Explain a concept simply, step by step, for a secondary school student.',
+    ),
+    (
+      Icons.description_outlined,
+      'Summarize',
+      'Summarize the key points of a topic clearly and briefly.',
+    ),
+    (
+      Icons.edit_outlined,
+      'Write',
+      'Help me write a clear short draft on a useful topic.',
+    ),
+    (
+      Icons.bar_chart_rounded,
+      'Analyze',
+      'Analyze a problem carefully and show your reasoning.',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
+    final isWide = MediaQuery.sizeOf(context).width >= 640;
+    final bottomPad = isWide ? 36.0 : (AppShell.kNavBarHeight + 16);
+
+    // Fixed Home empty layout — no body scrollbar.
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        isWide ? 40 : 18,
+        0,
+        isWide ? 40 : 18,
+        bottomPad,
+      ),
       child: Column(
         children: [
-          const SizedBox(height: 40),
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.primary.withValues(alpha: 0.2),
-                  AppColors.practiceColor.withValues(alpha: 0.1),
+          const Spacer(flex: 3),
+          if (isWide)
+            Text(
+              'KNOWLEDGE  x  OPPORTUNITY  x  IMPACT',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 3.2,
+                color: const Color(0xFF9AA6BE),
+              ),
+            )
+          else
+            // Mobile: one centered row with spaced words + "x" separators (mockup).
+            const FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'KNOWLEDGE',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.4,
+                      color: Color(0xFF9AA6BE),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'x',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF9AA6BE),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'OPPORTUNITY',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.4,
+                      color: Color(0xFF9AA6BE),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'x',
+                      style: TextStyle(
+                        fontFamily: 'Inter',
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF9AA6BE),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'IMPACT',
+                    style: TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1.4,
+                      color: Color(0xFF9AA6BE),
+                    ),
+                  ),
                 ],
               ),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Image.asset(
-                'assets/branding/ai-connect-africa-logo.png',
-                fit: BoxFit.contain,
-                semanticLabel: 'Logo',
+          SizedBox(height: isWide ? 14 : 10),
+          Builder(
+            builder: (context) {
+              final full = tr(context, 'How can I help you today?');
+              // Mobile mockup always breaks the English line; other locales
+              // keep the translated string and wrap naturally.
+              final text = !isWide && full == 'How can I help you today?'
+                  ? 'How can I help\nyou today?'
+                  : full;
+              return Text(
+                text,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: isWide ? 36 : 26,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                  letterSpacing: -0.4,
+                  color: const Color(0xFF0B1220),
+                ),
+              );
+            },
+          ),
+          // Generous gap before the composer (mockup spacing).
+          SizedBox(height: isWide ? 30 : 34),
+          Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: isWide ? 620 : double.infinity,
+              ),
+              child: _ComposerBar(
+                controller: controller,
+                onSend: onSend,
+                isLoading: isLoading,
+                isListening: isListening,
+                onMicPressed: onMicPressed,
+                showMic: false,
+                coding: coding,
+                compact: true,
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            tr(context, coding ? 'Coding chat' : 'AI Chat'),
-            style: Theme.of(context).textTheme.headlineSmall,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            tr(
-              context,
-              coding
-                  ? 'Pick a curriculum lesson. We will chat about it, try a tiny example, then you can paste your code.'
-                  : 'Ask questions, get explanations, and explore any topic with your AI tutor.',
-            ),
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
-          ),
-          const SizedBox(height: 28),
-          if (coding) ...[
+          SizedBox(height: isWide ? 18 : 16),
+          if (coding)
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -850,40 +1041,292 @@ class _EmptyState extends StatelessWidget {
                 for (final title in _codingLessons)
                   ActionChip(
                     label: Text(tr(context, title)),
-                    onPressed: () => onTopic(codingLessonChatOpener(title)),
+                    onPressed: () =>
+                        onCodingTopic(codingLessonChatOpener(title)),
                   ),
               ],
-            ),
-          ] else
-            InkWell(
-              onTap: () => onTopic(_starter),
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.primary.withValues(alpha: 0.15),
-                      AppColors.practiceColor.withValues(alpha: 0.08),
-                    ],
+            )
+          else if (isWide)
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final a in _quickActions)
+                  _QuickActionChip(
+                    icon: a.$1,
+                    label: tr(context, a.$2),
+                    onTap: () => onQuickAction(a.$3),
+                    mobileTile: false,
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
-                    const SizedBox(width: 8),
-                    Text(
-                      tr(context, 'Start a conversation'),
-                      style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.primary),
+              ],
+            )
+          else
+            // Compact centered tiles — not full-bleed Expanded cards.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < _quickActions.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 8),
+                  _QuickActionChip(
+                    icon: _quickActions[i].$1,
+                    label: tr(context, _quickActions[i].$2),
+                    onTap: () => onQuickAction(_quickActions[i].$3),
+                    mobileTile: true,
+                  ),
+                ],
+              ],
+            ),
+          const Spacer(flex: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.mobileTile,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool mobileTile;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = mobileTile ? 16.0 : 999.0;
+
+    final child = Container(
+      width: mobileTile ? 84 : null,
+      padding: EdgeInsets.symmetric(
+        horizontal: mobileTile ? 6 : 16,
+        vertical: mobileTile ? 12 : 11,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: const Color(0xFFE6ECF7)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120B1B4D),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: mobileTile
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: const Color(0xFF1B2A4A)),
+                const SizedBox(height: 6),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    softWrap: false,
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1B2A4A),
                     ),
-                  ],
+                  ),
                 ),
+              ],
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: const Color(0xFF1B2A4A)),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF1B2A4A),
+                  ),
+                ),
+              ],
+            ),
+    );
+
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: child,
+    );
+  }
+}
+
+class _ComposerBar extends StatelessWidget {
+  const _ComposerBar({
+    required this.controller,
+    required this.onSend,
+    required this.isLoading,
+    required this.isListening,
+    required this.onMicPressed,
+    this.showMic = true,
+    this.coding = false,
+    this.compact = false,
+  });
+
+  final TextEditingController controller;
+  final VoidCallback onSend;
+  final bool isLoading;
+  final bool isListening;
+  final VoidCallback onMicPressed;
+  final bool showMic;
+  final bool coding;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE6ECF7)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x160B1B4D),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+          BoxShadow(
+            color: Color(0x0A1F6BE5),
+            blurRadius: 18,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(8, 6, 6, 6),
+      child: Theme(
+        // Kill Material hover/fill overlay on the desktop composer.
+        data: Theme.of(context).copyWith(
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+        ),
+        child: Row(
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Icon(
+                Icons.attach_file_rounded,
+                color: Color(0xFF9AA6BE),
+                size: 22,
               ),
             ),
-        ],
+            Expanded(
+              child: TextField(
+                controller: controller,
+                onSubmitted: (_) => onSend(),
+                mouseCursor: SystemMouseCursors.text,
+                decoration: InputDecoration(
+                  isDense: true,
+                  filled: true,
+                  fillColor: Colors.transparent,
+                  hoverColor: Colors.transparent,
+                  hintText: isListening
+                      ? tr(context, UiRegistry.listening)
+                      : tr(
+                          context,
+                          coding
+                              ? 'Ask about this lesson or paste your code…'
+                              : 'Ask anything...',
+                        ),
+                  hintStyle: const TextStyle(
+                    fontFamily: 'Inter',
+                    color: Color(0xFF9AA6BE),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  disabledBorder: InputBorder.none,
+                  errorBorder: InputBorder.none,
+                  focusedErrorBorder: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 12,
+                  ),
+                ),
+                cursorColor: const Color(0xFF2F7BF0),
+                style: const TextStyle(
+                  fontFamily: 'Inter',
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFF0B1220),
+                ),
+                maxLines: compact ? 2 : 4,
+                minLines: 1,
+                textInputAction: TextInputAction.send,
+              ),
+            ),
+            if (showMic)
+              IconButton(
+                onPressed: isLoading ? null : onMicPressed,
+                hoverColor: Colors.transparent,
+                highlightColor: Colors.transparent,
+                splashColor: Colors.transparent,
+                icon: Icon(isListening ? Icons.mic : Icons.mic_none_outlined),
+                color:
+                    isListening ? AppColors.primary : const Color(0xFF9AA6BE),
+                tooltip: isListening
+                    ? tr(context, 'Stop dictation')
+                    : tr(context, 'Speak your question'),
+              ),
+            const SizedBox(width: 4),
+            isLoading
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                // No Material splash — mockups show a clean circular gradient only.
+                : GestureDetector(
+                    onTap: onSend,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      width: 42,
+                      height: 42,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF3B82F6),
+                            Color(0xFF6366F1),
+                            Color(0xFF7C3AED),
+                          ],
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+          ],
+        ),
       ),
     );
   }

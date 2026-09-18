@@ -303,7 +303,7 @@ class _NamePage extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
-            initialValue: coerceChatLanguage(language),
+            initialValue: coercePickableLanguage(language),
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.language),
             ),

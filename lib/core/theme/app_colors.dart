@@ -63,13 +63,13 @@ class AppColors {
   static Color pageBackground(BuildContext context) =>
       of(context).isDark ? darkTheme.bgBottom : Colors.white;
 
-  /// Whisper-blue at top edge only — most of the screen stays white.
+  /// White-first shell canvas; HomeAtmosphereBackground adds bottom glow.
   static BoxDecoration pageDecoration(BuildContext context) {
     final c = of(context);
     if (c.isDark) {
       return BoxDecoration(color: c.bgBottom);
     }
-    return const BoxDecoration(color: Color(0xFFF5F8FE));
+    return const BoxDecoration(color: Colors.white);
   }
 
   // Brand

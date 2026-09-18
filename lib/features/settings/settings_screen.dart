@@ -129,11 +129,20 @@ appBar: StudioAppBar(
                     'Chat uses ${languageName(language)}',
                   ),
                   trailing: DropdownButton<String>(
-                    value: coerceChatLanguage(language),
+                    value: coercePickableLanguage(language),
                     underline: const SizedBox.shrink(),
+                    style: const TextStyle(
+                      fontFamily: 'Inter',
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1B2A4A),
+                    ),
                     items: [
                       for (final lang in pickableLanguages)
-                        DropdownMenuItem(value: lang.code, child: Text(lang.name)),
+                        DropdownMenuItem(
+                          value: lang.code,
+                          child: Text(lang.name),
+                        ),
                     ],
                     onChanged: (code) {
                       if (code == null) return;
@@ -150,8 +159,8 @@ appBar: StudioAppBar(
                 title: Text(tr(context, 'How chat language works')),
                 subtitle: const Text(
                   'Ask in your learning language. Replies come back in the '
-                  'same language. Chat works this way in Learn, Create, '
-                  'Teach back, and Apply.',
+                  'same language. Chat works this way on Home and in Learn, '
+                  'Create, Teach back, and Apply.',
                 ),
                 isThreeLine: true,
               ),
