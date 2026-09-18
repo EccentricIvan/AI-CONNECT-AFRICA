@@ -6,7 +6,6 @@ import 'package:ai_connect_africa/core/app_info_provider.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/certificates/certificates_screen.dart';
 import 'package:ai_connect_africa/features/create/create_screen.dart';
-import 'package:ai_connect_africa/features/home/home_screen.dart';
 import 'package:ai_connect_africa/features/learn/learn_screen.dart';
 import 'package:ai_connect_africa/features/learn/path/path_provider.dart';
 import 'package:ai_connect_africa/features/onboarding/onboarding_screen.dart';
@@ -24,7 +23,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Chrome that must exist in every chat language across Home, Learn,
+/// Chrome that must exist in every chat language across Home (AI chat),
 /// Practice, Create, Teach, Settings, Certificates, and Onboarding.
 const _appChromeKeys = [
   'Learn',
@@ -33,9 +32,7 @@ const _appChromeKeys = [
   'Create',
   'Teach',
   'Settings',
-  'AI Chat',
   'Certificates',
-  'Subjects',
   'Ask AI anything...',
   'Send',
   'Offline mode',
@@ -176,17 +173,11 @@ void main() {
         );
       }
 
-      await _pump(tester, languageCode: code, child: const HomeScreen());
-      await expectChrome('Learn');
-      await expectChrome('Practice');
-      await expectChrome('Settings');
-      await expectChrome('AI Chat');
-      await expectChrome('Teach');
-
       await _pump(tester, languageCode: code, child: const LearnScreen());
-      await expectChrome('AI Chat');
-      await expectChrome('Ask anything, learn together');
-      await expectChrome(UiRegistry.askPlaceholder);
+      await expectChrome('How can I help you today?');
+      await expectChrome('Ask anything...');
+      await expectChrome('Explain');
+      await expectChrome('Summarize');
 
       await _pump(tester, languageCode: code, child: const PracticeScreen());
       await expectChrome('Practice');

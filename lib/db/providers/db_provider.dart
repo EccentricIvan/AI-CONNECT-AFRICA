@@ -32,7 +32,7 @@ final hasProfileProvider = FutureProvider<bool>((ref) async {
 final recentSessionsProvider =
     FutureProvider.family((ref, int studentId) {
   final db = ref.watch(dbProvider);
-  return db.sessionDao.getRecentSessions(studentId);
+  return db.sessionDao.getRecentSessions(studentId, limit: 20);
 });
 
 final topicProgressProvider =

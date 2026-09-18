@@ -28,6 +28,19 @@ String coerceChatLanguage(String code) {
   return 'en';
 }
 
+/// Dropdown-safe value for [pickableLanguages] (Settings / onboarding).
+///
+/// The live learning language can still be any AfriSLM code; this only
+/// remaps the control's `value` so Material dropdowns don't assert when a
+/// saved code (e.g. Somali) is outside the rolled-out picker subset.
+String coercePickableLanguage(String code) {
+  final c = coerceChatLanguage(code);
+  for (final lang in pickableLanguages) {
+    if (lang.code == c) return c;
+  }
+  return 'en';
+}
+
 /// AfriSLM model-card language name for a chat turn.
 String chatTranslatePromptName(String code) {
   switch (code) {
