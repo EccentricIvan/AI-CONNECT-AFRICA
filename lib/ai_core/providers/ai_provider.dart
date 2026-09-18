@@ -1114,6 +1114,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
         highestStage: response.stage.name,
         messageCount: msgCount,
       );
+      ref.invalidate(recentSessionsProvider(student.id));
     } catch (_) {
       // Never crash the chat if DB write fails
     }

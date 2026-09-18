@@ -1062,20 +1062,24 @@ class _HomeEmptyWorkspace extends StatelessWidget {
               ],
             )
           else
-            // Compact centered tiles — not full-bleed Expanded cards.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                for (var i = 0; i < _quickActions.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 8),
-                  _QuickActionChip(
-                    icon: _quickActions[i].$1,
-                    label: tr(context, _quickActions[i].$2),
-                    onTap: () => onQuickAction(_quickActions[i].$3),
-                    mobileTile: true,
-                  ),
+            // Compact centered tiles — Flexible so they fit narrow phones.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  for (var i = 0; i < _quickActions.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    Expanded(
+                      child: _QuickActionChip(
+                        icon: _quickActions[i].$1,
+                        label: tr(context, _quickActions[i].$2),
+                        onTap: () => onQuickAction(_quickActions[i].$3),
+                        mobileTile: true,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           const Spacer(flex: 4),
         ],
@@ -1102,9 +1106,9 @@ class _QuickActionChip extends StatelessWidget {
     final radius = mobileTile ? 16.0 : 999.0;
 
     final child = Container(
-      width: mobileTile ? 84 : null,
+      width: mobileTile ? null : null,
       padding: EdgeInsets.symmetric(
-        horizontal: mobileTile ? 6 : 16,
+        horizontal: mobileTile ? 4 : 16,
         vertical: mobileTile ? 12 : 11,
       ),
       decoration: BoxDecoration(
@@ -1159,10 +1163,14 @@ class _QuickActionChip extends StatelessWidget {
             ),
     );
 
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: child,
+    return Semantics(
+      button: true,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: child,
+      ),
     );
   }
 }
@@ -1299,29 +1307,33 @@ class _ComposerBar extends StatelessWidget {
                     ),
                   )
                 // No Material splash — mockups show a clean circular gradient only.
-                : GestureDetector(
-                    onTap: onSend,
-                    behavior: HitTestBehavior.opaque,
-                    child: Container(
-                      width: 42,
-                      height: 42,
-                      alignment: Alignment.center,
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF3B82F6),
-                            Color(0xFF6366F1),
-                            Color(0xFF7C3AED),
-                          ],
+                : Semantics(
+                    button: true,
+                    label: tr(context, UiRegistry.send),
+                    child: GestureDetector(
+                      onTap: onSend,
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        alignment: Alignment.center,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Color(0xFF3B82F6),
+                              Color(0xFF6366F1),
+                              Color(0xFF7C3AED),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: const Icon(
-                        Icons.send_rounded,
-                        color: Colors.white,
-                        size: 18,
+                        child: const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                       ),
                     ),
                   ),

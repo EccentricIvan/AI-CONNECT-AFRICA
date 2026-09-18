@@ -131,11 +131,11 @@ appBar: StudioAppBar(
                   trailing: DropdownButton<String>(
                     value: coercePickableLanguage(language),
                     underline: const SizedBox.shrink(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'Inter',
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
-                      color: Color(0xFF1B2A4A),
+                      color: AppColors.of(context).textPrimary,
                     ),
                     items: [
                       for (final lang in pickableLanguages)

@@ -38,12 +38,17 @@ class _SidebarCollapsedNotifier extends StateNotifier<bool> {
     _load();
   }
 
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool(_sidebarCollapsedKey) ?? false;
+  Future<void>? _ready;
+
+  Future<void> _load() {
+    return _ready ??= () async {
+      final prefs = await SharedPreferences.getInstance();
+      state = prefs.getBool(_sidebarCollapsedKey) ?? false;
+    }();
   }
 
   Future<void> toggle() async {
+    await _ready;
     state = !state;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_sidebarCollapsedKey, state);
@@ -142,50 +147,44 @@ class AppShell extends ConsumerWidget {
     final collapsed = ref.watch(sidebarCollapsedProvider);
 
     if (isWide) {
-      return ScrollConfiguration(
-        behavior: const NoScrollbarBehavior(),
-        child: HomeAtmosphereBackground(
-          child: Scaffold(
-            backgroundColor: Colors.transparent,
-            body: Row(
-              children: [
-                _SideNav(
-                  collapsed: collapsed,
-                  primaryIndex: primaryIndex,
-                  settingsSelected: settingsSelected,
-                  primary: _primary,
-                  overflow: _overflow,
-                  settings: _settings,
-                  onToggleCollapse: () =>
-                      ref.read(sidebarCollapsedProvider.notifier).toggle(),
-                ),
-                Container(width: 1, color: AppColors.of(context).border),
-                Expanded(child: child),
-              ],
-            ),
+      return HomeAtmosphereBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Row(
+            children: [
+              _SideNav(
+                collapsed: collapsed,
+                primaryIndex: primaryIndex,
+                settingsSelected: settingsSelected,
+                primary: _primary,
+                overflow: _overflow,
+                settings: _settings,
+                onToggleCollapse: () =>
+                    ref.read(sidebarCollapsedProvider.notifier).toggle(),
+              ),
+              Container(width: 1, color: AppColors.of(context).border),
+              Expanded(child: child),
+            ],
           ),
         ),
       );
     }
 
-    return ScrollConfiguration(
-      behavior: const NoScrollbarBehavior(),
-      child: HomeAtmosphereBackground(
-        child: Scaffold(
-          key: mobileScaffoldKey,
-          backgroundColor: Colors.transparent,
-          body: child,
-          drawer: _AppDrawer(
-            primaryIndex: primaryIndex,
-            settingsSelected: settingsSelected,
-            primary: _primary,
-            settings: _settings,
-            overflow: _overflow,
-          ),
-          bottomNavigationBar: _FrostedBottomNav(
-            destinations: _primary,
-            selectedIndex: primaryIndex,
-          ),
+    return HomeAtmosphereBackground(
+      child: Scaffold(
+        key: mobileScaffoldKey,
+        backgroundColor: Colors.transparent,
+        body: child,
+        drawer: _AppDrawer(
+          primaryIndex: primaryIndex,
+          settingsSelected: settingsSelected,
+          primary: _primary,
+          settings: _settings,
+          overflow: _overflow,
+        ),
+        bottomNavigationBar: _FrostedBottomNav(
+          destinations: _primary,
+          selectedIndex: primaryIndex,
         ),
       ),
     );
