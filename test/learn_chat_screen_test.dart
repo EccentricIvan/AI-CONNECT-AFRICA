@@ -6,7 +6,6 @@ import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/learn/learn_screen.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
-import 'package:ai_connect_africa/l10n/ui_registry.dart';
 import 'package:ai_connect_africa/voice/voice_provider.dart';
 import 'package:ai_connect_africa/voice/voice_service.dart';
 
@@ -83,19 +82,19 @@ void main() {
     for (final code in langs) {
       final ctx = await _pumpChat(tester, code);
       expect(
-        find.text(tr(ctx, 'AI Chat')),
+        find.text(tr(ctx, 'How can I help you today?')),
         findsWidgets,
-        reason: '$code: AI Chat title missing',
+        reason: '$code: Home greeting missing',
       );
       expect(
-        find.text(tr(ctx, 'Ask anything, learn together')),
+        find.text(tr(ctx, 'Ask anything...')),
         findsWidgets,
-        reason: '$code: subtitle missing',
-      );
-      expect(
-        find.text(tr(ctx, UiRegistry.askPlaceholder)),
-        findsOneWidget,
         reason: '$code: composer placeholder missing',
+      );
+      expect(
+        find.text(tr(ctx, 'Explain')),
+        findsWidgets,
+        reason: '$code: Explain chip missing',
       );
     }
   });
