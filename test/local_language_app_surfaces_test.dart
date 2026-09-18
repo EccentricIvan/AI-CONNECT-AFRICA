@@ -14,7 +14,6 @@ import 'package:ai_connect_africa/features/settings/settings_screen.dart';
 import 'package:ai_connect_africa/features/teach/teach_screen.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
-import 'package:ai_connect_africa/l10n/ui_registry.dart';
 import 'package:ai_connect_africa/voice/voice_provider.dart';
 import 'package:ai_connect_africa/voice/voice_service.dart';
 import 'package:flutter/material.dart';
