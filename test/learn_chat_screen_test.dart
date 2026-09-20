@@ -116,11 +116,6 @@ void main() {
         findsWidgets,
         reason: '$code: composer placeholder missing',
       );
-      expect(
-        find.text(tr(ctx, 'Explain')),
-        findsWidgets,
-        reason: '$code: Explain chip missing',
-      );
     }
   });
 

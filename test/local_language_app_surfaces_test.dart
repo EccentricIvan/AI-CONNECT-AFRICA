@@ -175,8 +175,6 @@ void main() {
       await _pump(tester, languageCode: code, child: const LearnScreen());
       await expectChrome('How can I help you today?');
       await expectChrome('Ask anything...');
-      await expectChrome('Explain');
-      await expectChrome('Summarize');
 
       await _pump(tester, languageCode: code, child: const PracticeScreen());
       await expectChrome('Practice');

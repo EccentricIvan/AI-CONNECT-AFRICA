@@ -282,7 +282,6 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       isListening: ref.watch(voiceListeningProvider),
                       onMicPressed: _toggleListening,
                       onSend: _send,
-                      onQuickAction: _sendText,
                       onCodingTopic: (t) {
                         _controller.text = t;
                         _send();
@@ -873,7 +872,6 @@ class _HomeEmptyWorkspace extends StatelessWidget {
     required this.isListening,
     required this.onMicPressed,
     required this.onSend,
-    required this.onQuickAction,
     required this.onCodingTopic,
   });
 
@@ -883,7 +881,6 @@ class _HomeEmptyWorkspace extends StatelessWidget {
   final bool isListening;
   final VoidCallback onMicPressed;
   final VoidCallback onSend;
-  final void Function(String) onQuickAction;
   final void Function(String) onCodingTopic;
 
   static const _codingLessons = [
@@ -893,29 +890,6 @@ class _HomeEmptyWorkspace extends StatelessWidget {
     'Functions',
     'What is HTML and Web Pages',
     'Introduction to CSS',
-  ];
-
-  static const _quickActions = [
-    (
-      Icons.lightbulb_outline_rounded,
-      'Explain',
-      'Explain a concept simply, step by step, for a secondary school student.',
-    ),
-    (
-      Icons.description_outlined,
-      'Summarize',
-      'Summarize the key points of a topic clearly and briefly.',
-    ),
-    (
-      Icons.edit_outlined,
-      'Write',
-      'Help me write a clear short draft on a useful topic.',
-    ),
-    (
-      Icons.bar_chart_rounded,
-      'Analyze',
-      'Analyze a problem carefully and show your reasoning.',
-    ),
   ];
 
   @override
@@ -1052,8 +1026,8 @@ class _HomeEmptyWorkspace extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(height: isWide ? 18 : 16),
-          if (coding)
+          if (coding) ...[
+            SizedBox(height: isWide ? 18 : 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -1066,131 +1040,10 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                         onCodingTopic(codingLessonChatOpener(title)),
                   ),
               ],
-            )
-          else if (isWide)
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.center,
-              children: [
-                for (final a in _quickActions)
-                  _QuickActionChip(
-                    icon: a.$1,
-                    label: tr(context, a.$2),
-                    onTap: () => onQuickAction(a.$3),
-                    mobileTile: false,
-                  ),
-              ],
-            )
-          else
-            // Compact centered tiles — Flexible so they fit narrow phones.
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                children: [
-                  for (var i = 0; i < _quickActions.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8),
-                    Expanded(
-                      child: _QuickActionChip(
-                        icon: _quickActions[i].$1,
-                        label: tr(context, _quickActions[i].$2),
-                        onTap: () => onQuickAction(_quickActions[i].$3),
-                        mobileTile: true,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
             ),
+          ],
           const Spacer(flex: 4),
         ],
-      ),
-    );
-  }
-}
-
-class _QuickActionChip extends StatelessWidget {
-  const _QuickActionChip({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    required this.mobileTile,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool mobileTile;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = mobileTile ? 16.0 : 999.0;
-
-    final child = Container(
-      width: mobileTile ? null : null,
-      padding: EdgeInsets.symmetric(
-        horizontal: mobileTile ? 4 : 16,
-        vertical: mobileTile ? 12 : 11,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(radius),
-        border: Border.all(color: const Color(0xFFE6ECF7)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x120B1B4D),
-            blurRadius: 12,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: mobileTile
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 18, color: const Color(0xFF1B2A4A)),
-                const SizedBox(height: 6),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    softWrap: false,
-                    style: const TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF1B2A4A),
-                    ),
-                  ),
-                ),
-              ],
-            )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 16, color: const Color(0xFF1B2A4A)),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF1B2A4A),
-                  ),
-                ),
-              ],
-            ),
-    );
-
-    return Semantics(
-      button: true,
-      label: label,
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: child,
       ),
     );
   }
