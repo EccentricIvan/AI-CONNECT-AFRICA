@@ -1,11 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ai_connect_africa/ai_core/inference/inference_engine.dart';
+import 'package:ai_connect_africa/ai_core/providers/ai_provider.dart';
+import 'package:ai_connect_africa/ai_core/tutor/tutor_pipeline.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/learn/learn_screen.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
+import 'package:ai_connect_africa/services/chat_inference_pipeline.dart';
+import 'package:ai_connect_africa/shared/widgets/studio_page.dart';
 import 'package:ai_connect_africa/voice/voice_provider.dart';
 import 'package:ai_connect_africa/voice/voice_service.dart';
 
@@ -34,15 +41,33 @@ class _SilentVoice extends VoiceService {
       false;
 }
 
+/// Seeds a thread so the refresh control has something to clear.
+class _SeededChat extends ChatNotifier {
+  @override
+  Future<ChatState> build() async => const ChatState(
+        messages: [ChatMessage(text: 'What is gravity?', isUser: true)],
+      );
+}
+
 Future<BuildContext> _pumpChat(
   WidgetTester tester,
   String languageCode, {
   bool programming = false,
+  List<Override> overrides = const [],
 }) async {
   final container = ProviderContainer(
     overrides: [
       activeStudentProvider.overrideWith((ref) async => null),
       voiceServiceProvider.overrideWithValue(_SilentVoice()),
+      // reset() reaches for these; leaving them unresolved keeps widget
+      // tests away from model loading.
+      chatInferencePipelineProvider
+          .overrideWith((ref) => Completer<ChatInferencePipeline>().future),
+      tutorPipelineProvider
+          .overrideWith((ref) => Completer<TutorPipeline>().future),
+      engineLoadedProvider
+          .overrideWith((ref) => Completer<InferenceEngine>().future),
+      ...overrides,
     ],
   );
   addTearDown(container.dispose);
@@ -97,6 +122,33 @@ void main() {
         reason: '$code: Explain chip missing',
       );
     }
+  });
+
+  testWidgets('refresh clears the thread and is hidden while empty',
+      (tester) async {
+    final ctx = await _pumpChat(
+      tester,
+      'en',
+      overrides: [chatProvider.overrideWith(_SeededChat.new)],
+    );
+    final container = ProviderScope.containerOf(ctx);
+    final refresh = find.widgetWithIcon(
+      StudioHeaderIconButton,
+      Icons.refresh_rounded,
+    );
+
+    expect(find.text('What is gravity?'), findsOneWidget);
+    expect(refresh, findsOneWidget);
+
+    await tester.tap(refresh);
+    await tester.pump();
+
+    expect(find.text('What is gravity?'), findsNothing);
+    expect(
+      container.read(chatProvider).valueOrNull?.messages,
+      isEmpty,
+    );
+    expect(refresh, findsNothing, reason: 'nothing left to refresh');
   });
 
   testWidgets('coding empty state offers curriculum lessons', (tester) async {

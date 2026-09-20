@@ -192,6 +192,12 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
     }
   }
 
+  void _refreshChat() {
+    // TTS keeps reading a reply that is about to disappear otherwise.
+    _voice?.stopSpeaking();
+    ref.read(chatProvider.notifier).reset();
+  }
+
   Future<void> _readAloud(String text) async {
     final voice = ref.read(voiceServiceProvider);
     await voice.speak(text, languageCode: ref.read(appLanguageProvider));
@@ -248,11 +254,15 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                 StudioHeaderIconButton(
                   icon: Icons.refresh_rounded,
                   tooltip: tr(context, UiRegistry.newSession),
-                  onTap: () => ref.read(chatProvider.notifier).reset(),
+                  onTap: _refreshChat,
                 ),
               ],
             )
-          : const _HomeChromeAppBar(),
+          : _HomeChromeAppBar(
+              onRefresh: (chat.valueOrNull?.messages.isNotEmpty ?? false)
+                  ? _refreshChat
+                  : null,
+            ),
       body: ScrollConfiguration(
         behavior: const NoScrollbarBehavior(),
         child: MaxWidth(
@@ -735,7 +745,10 @@ class _TutorBubble extends StatelessWidget {
 // ── Input bar ─────────────────────────────────────────────────────────────────
 
 class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const _HomeChromeAppBar();
+  const _HomeChromeAppBar({this.onRefresh});
+
+  /// Null on the empty workspace — there is no thread to clear yet.
+  final VoidCallback? onRefresh;
 
   @override
   Size get preferredSize => const Size.fromHeight(64);
@@ -791,6 +804,14 @@ class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
               ),
             ],
             const Spacer(),
+            if (onRefresh != null) ...[
+              StudioHeaderIconButton(
+                icon: Icons.refresh_rounded,
+                tooltip: tr(context, UiRegistry.newSession),
+                onTap: onRefresh!,
+              ),
+              const SizedBox(width: 8),
+            ],
             StudioHeaderIconButton(
               icon: Icons.notifications_none_rounded,
               badge: true,

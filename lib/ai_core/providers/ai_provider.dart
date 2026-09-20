@@ -890,6 +890,11 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
   ChatSection _section = ChatSection.learn;
   bool _programmingSubject = false;
 
+  /// Bumped by [reset]. A turn that started before a refresh must not write
+  /// its reply — or leave its prompt memory — in the conversation that
+  /// replaced it.
+  int _epoch = 0;
+
   @override
   Future<ChatState> build() async {
     return const ChatState();
@@ -910,6 +915,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
   Future<void> send(String message, {ChatSection? section}) async {
     final current = state.valueOrNull ?? const ChatState();
     if (current.isGenerating) return;
+    final epoch = _epoch;
     final useCurriculum =
         (section ?? _section) == ChatSection.learn;
 
@@ -930,8 +936,14 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
     void pushUi(String cumulative) {
       if (!tokenCtrl.isClosed) tokenCtrl.add(cumulative);
       final cur = state.valueOrNull;
-      if (cur == null || !cur.isGenerating) return;
+      if (cur == null || !cur.isGenerating || epoch != _epoch) return;
       state = AsyncData(cur.copyWith(streamingText: cumulative));
+    }
+
+    void pushMath(SchoolMathSolution partial) {
+      final cur = state.valueOrNull;
+      if (cur == null || !cur.isGenerating || epoch != _epoch) return;
+      state = AsyncData(cur.copyWith(streamingMath: partial));
     }
 
     final lang = await studentLanguageCode(ref);
@@ -946,6 +958,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
           looksLikeProgramming(message);
     } catch (e) {
       await tokenCtrl.close();
+      if (epoch != _epoch) return;
       thread.add(ChatMessage(
         text: _friendlyAiError(e),
         isUser: false,
@@ -958,6 +971,16 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
         errorMessage: _friendlyAiError(e),
       ));
       return;
+    }
+
+    // True when a refresh landed mid-turn, so nothing from this turn may be
+    // shown or remembered. The tutor has already written the exchange into
+    // the conversation memory reset() just cleared, so clear it again —
+    // unless a newer turn is running, which would lose its own context.
+    bool discardIfStale() {
+      if (epoch == _epoch) return false;
+      if (!(state.valueOrNull?.isGenerating ?? false)) cascade.reset();
+      return true;
     }
 
     String englishForSafety = message;
@@ -977,6 +1000,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       );
       pushUi(support);
       await tokenCtrl.close();
+      if (discardIfStale()) return;
       thread.add(ChatMessage(text: support, isUser: false));
       state = AsyncData(state.requireValue.copyWith(
         messages: List<ChatMessage>.from(thread),
@@ -1021,7 +1045,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       var translationFailure = turn.translationFailure;
 
       if (math != null) {
-        state = AsyncData(state.requireValue.copyWith(streamingMath: math));
+        pushMath(math);
         try {
           math = await localizeSchoolMath(
             math,
@@ -1034,11 +1058,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
               );
               return o.translated ? o.text : english;
             },
-            onProgress: (partial) {
-              final cur = state.valueOrNull;
-              if (cur == null || !cur.isGenerating) return;
-              state = AsyncData(cur.copyWith(streamingMath: partial));
-            },
+            onProgress: pushMath,
           );
           if (lang != 'en') translatedLanguage = lang;
         } catch (e) {
@@ -1065,6 +1085,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       ));
 
       await tokenCtrl.close();
+      if (discardIfStale()) return;
       state = AsyncData(state.requireValue.copyWith(
         messages: List<ChatMessage>.from(thread),
         isGenerating: false,
@@ -1080,6 +1101,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       ));
     } catch (e) {
       await tokenCtrl.close();
+      if (discardIfStale()) return;
       final friendly = _friendlyAiError(e);
       thread.add(ChatMessage(text: friendly, isUser: false, isError: true));
       state = AsyncData(state.requireValue.copyWith(
@@ -1121,6 +1143,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
   }
 
   void reset() {
+    _epoch++;
     _programmingSubject = false;
     ref.read(chatInferencePipelineProvider).valueOrNull?.reset();
     ref.read(tutorPipelineProvider).valueOrNull?.reset();
