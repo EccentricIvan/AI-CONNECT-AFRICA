@@ -66,12 +66,6 @@ class AppShell extends ConsumerWidget {
   static const _primary = [
     _NavDest('Home', Icons.home_outlined, Icons.home_rounded, '/'),
     _NavDest(
-      'Explore',
-      Icons.explore_outlined,
-      Icons.explore_rounded,
-      '/learn',
-    ),
-    _NavDest(
       'Learn',
       Icons.menu_book_outlined,
       Icons.menu_book_rounded,
@@ -88,12 +82,6 @@ class AppShell extends ConsumerWidget {
       Icons.folder_outlined,
       Icons.folder_rounded,
       '/projects',
-    ),
-    _NavDest(
-      'Community',
-      Icons.people_outline_rounded,
-      Icons.people_rounded,
-      '/teacher',
     ),
   ];
 
