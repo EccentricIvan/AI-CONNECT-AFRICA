@@ -60,7 +60,7 @@ OTIC is a mentor, not a search engine. It must never stop at answering.
 
 ## Learning Modes
 
-Five modes are routed through the same AI pipeline:
+Four modes are routed through the same AI pipeline:
 
 | Mode     | Purpose                        | Outcome            |
 |----------|--------------------------------|--------------------|
@@ -68,7 +68,10 @@ Five modes are routed through the same AI pipeline:
 | Practice | Exercises, challenges          | Retention          |
 | Apply    | Real-world scenarios           | Practical competence |
 | Create   | Build projects                 | Creation           |
-| Teach    | Student explains → OTIC scores | Mastery            |
+
+A fifth "Teach back" mode (student explains → OTIC scores) was removed — it was
+a bolt-on that bypassed the tutor pipeline entirely, calling the engine with its
+own prompt. Don't confuse it with the Teacher *role*/dashboard, which stays.
 
 ## User Roles
 
@@ -157,7 +160,7 @@ Follow this order — do not jump ahead to gamification or certificates before t
 5. Practice + Apply modes
 6. Voice learning
 7. Simulation engine
-8. Create + Teach modes
+8. Create mode
 9. Gamification + Certification
 10. Teacher dashboard
 11. Admin dashboard

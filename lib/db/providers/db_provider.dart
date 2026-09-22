@@ -59,6 +59,29 @@ class StudentNotifier extends AsyncNotifier<Student?> {
     String learningStyle = 'unknown',
   }) async {
     final db = ref.read(dbProvider);
+
+    // Never add a second profile to a device that already has one. Badges,
+    // points and streak hang off a student row, and getActiveStudent() returns
+    // whichever was active last — so an insert here would leave everything the
+    // student earned stranded on the old row, invisible and unreachable.
+    // Onboarding can legitimately be reached with a profile already present
+    // (the router falls back to it when the profile lookup is slow, and its
+    // own `_existingStudentId` reads null while that lookup is still loading),
+    // so the guard has to live here rather than only at the call site.
+    final existing = await db.studentDao.getActiveStudent();
+    if (existing != null) {
+      await updateProfile(
+        id: existing.id,
+        name: name,
+        age: age,
+        grade: grade,
+        language: language,
+        interests: interests,
+        learningStyle: learningStyle,
+      );
+      return;
+    }
+
     final id = await db.studentDao.createStudent(
       StudentsCompanion.insert(
         name: name,

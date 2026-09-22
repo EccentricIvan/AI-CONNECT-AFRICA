@@ -7,13 +7,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// Checks eligibility and awards badges, adding points to the student.
 /// Call these methods after the triggering action completes.
 class BadgeService {
-  BadgeService(this._db);
+  BadgeService(this._db, this._ref);
   final OticDatabase _db;
+  final Ref _ref;
 
   // ── Trigger: a lesson was marked complete ─────────────────────────────────
 
   Future<List<BadgeDef>> onLessonCompleted(int studentId) async {
-    final awarded = <BadgeDef>[];
+    final awarded = await _touchStreak(studentId);
     final paths = await _db.pathDao.getPathsForStudent(studentId);
     final totalCompleted =
         paths.fold(0, (s, p) => s + p.completedLessons);
@@ -41,7 +42,7 @@ class BadgeService {
 
   Future<List<BadgeDef>> onPracticeAnswered(
       int studentId, int totalCorrectInSession) async {
-    final awarded = <BadgeDef>[];
+    final awarded = await _touchStreak(studentId);
     await _award(studentId, 'practice_starter', awarded);
     if (totalCorrectInSession >= 5) {
       await _award(studentId, 'sharp_mind', awarded);
@@ -53,19 +54,9 @@ class BadgeService {
 
   Future<List<BadgeDef>> onApplyEvaluated(
       int studentId, int sessionScenarioCount) async {
-    final awarded = <BadgeDef>[];
+    final awarded = await _touchStreak(studentId);
     if (sessionScenarioCount >= 5) {
       await _award(studentId, 'scenario_solver', awarded);
-    }
-    return awarded;
-  }
-
-  // ── Trigger: teach scored ─────────────────────────────────────────────────
-
-  Future<List<BadgeDef>> onTeachScored(int studentId, int score) async {
-    final awarded = <BadgeDef>[];
-    if (score >= 80) {
-      await _award(studentId, 'teacher', awarded);
     }
     return awarded;
   }
@@ -73,17 +64,19 @@ class BadgeService {
   // ── Trigger: project saved ────────────────────────────────────────────────
 
   Future<List<BadgeDef>> onProjectSaved(int studentId) async {
-    final awarded = <BadgeDef>[];
+    final awarded = await _touchStreak(studentId);
     await _award(studentId, 'creator', awarded);
     return awarded;
   }
 
-  // ── Trigger: streak updated ───────────────────────────────────────────────
+  // ── Internal: bump the daily streak from any learning-mode activity ──────
 
-  Future<List<BadgeDef>> onStreakUpdated(
-      int studentId, int streakDays) async {
+  /// Every trigger above routes through here, so a day counts as active
+  /// whichever mode the student used — not only a completed path lesson.
+  Future<List<BadgeDef>> _touchStreak(int studentId) async {
     final awarded = <BadgeDef>[];
-    if (streakDays >= 7) {
+    final streak = await updateStreak(studentId);
+    if (streak >= 7) {
       await _award(studentId, 'consistent_learner', awarded);
     }
     return awarded;
@@ -121,6 +114,16 @@ class BadgeService {
     }
 
     collected.add(def);
+
+    // Achievements reads badges/points through FutureProviders that cache until
+    // invalidated — without this an award made outside the Learn-path flow only
+    // shows up after a restart.
+    _refreshAchievements(studentId);
+  }
+
+  void _refreshAchievements(int studentId) {
+    _ref.invalidate(earnedBadgesProvider(studentId));
+    _ref.invalidate(activeStudentProvider);
   }
 
   /// Update streak — call once per day at first interaction.
@@ -156,11 +159,13 @@ class BadgeService {
       ),
     );
 
+    if (newStreak != student.streakDays) _refreshAchievements(studentId);
+
     return newStreak;
   }
 }
 
 final badgeServiceProvider = Provider<BadgeService>((ref) {
   final db = ref.watch(dbProvider);
-  return BadgeService(db);
+  return BadgeService(db, ref);
 });

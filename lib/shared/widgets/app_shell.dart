@@ -94,7 +94,6 @@ class AppShell extends ConsumerWidget {
 
   /// Extra destinations shown in the mobile drawer and desktop sidebar.
   static const _overflow = [
-    _NavDest('Teach back', Icons.school_outlined, Icons.school_rounded, '/teach'),
     _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,

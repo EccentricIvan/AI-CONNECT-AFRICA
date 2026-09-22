@@ -160,7 +160,7 @@ appBar: StudioAppBar(
                 subtitle: const Text(
                   'Ask in your learning language. Replies come back in the '
                   'same language. Chat works this way on Home and in Learn, '
-                  'Create, Teach back, and Apply.',
+                  'Create, and Apply.',
                 ),
                 isThreeLine: true,
               ),

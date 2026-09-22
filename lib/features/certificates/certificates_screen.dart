@@ -27,7 +27,7 @@ appBar: StudioAppBar(
         title: tr(context, 'Certificates'),
         subtitle: tr(context, 'Celebrate completed paths'),
         icon: Icons.workspace_premium_rounded,
-        iconColor: const Color(0xFF7B6CF6),
+        iconColor: AppColors.accentViolet,
         showBack: true,
       ),
       body: studentAsync.when(
@@ -183,15 +183,8 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 15,
-          color: Theme.of(context).colorScheme.onSurface,
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
+      child: StudioSectionHeader(title: tr(context, title)),
     );
   }
 }
@@ -203,35 +196,51 @@ class _CertTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
     final name = file.path.split(Platform.pathSeparator).last;
-    return ListTile(
-      onTap: onShare,
-      leading: Container(
-        width: 42,
-        height: 42,
-        decoration: BoxDecoration(
-          color: AppColors.secondary.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: StudioCard(
+        onTap: onShare,
+        child: Row(
+          children: [
+            const StudioIconChip(
+              icon: Icons.workspace_premium_rounded,
+              color: AppColors.accentViolet,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name.replaceAll('_', ' ').replaceAll('.pdf', ''),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: ac.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tr(context, 'Tap to share'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: ac.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.ios_share_rounded,
+                  color: AppColors.accentViolet, size: 20),
+              tooltip: tr(context, 'Share certificate'),
+              onPressed: onShare,
+            ),
+          ],
         ),
-        child: const Icon(Icons.workspace_premium,
-            color: AppColors.secondary, size: 22),
-      ),
-      title: Text(
-        name.replaceAll('_', ' ').replaceAll('.pdf', ''),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        'Tap to share',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(fontSize: 11, color: Theme.of(context).hintColor),
-      ),
-      trailing: IconButton(
-        icon: const Icon(Icons.share, color: AppColors.secondary, size: 20),
-        tooltip: 'Share certificate',
-        onPressed: onShare,
       ),
     );
   }
@@ -248,50 +257,60 @@ class _PathCertCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).dividerColor),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.emoji_events, color: Colors.amber, size: 28),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(path.title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface)),
-                Text('${path.totalLessons} lessons completed',
-                    style: TextStyle(
-                        fontSize: 12, color: Theme.of(context).hintColor)),
-              ],
+    final ac = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: StudioCard(
+        accent: AppColors.accentOrange,
+        child: Row(
+          children: [
+            const StudioIconChip(
+              icon: Icons.emoji_events_rounded,
+              color: AppColors.accentOrange,
             ),
-          ),
-          generating
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : FilledButton(
-                  onPressed: onGenerate,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.secondary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(path.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: ac.textPrimary)),
+                  const SizedBox(height: 2),
+                  Text(
+                      trFill(context, '{count} lessons completed',
+                          {'count': '${path.totalLessons}'}),
+                      style:
+                          TextStyle(fontSize: 12, color: ac.textSecondary)),
+                ],
+              ),
+            ),
+            generating
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : FilledButton(
+                    onPressed: onGenerate,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.secondary,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      minimumSize: Size.zero,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(99)),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(tr(context, 'Generate PDF'),
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w700)),
                   ),
-                  child: const Text('Generate PDF',
-                      style: TextStyle(fontSize: 12)),
-                ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -304,28 +323,36 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.all(40),
       child: Column(
         children: [
-          Icon(Icons.workspace_premium,
-              size: 56, color: Theme.of(context).hintColor),
+          Icon(Icons.workspace_premium_rounded, size: 56, color: ac.textHint),
           const SizedBox(height: 16),
           Text(
-            savedCount > 0
-                ? 'No new paths to certify'
-                : 'No certificates yet',
+            tr(
+              context,
+              savedCount > 0
+                  ? 'No new paths to certify'
+                  : 'No certificates yet',
+            ),
             style: TextStyle(
-                fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+                fontFamily: 'Saira',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: ac.textPrimary),
           ),
           const SizedBox(height: 8),
           Text(
-            hasAny
-                ? 'Complete all 12 lessons in a learning path to earn a certificate.'
-                : 'Start a learning path and complete all lessons to earn your first certificate.',
+            tr(
+              context,
+              hasAny
+                  ? 'Complete all 12 lessons in a learning path to earn a certificate.'
+                  : 'Start a learning path and complete all lessons to earn your first certificate.',
+            ),
             textAlign: TextAlign.center,
-            style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
+            style: TextStyle(color: ac.textSecondary, height: 1.5),
           ),
         ],
       ),

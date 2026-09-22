@@ -19,11 +19,11 @@ class AchievementsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-appBar: StudioAppBar(
+      appBar: StudioAppBar(
         title: tr(context, 'Achievements'),
         subtitle: tr(context, 'Badges, points & streaks'),
         icon: Icons.emoji_events_rounded,
-        iconColor: const Color(0xFFFF8A3D),
+        iconColor: AppColors.accentOrange,
       ),
       body: studentAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -53,50 +53,57 @@ class _AchievementsBody extends ConsumerWidget {
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (earned) {
         final earnedIds = earned.map((b) => b.badgeId).toSet();
-        final earnedCount = earnedIds.length;
+        final earnedCount =
+            earnedIds.where((id) => badgeById(id) != null).length;
         final width =
             MediaQuery.sizeOf(context).width.clamp(0.0, 1000.0).toDouble();
         final cols = adaptiveColumns(width, min: 2, max: 5, itemWidth: 200);
 
         return MaxWidth(
-            maxWidth: 1000,
-            child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: _StatsHeader(
-                student: student,
-                earned: earnedCount,
-                total: allBadges.length,
-              ),
-            ),
-            const SliverToBoxAdapter(child: _CertificatesLink()),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              sliver: SliverGrid(
-                delegate: SliverChildBuilderDelegate(
-                  (_, i) {
-                    final def = allBadges[i];
-                    final isEarned = earnedIds.contains(def.id);
-                    return _BadgeTile(
-                        def: def,
-                        isEarned: isEarned,
-                        earnedAt: isEarned
-                            ? earned
-                                .firstWhere((b) => b.badgeId == def.id)
-                                .earnedAt
-                            : null);
-                  },
-                  childCount: allBadges.length,
-                ),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 1.05,
+          maxWidth: 1000,
+          child: CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _StatsHeader(
+                  student: student,
+                  earned: earnedCount,
+                  total: allBadges.length,
                 ),
               ),
-            ),
-          ],
+              const SliverToBoxAdapter(child: _CertificatesLink()),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
+                  child: StudioSectionHeader(title: tr(context, 'Badges')),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                sliver: SliverGrid(
+                  delegate: SliverChildBuilderDelegate(
+                    (_, i) {
+                      final def = allBadges[i];
+                      final isEarned = earnedIds.contains(def.id);
+                      return _BadgeTile(
+                          def: def,
+                          isEarned: isEarned,
+                          earnedAt: isEarned
+                              ? earned
+                                  .firstWhere((b) => b.badgeId == def.id)
+                                  .earnedAt
+                              : null);
+                    },
+                    childCount: allBadges.length,
+                  ),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.05,
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },
@@ -109,54 +116,46 @@ class _AchievementsBody extends ConsumerWidget {
 class _CertificatesLink extends StatelessWidget {
   const _CertificatesLink();
 
-  static const _color = Color(0xFF7B6CF6);
-
   @override
   Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-      child: InkWell(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: StudioCard(
+        accent: AppColors.accentViolet,
         onTap: () => GoRouter.of(context).push('/certificates'),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: _color.withValues(alpha: 0.07),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: _color.withValues(alpha: 0.3)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.workspace_premium_rounded,
-                  color: _color, size: 26),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tr(context, 'Certificates'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                        color: Theme.of(context).colorScheme.onSurface,
-                      ),
+        child: Row(
+          children: [
+            const StudioIconChip(
+              icon: Icons.workspace_premium_rounded,
+              color: AppColors.accentViolet,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tr(context, 'Certificates'),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: ac.textPrimary,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      tr(context, 'Celebrate completed paths'),
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tr(context, 'Celebrate completed paths'),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: ac.textSecondary,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Icon(Icons.arrow_forward_ios,
-                  size: 15, color: Theme.of(context).hintColor),
-            ],
-          ),
+            ),
+            Icon(Icons.chevron_right_rounded, size: 20, color: ac.textHint),
+          ],
         ),
       ),
     );
@@ -172,68 +171,123 @@ class _StatsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
     return Container(
-      margin: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.secondary],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: AppColors.brandGradient,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: ac.softShadow(ac.isDark),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            student.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Saira',
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 19,
+              letterSpacing: -0.2,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            trFill(context, '{earned} of {total} badges earned',
+                {'earned': '$earned', 'total': '$total'}),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: total > 0 ? earned / total : 0,
+              minHeight: 7,
+              backgroundColor: Colors.white24,
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _HeaderStat(
+                  icon: Icons.stars_rounded,
+                  iconColor: const Color(0xFFFFD166),
+                  value: '${student.totalPoints}',
+                  label: tr(context, 'points'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _HeaderStat(
+                  icon: Icons.local_fire_department_rounded,
+                  iconColor: const Color(0xFFFFB27A),
+                  value: '${student.streakDays}',
+                  label: tr(context, 'day streak'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderStat extends StatelessWidget {
+  const _HeaderStat({
+    required this.icon,
+    required this.iconColor,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: [
+          Icon(icon, color: iconColor, size: 24),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  student.name,
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 20,
+                    height: 1.1,
                   ),
                 ),
-                const SizedBox(height: 4),
                 Text(
-                  '$earned of $total badges earned',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: total > 0 ? earned / total : 0,
-                    minHeight: 7,
-                    backgroundColor: Colors.white24,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white70, fontSize: 11),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 20),
-          Column(
-            children: [
-              const Icon(Icons.stars, color: Colors.amber, size: 28),
-              const SizedBox(height: 4),
-              Text(
-                '${student.totalPoints}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 22,
-                ),
-              ),
-              const Text(
-                'points',
-                style: TextStyle(color: Colors.white70, fontSize: 11),
-              ),
-            ],
           ),
         ],
       ),
@@ -250,47 +304,40 @@ class _BadgeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isEarned
-            ? def.color.withValues(alpha: 0.07)
-            : Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isEarned
-              ? def.color.withValues(alpha: 0.4)
-              : Theme.of(context).dividerColor,
-        ),
-      ),
+    final ac = AppColors.of(context);
+    final labelColor = isEarned ? def.color : ac.textHint;
+
+    return StudioCard(
+      radius: 18,
       padding: const EdgeInsets.all(14),
+      // Locked tiles take a muted slate wash so they stay legibly "not yet"
+      // against a white page, where an untinted card would vanish.
+      accent: isEarned ? def.color : AppColors.accentSlate,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            def.icon,
-            size: 36,
-            color: isEarned ? def.color : Theme.of(context).hintColor,
-          ),
+          Icon(def.icon, size: 34, color: labelColor),
           const SizedBox(height: 8),
           Text(
-            def.name,
+            tr(context, def.name),
             style: TextStyle(
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
               fontSize: 13,
-              color: isEarned ? def.color : Theme.of(context).hintColor,
+              color: labelColor,
             ),
             textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
             isEarned && earnedAt != null
                 ? _fmt(earnedAt!)
-                : def.description,
+                : tr(context, def.description),
             style: TextStyle(
               fontSize: 11,
-              color: isEarned ? Theme.of(context).colorScheme.onSurfaceVariant : Theme.of(context).hintColor,
-              fontStyle:
-                  isEarned ? FontStyle.normal : FontStyle.italic,
+              color: isEarned ? ac.textSecondary : ac.textHint,
+              fontStyle: isEarned ? FontStyle.normal : FontStyle.italic,
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -301,13 +348,13 @@ class _BadgeTile extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: def.color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                color: def.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(99),
               ),
               child: Text('+${def.points} pts',
                   style: TextStyle(
                       fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: def.color)),
             ),
           ],

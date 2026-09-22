@@ -24,7 +24,6 @@ import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/practice/practice_screen.dart';
 import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
-import '../../features/teach/teach_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
@@ -158,7 +157,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/projects', builder: (_, __) => const ProjectsScreen()),
           GoRoute(path: '/achievements', builder: (_, __) => const AchievementsScreen()),
           GoRoute(path: '/certificates', builder: (_, __) => const CertificatesScreen()),
-          GoRoute(path: '/teach', builder: (_, __) => const TeachScreen()),
           GoRoute(path: '/teacher', builder: (_, __) => const TeacherDashboardScreen()),
           GoRoute(
             path: '/teacher/:id',

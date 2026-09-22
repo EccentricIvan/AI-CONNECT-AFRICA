@@ -11,7 +11,6 @@ import 'package:ai_connect_africa/features/learn/path/path_provider.dart';
 import 'package:ai_connect_africa/features/onboarding/onboarding_screen.dart';
 import 'package:ai_connect_africa/features/practice/practice_screen.dart';
 import 'package:ai_connect_africa/features/settings/settings_screen.dart';
-import 'package:ai_connect_africa/features/teach/teach_screen.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
 import 'package:ai_connect_africa/voice/voice_provider.dart';
@@ -23,13 +22,12 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Chrome that must exist in every chat language across Home (AI chat),
-/// Practice, Create, Teach, Settings, Certificates, and Onboarding.
+/// Practice, Create, Settings, Certificates, and Onboarding.
 const _appChromeKeys = [
   'Learn',
   'Practice',
   'Apply',
   'Create',
-  'Teach',
   'Settings',
   'Certificates',
   'Ask AI anything...',
@@ -38,7 +36,6 @@ const _appChromeKeys = [
   'Learning language',
   'Sharpen your skills',
   'Turn ideas into projects',
-  'Explain it to master it',
   'Profile, AI model & preferences',
   'Celebrate completed paths',
   'Welcome to AI Connect Africa',
@@ -155,7 +152,7 @@ void main() {
     }
   });
 
-  testWidgets('Home, Learn, Practice, Create, Teach, Settings, Certs, Onboarding follow each language',
+  testWidgets('Home, Learn, Practice, Create, Settings, Certs, Onboarding follow each language',
       (tester) async {
     tester.view.physicalSize = const Size(1280, 2400);
     tester.view.devicePixelRatio = 1.0;
@@ -183,10 +180,6 @@ void main() {
 
       await _pump(tester, languageCode: code, child: const CreateScreen());
       await expectChrome('Create');
-
-      await _pump(tester, languageCode: code, child: const TeachScreen());
-      await expectChrome('Teach');
-      await expectChrome('Explain it to master it');
 
       await _pump(tester, languageCode: code, child: const SettingsScreen());
       await expectChrome('Settings');
