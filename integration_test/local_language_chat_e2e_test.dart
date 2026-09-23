@@ -71,12 +71,14 @@ void main() {
           reasoner: QwenReasoningService(chat),
           tutor: TutorPipeline(engine: chat),
         );
+        final clock = Stopwatch()..start();
         final turn = await pipeline.completeTurn(
           userText: 'What is photosynthesis?',
           languageCode: 'en',
           useCurriculum: false,
         );
-        debugPrint('CHAT EN: ${turn.displayText}');
+        debugPrint('CHAT EN (${clock.elapsed.inMilliseconds} ms): '
+            '${turn.displayText}');
         expect(turn.displayText.trim(), isNotEmpty);
         englishReply = turn.displayText;
       } finally {
