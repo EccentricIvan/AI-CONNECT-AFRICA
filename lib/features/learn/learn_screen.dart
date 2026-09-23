@@ -20,6 +20,7 @@ import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/science_rich_text.dart';
 import '../../shared/widgets/worked_solution.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../../memory/session_recall.dart';
 import '../../voice/voice_locales.dart';
 import '../../voice/voice_provider.dart';
 import '../../voice/voice_service.dart';
@@ -35,9 +36,13 @@ class _ChatEntry {
     this.math,
     this.mathCoach = false,
     this.translationFailure,
+    this.recap,
   });
   final String text;
   final bool isUser;
+
+  /// Set on the single entry that opens a reopened chat.
+  final SessionRecall? recap;
   final Lesson? lesson;
   final bool isError;
   final String? followUp;
@@ -304,6 +309,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       math: msg.math,
                       mathCoach: msg.mathCoach,
                       translationFailure: msg.translationFailure,
+                      recap: msg.recap,
                     ));
                     if (msg.isUser && msg.lesson != null) {
                       allItems.add(_ChatEntry(text: '', isUser: false, lesson: msg.lesson));
@@ -348,6 +354,13 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       }
 
                       final entry = allItems[i];
+
+                      // Recap of a reopened chat — never a message bubble,
+                      // because the stored gist is clipped and fake bubbles
+                      // would look like the conversation was mangled.
+                      if (entry.recap != null) {
+                        return _RecapCard(recall: entry.recap!);
+                      }
 
                       // Lesson card from curriculum
                       if (entry.lesson != null) {
@@ -458,6 +471,114 @@ class _ErrorBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Header shown when a saved chat is reopened.
+///
+/// What is stored is a compressed recall, not a transcript — each line is
+/// clipped to roughly a sentence. Drawing those as ordinary message bubbles
+/// would show a student their own words cut off mid-thought and read as lost
+/// data, so the recall gets one clearly-labelled card instead and the thread
+/// below it starts empty. The tutor's memory has already been restored, so
+/// the next question continues the lesson rather than starting over.
+class _RecapCard extends StatelessWidget {
+  const _RecapCard({required this.recall});
+
+  final SessionRecall recall;
+
+  @override
+  Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
+    // Oldest first reads as a story; only the tail is kept for long chats.
+    final shown = recall.exchanges.length > 6
+        ? recall.exchanges.sublist(recall.exchanges.length - 6)
+        : recall.exchanges;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: ac.iconWell.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: ac.textHint.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.history_rounded, size: 15, color: ac.textHint),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  tr(context, 'Picking up where you left off'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: ac.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (recall.title.trim().isNotEmpty)
+            Text(
+              recall.title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: ac.textPrimary,
+              ),
+            ),
+          if (shown.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final e in shown)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (e.question.trim().isNotEmpty)
+                      Text(
+                        '${tr(context, 'You asked')}: ${e.question}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: ac.textPrimary.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    if (e.answer.trim().isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          e.answer,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: ac.textHint,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 2),
+          Text(
+            tr(context,
+                'This is a short summary of that chat, not the full conversation. Ask your next question to carry on.'),
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.35,
+              fontStyle: FontStyle.italic,
+              color: ac.textHint,
+            ),
+          ),
+        ],
       ),
     );
   }

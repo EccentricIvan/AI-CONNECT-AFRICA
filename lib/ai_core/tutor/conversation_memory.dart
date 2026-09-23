@@ -202,6 +202,66 @@ class ConversationMemory {
     if (established.isNotEmpty) established.removeLast();
   }
 
+  /// Snapshot the whole mutable state so a session can be reopened later.
+  ///
+  /// Only the already-clipped fields are written — [turns] is capped at
+  /// [maxRawTurns] and each entry at [turnClipChars], so this stays a
+  /// compressed recall, never a transcript.
+  Map<String, Object?> toJson() => {
+        'digest': lessonDigest,
+        'anchor': anchorQuestion,
+        'turns': [
+          for (final t in turns) {'role': t.role, 'text': t.text},
+        ],
+        'facts': List<String>.from(established),
+      };
+
+  /// Re-seed from [toJson]. Replaces any current state.
+  ///
+  /// Tolerates a partially written or hand-edited file: anything of the wrong
+  /// shape is skipped rather than throwing, because a damaged recall file
+  /// should degrade to a thinner memory, not block reopening the chat.
+  void restoreFrom(Map<String, Object?> json) {
+    clear();
+    final digest = json['digest'];
+    if (digest is String && digest.isNotEmpty) {
+      lessonDigest = _clip(digest, digestClipChars);
+    }
+    final anchor = json['anchor'];
+    if (anchor is String && anchor.isNotEmpty) {
+      anchorQuestion = _clip(anchor, anchorClipChars);
+    }
+    final rawTurns = json['turns'];
+    if (rawTurns is List) {
+      for (final entry in rawTurns) {
+        if (entry is! Map) continue;
+        final role = entry['role'];
+        final text = entry['text'];
+        if (role is! String || text is! String) continue;
+        if (role != 'student' && role != 'tutor') continue;
+        if (text.isEmpty) continue;
+        turns.add((role: role, text: _clip(text, turnClipChars)));
+      }
+      // turns must stay an even, bounded Student/Tutor sequence.
+      if (turns.isNotEmpty && turns.first.role != 'student') {
+        turns.removeAt(0);
+      }
+      if (turns.length.isOdd) turns.removeLast();
+      while (turns.length > maxRawTurns) {
+        turns.removeRange(0, 2);
+      }
+    }
+    final facts = json['facts'];
+    if (facts is List) {
+      for (final f in facts) {
+        if (f is! String || f.trim().isEmpty) continue;
+        final fact = _clip(f.trim(), factClipChars);
+        if (!established.contains(fact)) established.add(fact);
+        if (established.length >= maxFacts) break;
+      }
+    }
+  }
+
   String resolveCurrent(String message, {String? languageCode}) {
     final gloss = toEnglishFollowUp(message, langCode: languageCode);
     final resolvedFollowUp = gloss ?? message.trim();

@@ -356,6 +356,34 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
   }
 
   /// Reset pipeline (e.g. user starts a new session).
+  /// Where this pipeline currently stands, for persisting a session.
+  String get currentTopic => _currentTopic;
+  TutorStage get nextStage => _nextStage;
+
+  /// Snapshot the compressed chat memory so a session can be reopened.
+  Map<String, Object?> memorySnapshot() => _memory.toJson();
+
+  /// Reopen a previously saved session.
+  ///
+  /// Order matters: [_engine.resetSession] is awaited FIRST and only then is
+  /// [_memory] seeded. The engine has its own conversation state, and the
+  /// memory re-enters the next prompt through [ConversationMemory.promptBlock],
+  /// so seeding before the reset would both wipe what was just restored and
+  /// double-count the history that survived in the engine.
+  Future<void> restoreSession({
+    required Map<String, Object?> memory,
+    required String topic,
+    required TutorStage nextStage,
+  }) async {
+    await _engine.resetSession();
+    _memory.clear();
+    _activeMatch = null;
+    _clearMath();
+    _memory.restoreFrom(memory);
+    _currentTopic = topic;
+    _nextStage = nextStage;
+  }
+
   void reset() {
     _nextStage = TutorStage.answer;
     _currentTopic = '';

@@ -214,6 +214,15 @@ class _StudentRow extends ConsumerWidget {
     ).then((confirmed) async {
       if (confirmed != true) return;
       final db = ref.read(dbProvider);
+      // Clear their saved chats first, and the recall files behind them.
+      // Nothing in this app enables `PRAGMA foreign_keys`, so the cascade
+      // declared on the table is never enforced and the rows (and their
+      // files) would otherwise outlive the student they belong to.
+      final orphaned = await db.chatSessionDao.deleteForStudent(student.id);
+      final store = ref.read(sessionRecallStoreProvider);
+      for (final id in orphaned) {
+        await store.delete(id);
+      }
       await db.studentDao.deleteStudent(student.id);
       ref.invalidate(_allStudentsProvider);
       ref.invalidate(activeStudentProvider);

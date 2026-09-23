@@ -116,6 +116,28 @@ Use SQLite via the `drift` Flutter package. Store compressed summaries only — 
 
 Stored fields: `userId`, `age`, `interests`, `learningStyle`, `strengths`, `weaknesses`, `activeProjects`, `achievements`, `certificates`, `progressByTopic`, `goals`, `lastActive`.
 
+### Chat recall (Recent chats)
+
+Reopening a past chat is backed by **one small JSON file per session** in
+`<app storage>/otic_sessions/`, indexed by the `chat_sessions` drift table
+(`ChatSessionDao`). The split matters: the sidebar lists chats from the index
+alone, so listing never opens a file, and a session body is read only when
+that chat is actually reopened.
+
+Each file (~2–8 KB, hard-capped) holds a **compressed recall, never a
+transcript** — a clipped question/answer gist plus a `ConversationMemory`
+snapshot, which is what lets a reopened chat resume at the right stage
+instead of cold-starting. `SessionRecall` enforces the clipping, so the file
+cannot grow into a conversation log however long the chat runs.
+
+`SessionSummaries` is unchanged and still writes one row per assistant reply —
+topic progress and the teacher dashboard are built on it. It is no longer what
+the Recent chats sidebar reads.
+
+Note: nothing in this app issues `PRAGMA foreign_keys = ON`, so the
+`onDelete: cascade` declared on child tables is never enforced. Deleting a
+student must clear dependent rows explicitly (see `ChatSessionDao.deleteForStudent`).
+
 ## Update Mechanism
 
 Updates ship as packages deployable via USB flash drive or a local school LAN server. The app must support applying an update bundle without internet access.

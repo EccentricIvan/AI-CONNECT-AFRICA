@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../ai_core/model/model_locations.dart';
 import 'daos/badge_dao.dart';
+import 'daos/chat_session_dao.dart';
 import 'daos/custom_subject_dao.dart';
 import 'daos/path_dao.dart';
 import 'daos/project_dao.dart';
@@ -14,6 +15,7 @@ import 'daos/student_dao.dart';
 import 'daos/topic_resource_dao.dart';
 import 'daos/translation_cache_dao.dart';
 import 'daos/website_dao.dart';
+import 'tables/chat_sessions_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
 import 'tables/learning_paths_table.dart';
@@ -39,6 +41,7 @@ part 'otic_database.g.dart';
     TranslationCacheEntries,
     TopicResources,
     CustomSubjects,
+    ChatSessions,
   ],
   daos: [
     StudentDao,
@@ -50,6 +53,7 @@ part 'otic_database.g.dart';
     TranslationCacheDao,
     TopicResourceDao,
     CustomSubjectDao,
+    ChatSessionDao,
   ],
 )
 class OticDatabase extends _$OticDatabase {
@@ -64,7 +68,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -105,6 +109,15 @@ class OticDatabase extends _$OticDatabase {
             // the browse grid shows exactly the 16 bundled subjects.
             await m.createTable(customSubjects);
             await m.create(idxCustomSubjectsSubjectId);
+          }
+          if (from < 8) {
+            // One row per chat, indexing the recall files in otic_sessions/.
+            // Additive: SessionSummaries still holds the per-turn rows that
+            // topic progress and the teacher dashboard read, so an upgrade
+            // that stops here loses nothing — the sidebar simply starts
+            // empty and refills as new chats are had.
+            await m.createTable(chatSessions);
+            await m.create(idxChatSessionsRecent);
           }
         },
       );

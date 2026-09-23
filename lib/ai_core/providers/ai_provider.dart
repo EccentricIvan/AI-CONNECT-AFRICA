@@ -32,6 +32,8 @@ import '../../curriculum/curriculum_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../db/providers/db_provider.dart';
+import '../../memory/session_recall.dart';
+import '../../memory/session_recall_store.dart';
 import '../../safety/emotional_safety.dart';
 import '../../services/afrislm_translation_service.dart';
 import '../../services/ai_coder_service.dart';
@@ -839,10 +841,20 @@ class ChatMessage {
     this.math,
     this.mathCoach = false,
     this.lesson,
+    this.recap,
   });
 
   final String text;
   final bool isUser;
+
+  /// Set only on the single placeholder message that opens a reopened chat.
+  ///
+  /// Gist lines are clipped, so rendering them as ordinary bubbles would show
+  /// a student their own words cut mid-sentence and read as data loss. The UI
+  /// draws this as one distinct "picking up from" recap card instead.
+  final SessionRecall? recap;
+
+  bool get isRecap => recap != null;
   final TutorStage? stage;
   final String? followUp;
   final bool isError;
@@ -894,6 +906,18 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
   /// its reply — or leave its prompt memory — in the conversation that
   /// replaced it.
   int _epoch = 0;
+
+  /// The chat currently open, or null before its first turn has landed.
+  ///
+  /// One id per conversation, minted lazily and cleared by [reset], so the
+  /// sidebar index gets one row per chat instead of one per reply.
+  String? _sessionId;
+
+  /// Last persisted state of the open chat, kept in memory so each turn
+  /// appends to it rather than re-reading the file.
+  SessionRecall? _recall;
+
+  String? get openSessionId => _sessionId;
 
   @override
   Future<ChatState> build() async {
@@ -1094,10 +1118,20 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
         clearStreamingMath: true,
       ));
 
+      final pipeline = await ref.read(tutorPipelineProvider.future);
       unawaited(_saveSessionSnapshot(
-        await ref.read(tutorPipelineProvider.future),
+        pipeline,
         turn.response,
         thread.length,
+      ));
+      // `message` is what the student actually typed, before any translation
+      // to English — a sidebar title they cannot recognise is worthless.
+      unawaited(_persistSession(
+        pipeline: pipeline,
+        studentMessage: message,
+        reply: reply.isEmpty ? turn.response.text : reply,
+        response: turn.response,
+        epoch: epoch,
       ));
     } catch (e) {
       await tokenCtrl.close();
@@ -1142,9 +1176,127 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
     }
   }
 
+  /// Write the open chat to its recall file and index row.
+  ///
+  /// Runs unawaited after every turn. Deliberately not debounced: the files
+  /// are a few KB, and batching would mean a hard close loses the most recent
+  /// turn — precisely the one a student is most likely to come back for.
+  Future<void> _persistSession({
+    required TutorPipeline pipeline,
+    required String studentMessage,
+    required String reply,
+    required TutorResponse response,
+    required int epoch,
+  }) async {
+    try {
+      if (epoch != _epoch) return;
+      final student = await ref.read(activeStudentProvider.future);
+      // Guests keep no saved state, so there is nothing to index against.
+      if (student == null) return;
+
+      final now = DateTime.now();
+      final existing = _recall;
+      final id = _sessionId ??= SessionRecallStore.newSessionId();
+
+      final base = existing ??
+          SessionRecall(
+            id: id,
+            studentId: student.id,
+            title: SessionRecall.titleFrom(studentMessage),
+            topic: response.topic,
+            stage: response.stage.name,
+            createdAt: now,
+            updatedAt: now,
+          );
+
+      // A topic switch mid-thread resets the tutor's memory internally
+      // (TutorPipeline._detectTopic), but the visible thread is continuous —
+      // so this stays one chat and keeps its original title. The memory
+      // snapshot is taken as-is, which is what makes reopening resume where
+      // the tutor actually is rather than where the chat began.
+      final updated = base.withExchange(
+        question: studentMessage,
+        answer: reply,
+        stage: response.stage.name,
+        memory: pipeline.memorySnapshot(),
+        topic: response.topic.isEmpty ? base.topic : response.topic,
+        at: now,
+      );
+
+      if (epoch != _epoch) return;
+      _recall = updated;
+
+      final store = ref.read(sessionRecallStoreProvider);
+      await store.save(updated);
+      await ref.read(dbProvider).chatSessionDao.upsertSession(
+            id: updated.id,
+            studentId: student.id,
+            title: updated.title,
+            topic: updated.topic,
+            preview: updated.preview,
+            stage: updated.stage,
+            turnCount: updated.turnCount,
+            updatedAt: now,
+          );
+    } catch (e) {
+      // A failed write must never take the chat down with it.
+      debugPrint('session recall: persist failed: $e');
+    }
+  }
+
+  /// Reopen a saved chat: restore the tutor's memory and show a recap.
+  ///
+  /// Returns false when the recall file is missing or damaged, so the caller
+  /// can drop the stale tile instead of leaving the student on a blank chat
+  /// that silently does nothing.
+  Future<bool> restoreSession(String id) async {
+    final store = ref.read(sessionRecallStoreProvider);
+    final recall = await store.load(id);
+    if (recall == null) return false;
+
+    // Start from a clean slate, then adopt the saved session. reset() bumps
+    // the epoch, which also cancels any turn still in flight.
+    reset();
+
+    try {
+      final pipeline = await ref.read(tutorPipelineProvider.future);
+      await pipeline.restoreSession(
+        memory: recall.memory,
+        topic: recall.topic,
+        nextStage: TutorStage.values.firstWhere(
+          (s) => s.name == recall.stage,
+          orElse: () => TutorStage.answer,
+        ),
+      );
+    } catch (e) {
+      // Memory could not be seeded — the chat still opens, just colder.
+      debugPrint('session recall: could not seed tutor memory: $e');
+    }
+
+    _sessionId = recall.id;
+    _recall = recall;
+    state = AsyncData(ChatState(
+      messages: [ChatMessage(text: '', isUser: false, recap: recall)],
+    ));
+    return true;
+  }
+
+  /// Forget a saved chat entirely — index row and file.
+  Future<void> deleteSession(String id) async {
+    await ref.read(dbProvider).chatSessionDao.deleteSession(id);
+    await ref.read(sessionRecallStoreProvider).delete(id);
+    if (_sessionId == id) {
+      reset();
+    }
+  }
+
   void reset() {
     _epoch++;
     _programmingSubject = false;
+    // The next turn starts a new chat rather than appending to the one that
+    // was on screen.
+    _sessionId = null;
+    _recall = null;
     ref.read(chatInferencePipelineProvider).valueOrNull?.reset();
     ref.read(tutorPipelineProvider).valueOrNull?.reset();
     unawaited(

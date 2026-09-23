@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../otic_database.dart';
+import '../../memory/session_recall_store.dart';
 
 // ── Database singleton ────────────────────────────────────────────────────────
 
@@ -33,6 +34,21 @@ final recentSessionsProvider =
     FutureProvider.family((ref, int studentId) {
   final db = ref.watch(dbProvider);
   return db.sessionDao.getRecentSessions(studentId, limit: 20);
+});
+
+/// Per-session recall files, beside the student database.
+final sessionRecallStoreProvider =
+    Provider((ref) => SessionRecallStore());
+
+/// One entry per saved chat, newest activity first.
+///
+/// Streamed straight from the index table so the sidebar updates as soon as a
+/// turn is written, with no invalidation dance. The recall files are not
+/// touched here — listing must stay cheap however many chats exist.
+final chatSessionsProvider =
+    StreamProvider.family((ref, int studentId) {
+  final db = ref.watch(dbProvider);
+  return db.chatSessionDao.watchRecentSessions(studentId);
 });
 
 final topicProgressProvider =

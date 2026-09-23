@@ -684,9 +684,29 @@ class _RecentChatsSectionState extends ConsumerState<_RecentChatsSection> {
     return '${(d.inDays / 7).floor()}w';
   }
 
-  void _openTopic(String topic) {
-    ref.read(chatProvider.notifier).reset();
-    context.go('/?topic=${Uri.encodeComponent(topic)}');
+  /// Reopen a saved chat.
+  ///
+  /// This used to reset the thread and re-send the detected topic word as a
+  /// brand-new question, which discarded whatever was on screen and answered
+  /// something the student never asked. It now restores the tutor's memory
+  /// and shows a recap of what the chat covered.
+  Future<void> _openSession(ChatSession session) async {
+    final notifier = ref.read(chatProvider.notifier);
+    final messenger = ScaffoldMessenger.of(context);
+    final restored = await notifier.restoreSession(session.id);
+    if (!mounted) return;
+    if (!restored) {
+      // The recall file is missing or damaged. Drop the tile instead of
+      // leaving a row that opens a blank chat and looks broken.
+      await notifier.deleteSession(session.id);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(
+        content: Text(tr(context, 'That chat could no longer be opened.')),
+      ));
+      return;
+    }
+    if (!mounted) return;
+    context.go('/');
   }
 
   void _newChat() {
@@ -700,18 +720,23 @@ class _RecentChatsSectionState extends ConsumerState<_RecentChatsSection> {
     final ac = AppColors.of(context);
     final student = ref.watch(activeStudentProvider).valueOrNull;
 
-    List<SessionSummary> sessions = const [];
+    // One row per chat, straight off the index table — the tiles no longer
+    // come from SessionSummaries, which holds one row per *reply* and made
+    // the same conversation appear a dozen times over.
+    List<ChatSession> sessions = const [];
     if (student != null) {
       sessions =
-          ref.watch(recentSessionsProvider(student.id)).valueOrNull ?? const [];
+          ref.watch(chatSessionsProvider(student.id)).valueOrNull ?? const [];
     }
 
-    final filtered = _query.trim().isEmpty
+    final needle = _query.trim().toLowerCase();
+    final filtered = needle.isEmpty
         ? sessions
         : sessions
-            .where(
-              (s) => s.topic.toLowerCase().contains(_query.trim().toLowerCase()),
-            )
+            .where((s) =>
+                s.title.toLowerCase().contains(needle) ||
+                s.preview.toLowerCase().contains(needle) ||
+                s.topic.toLowerCase().contains(needle))
             .toList();
 
     return Column(
@@ -782,9 +807,10 @@ class _RecentChatsSectionState extends ConsumerState<_RecentChatsSection> {
         else
           for (final s in filtered.take(12))
             _RecentChatTile(
-              title: s.topic,
-              timeLabel: _relative(s.sessionAt),
-              onTap: () => _openTopic(s.topic),
+              title: s.title,
+              subtitle: s.preview,
+              timeLabel: _relative(s.updatedAt),
+              onTap: () => _openSession(s),
             ),
       ],
     );
@@ -796,9 +822,14 @@ class _RecentChatTile extends StatelessWidget {
     required this.title,
     required this.timeLabel,
     required this.onTap,
+    this.subtitle = '',
   });
 
   final String title;
+
+  /// Last thing the tutor said, clipped. Without it every tile in a subject
+  /// looks identical and there is no way to tell two chats apart.
+  final String subtitle;
   final String timeLabel;
   final VoidCallback onTap;
 
@@ -819,15 +850,31 @@ class _RecentChatTile extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: ac.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: ac.textPrimary,
+                    ),
+                  ),
+                  if (subtitle.trim().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 1),
+                      child: Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 11, color: ac.textHint),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 6),
