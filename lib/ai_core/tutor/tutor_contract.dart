@@ -40,6 +40,14 @@ const kCurriculumHybridInstruction =
 /// Backward-compatible alias used by older tests and call sites.
 const kCurriculumOnlyInstruction = kCurriculumHybridInstruction;
 
+/// Teacher-uploaded notes supplement the model; they do not override it.
+const kTeacherNotesInstruction =
+    "Use TEACHER'S NOTES as extra class context alongside your own knowledge.";
+
+const kTeacherNotesOnlyInstruction =
+    "No syllabus match. Use TEACHER'S NOTES as class context, plus reliable "
+    'knowledge at a clear school level.';
+
 const kOpenWorldInstruction =
     'No matching curriculum. Answer from reliable knowledge at a clear school level. '
     'Do not invent a fake syllabus.';

@@ -40,6 +40,7 @@ import '../../services/ai_coder_service.dart';
 import '../../services/ai_engine_service.dart';
 import '../../services/ai_model_manager.dart';
 import '../../services/chat_inference_pipeline.dart';
+import '../../services/offline_rag_service.dart';
 import '../../services/qwen_chat_service.dart';
 import '../../services/qwen_reasoning_service.dart';
 
@@ -747,7 +748,12 @@ final tutorPipelineProvider = FutureProvider<TutorPipeline>((ref) async {
   final engine = await ref.watch(engineLoadedProvider.future);
   final curriculum = ref.watch(curriculumServiceProvider);
   curriculum.loadAll();
-  return TutorPipeline(engine: engine, curriculum: curriculum);
+  final rag = ref.watch(offlineRagServiceProvider);
+  return TutorPipeline(
+    engine: engine,
+    curriculum: curriculum,
+    teacherNotes: (text) => rag.retrieveAcrossSubjects(text, limit: 2),
+  );
 });
 
 final qwenReasoningServiceProvider = FutureProvider<QwenReasoningService>((ref) async {

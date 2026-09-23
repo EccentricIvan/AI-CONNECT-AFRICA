@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import '../ai_core/model/model_locations.dart';
 import 'daos/badge_dao.dart';
 import 'daos/chat_session_dao.dart';
+import 'daos/class_group_dao.dart';
 import 'daos/custom_subject_dao.dart';
 import 'daos/path_dao.dart';
 import 'daos/project_dao.dart';
@@ -16,6 +17,7 @@ import 'daos/topic_resource_dao.dart';
 import 'daos/translation_cache_dao.dart';
 import 'daos/website_dao.dart';
 import 'tables/chat_sessions_table.dart';
+import 'tables/class_groups_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
 import 'tables/learning_paths_table.dart';
@@ -42,6 +44,7 @@ part 'otic_database.g.dart';
     TopicResources,
     CustomSubjects,
     ChatSessions,
+    ClassGroups,
   ],
   daos: [
     StudentDao,
@@ -54,6 +57,7 @@ part 'otic_database.g.dart';
     TopicResourceDao,
     CustomSubjectDao,
     ChatSessionDao,
+    ClassGroupDao,
   ],
 )
 class OticDatabase extends _$OticDatabase {
@@ -68,11 +72,16 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          // Not a drift table (drift has no FTS5 table class), so createAll
+          // does not know about it.
+          await _createResourceSearchIndex();
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             await m.createTable(learningPaths);
@@ -119,8 +128,67 @@ class OticDatabase extends _$OticDatabase {
             await m.createTable(chatSessions);
             await m.create(idxChatSessionsRecent);
           }
+          if (from < 9) {
+            // Classes/streams. Additive: every existing learner starts
+            // unassigned (class_group_id NULL) and keeps all their progress.
+            await m.createTable(classGroups);
+            await m.addColumn(students, students.classGroupId);
+            // Full-text index over teacher material. Built from the rows
+            // already in topic_resources, so notes uploaded before this
+            // upgrade stay searchable.
+            await _createResourceSearchIndex();
+            await customStatement(
+              "INSERT INTO topic_resources_fts(topic_resources_fts) "
+              "VALUES('rebuild')",
+            );
+          }
         },
       );
+
+  /// FTS5 index over `topic_resources` (title + chunk text), kept in sync by
+  /// triggers so no write path can forget to update it.
+  ///
+  /// External-content table: the text lives once, in `topic_resources`; the
+  /// index holds only tokens, keyed by `rowid = topic_resources.id`. The
+  /// porter tokenizer folds inflections ("chemicals" → "chemical",
+  /// "evaporating" → "evaporation") — see `TopicResourceDao.searchChunks`
+  /// for how derived forms it misses are caught with prefix terms.
+  ///
+  /// FTS5 comes from the SQLite build `sqlite3_flutter_libs` ships; no extra
+  /// dependency.
+  Future<void> _createResourceSearchIndex() async {
+    await customStatement(
+      "CREATE VIRTUAL TABLE IF NOT EXISTS topic_resources_fts USING fts5("
+      "resource_title, content_chunk, "
+      "content='topic_resources', content_rowid='id', "
+      "tokenize='porter unicode61')",
+    );
+    await customStatement(
+      'CREATE TRIGGER IF NOT EXISTS topic_resources_fts_ai '
+      'AFTER INSERT ON topic_resources BEGIN '
+      '  INSERT INTO topic_resources_fts(rowid, resource_title, content_chunk) '
+      '  VALUES (new.id, new.resource_title, new.content_chunk); '
+      'END',
+    );
+    await customStatement(
+      'CREATE TRIGGER IF NOT EXISTS topic_resources_fts_ad '
+      'AFTER DELETE ON topic_resources BEGIN '
+      "  INSERT INTO topic_resources_fts(topic_resources_fts, rowid, "
+      '    resource_title, content_chunk) '
+      "  VALUES ('delete', old.id, old.resource_title, old.content_chunk); "
+      'END',
+    );
+    await customStatement(
+      'CREATE TRIGGER IF NOT EXISTS topic_resources_fts_au '
+      'AFTER UPDATE ON topic_resources BEGIN '
+      "  INSERT INTO topic_resources_fts(topic_resources_fts, rowid, "
+      '    resource_title, content_chunk) '
+      "  VALUES ('delete', old.id, old.resource_title, old.content_chunk); "
+      '  INSERT INTO topic_resources_fts(rowid, resource_title, content_chunk) '
+      '  VALUES (new.id, new.resource_title, new.content_chunk); '
+      'END',
+    );
+  }
 
   static QueryExecutor _openConnection() {
     return LazyDatabase(() async {

@@ -91,40 +91,59 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
     return q.get();
   }
 
-  /// Rows whose chunk or title contains [needle], scoped to one subject.
+  /// Best-matching rows for [needle] within one subject, most relevant first.
   ///
-  /// Raw SQL rather than drift's `like()`, because this needs an `ESCAPE`
-  /// clause and `like()` emits none. A teacher writing "100% yield" or
-  /// "acid_base" would otherwise have their `%` and `_` read as LIKE
-  /// wildcards — the first matches nearly every row, the second matches the
-  /// wrong ones, and neither fails loudly enough to be noticed.
+  /// Full-text search over the `topic_resources_fts` index (see
+  /// `OticDatabase._createResourceSearchIndex`), ranked by BM25. [needle] is
+  /// free text; it is turned into a safe `MATCH` expression by
+  /// [buildFtsMatch], so a teacher's or student's punctuation can never be
+  /// read as FTS5 query syntax.
   Future<List<TopicResource>> searchChunks({
     required String subjectId,
     required String needle,
     int? termMarker,
     int limit = 60,
-  }) async {
-    final escaped = needle
-        .toLowerCase()
-        .replaceAll('\\', '\\\\')
-        .replaceAll('%', '\\%')
-        .replaceAll('_', '\\_');
-    final pattern = '%$escaped%';
+  }) {
+    return _search(
+      needle,
+      subjectId: subjectId,
+      termMarker: termMarker,
+      limit: limit,
+    );
+  }
 
-    final termClause =
-        termMarker == null ? '' : 'AND (term_marker = ? OR term_marker = ?) ';
+  /// Best-matching rows for [needle] across every subject.
+  ///
+  /// For the tutor chat, which does not know which teacher subject a question
+  /// belongs to — the index decides.
+  Future<List<TopicResource>> searchAllChunks({
+    required String needle,
+    int limit = 20,
+  }) {
+    return _search(needle, limit: limit);
+  }
+
+  Future<List<TopicResource>> _search(
+    String needle, {
+    String? subjectId,
+    int? termMarker,
+    required int limit,
+  }) async {
+    final match = buildFtsMatch(needle);
+    if (match.isEmpty) return const [];
 
     final rows = await customSelect(
-      'SELECT * FROM topic_resources '
-      'WHERE subject_id = ? '
-      "  AND (lower(content_chunk) LIKE ? ESCAPE '\\' "
-      "       OR lower(resource_title) LIKE ? ESCAPE '\\') "
-      '$termClause'
+      'SELECT t.* FROM topic_resources_fts f '
+      'JOIN topic_resources t ON t.id = f.rowid '
+      'WHERE topic_resources_fts MATCH ? '
+      '${subjectId == null ? '' : 'AND t.subject_id = ? '}'
+      '${termMarker == null ? '' : 'AND (t.term_marker = ? OR t.term_marker = ?) '}'
+      // bm25() is lower-is-better, so ascending puts the best match first.
+      'ORDER BY bm25(topic_resources_fts) '
       'LIMIT ?',
       variables: [
-        Variable.withString(subjectId),
-        Variable.withString(pattern),
-        Variable.withString(pattern),
+        Variable.withString(match),
+        if (subjectId != null) Variable.withString(subjectId),
         if (termMarker != null) Variable.withInt(termMarker),
         if (termMarker != null) Variable.withInt(kAllTermsMarker),
         Variable.withInt(limit),
@@ -218,4 +237,33 @@ class ResourceSummary {
   final int chunkCount;
 
   final DateTime? createdAt;
+}
+
+/// Turns free text into an FTS5 `MATCH` expression, or `''` when nothing in
+/// it is searchable.
+///
+/// Every term is double-quoted, which makes it a literal token: FTS5 gives
+/// `-`, `:`, `*`, `^`, parentheses and the words AND/OR/NOT/NEAR special
+/// meaning, and unquoted student text would either throw a syntax error or
+/// silently search for something else. Terms are OR-ed — a question matches
+/// on any of its words and BM25 ranks chunks that hit more of them higher.
+///
+/// The porter tokenizer folds inflections but not derivations
+/// ("photosynthesizing" does not stem to "photosynthesis"), so long terms also
+/// get a truncated prefix term, which does catch those.
+String buildFtsMatch(String text) {
+  final terms = text
+      .toLowerCase()
+      .split(RegExp(r'[^a-z0-9]+'))
+      .where((t) => t.length > 2)
+      .toSet();
+  final parts = <String>{};
+  for (final term in terms) {
+    parts.add('"$term"');
+    if (term.length >= 8) {
+      final keep = (term.length * 0.7).round().clamp(5, term.length - 1);
+      parts.add('"${term.substring(0, keep)}"*');
+    }
+  }
+  return parts.join(' OR ');
 }

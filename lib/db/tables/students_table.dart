@@ -1,5 +1,7 @@
 import 'package:drift/drift.dart';
 
+import 'class_groups_table.dart';
+
 /// One row = one student profile on this device.
 class Students extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -25,4 +27,11 @@ class Students extends Table {
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastActiveAt =>
       dateTime().withDefault(currentDateAndTime)();
+
+  /// The class/stream this learner is enrolled in, or null when unassigned.
+  ///
+  /// The declared FK is not enforced (nothing issues `PRAGMA foreign_keys`),
+  /// so deleting a class clears this explicitly — see `ClassGroupDao`.
+  IntColumn get classGroupId =>
+      integer().nullable().references(ClassGroups, #id)();
 }

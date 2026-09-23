@@ -4,18 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../db/otic_database.dart';
 import 'offline_storage_service.dart';
 
-/// Zero-lag keyword retrieval over teacher-supplied topic resources.
+/// Zero-lag full-text retrieval over teacher-supplied topic resources.
 ///
-/// ## Why keyword matching and not embeddings
+/// ## Why full-text search and not embeddings
 ///
 /// The target device is a 4 GB Android phone already holding a 0.6B chat model
 /// and a 0.8B translator in memory. A third model for embeddings would not fit,
 /// and even if it did, embedding the query on every turn would add a model load
 /// to the critical path — the exact latency failure this product keeps hitting.
-/// A scoped `LIKE` scan over a few hundred rows is sub-millisecond, needs no
-/// model at all, and stays correct with the device in flight mode. Retrieval
-/// quality is lower than a vector search; retrieval *latency* is what decides
-/// whether a student on this hardware waits or not.
+/// SQLite's FTS5 index (stemmed, BM25-ranked) answers in well under a
+/// millisecond, needs no model at all, and stays correct with the device in
+/// flight mode. It does not understand synonyms; the tutor compensates by
+/// searching with the matched syllabus lesson's own vocabulary rather than
+/// only the student's words (see `TutorPipeline`).
 ///
 /// ## Relationship to the hardcoded syllabi
 ///
@@ -79,21 +80,43 @@ class OfflineRagService {
       // teacher's notes. Handing a student three arbitrary paragraphs about
       // titration when they asked "why?" about bonding would be a confident,
       // attributed non-answer — worse than no notes at all.
-      final subjectWide = await _storage.chunksForSubject(
+      final terms = keywordsOf(userQuery);
+      if (terms.isEmpty) return '';
+      final subjectWide = await _storage.searchChunks(
         subjectId: subject,
+        needle: terms.join(' '),
         termMarker: termMarker,
       );
-      if (subjectWide.isEmpty) return '';
-
-      final ranked =
-          rankChunks(userQuery, subjectWide, limit: limit, allowUnscored: false);
-      if (ranked.isEmpty) return '';
-
-      return formatContextBlock(ranked);
+      return formatContextBlock(subjectWide.take(limit).toList());
     } catch (e) {
       // Retrieval is an enhancement. A failure here must degrade to "answer
       // from the core syllabus", never to a failed turn.
       debugPrint('retrieveContextForQuery failed: $e');
+      return '';
+    }
+  }
+
+  /// Teacher material relevant to [searchText] from any subject, as one
+  /// context block, or `''` when nothing matches.
+  ///
+  /// The tutor chat's entry point: a free-form question carries no subject,
+  /// so the full-text index is searched across all of them. Stopwords are
+  /// removed first — BM25 would down-weight them anyway, but "what" and "does"
+  /// still widen the candidate set for nothing.
+  Future<String> retrieveAcrossSubjects(
+    String searchText, {
+    int limit = topChunks,
+  }) async {
+    final terms = keywordsOf(searchText);
+    if (terms.isEmpty) return '';
+    try {
+      final hits = await _storage.searchAllChunks(
+        needle: terms.join(' '),
+        limit: limit,
+      );
+      return formatContextBlock(hits);
+    } catch (e) {
+      debugPrint('retrieveAcrossSubjects failed: $e');
       return '';
     }
   }

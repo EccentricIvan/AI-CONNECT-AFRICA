@@ -97,6 +97,7 @@ class ChatInferencePipeline {
         systemPrompt: kProgrammingTutorContract,
         maxTokens: kProgrammingMaxTokens,
         codingCoach: true,
+        teacherNotes: tutor.teacherNotes,
       );
       _programmingReasoner ??= QwenReasoningService(engine);
       _programmingThread = true;

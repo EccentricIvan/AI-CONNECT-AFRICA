@@ -11,6 +11,10 @@ import 'school_math.dart';
 import 'tutor_contract.dart';
 import 'tutor_response.dart';
 
+/// Looks up teacher-uploaded material relevant to [searchText], returning one
+/// context block or `''`. See `OfflineRagService.retrieveAcrossSubjects`.
+typedef TeacherNotesLookup = Future<String> Function(String searchText);
+
 /// Implements the AI tutor contract:
 ///   Answer → Clarify → Practice → Apply → Create → Reflect
 ///
@@ -25,6 +29,7 @@ class TutorPipeline {
     this.systemPrompt = kTutorContract,
     this.maxTokens = kMaxNewTokens,
     this.codingCoach = false,
+    this.teacherNotes,
   })  : _engine = engine,
         _curriculum = curriculum;
 
@@ -33,6 +38,10 @@ class TutorPipeline {
   final String systemPrompt;
   final int maxTokens;
   final bool codingCoach;
+
+  /// Teacher material search. Null in tests and anywhere without a database;
+  /// the tutor then behaves exactly as it did before teacher notes existed.
+  final TeacherNotesLookup? teacherNotes;
 
   CurriculumService? get curriculum => _curriculum;
   TutorStage _nextStage = TutorStage.answer;
@@ -116,10 +125,13 @@ class TutorPipeline {
             ? _curriculum?.buildProgrammingTutorNotes(_activeMatch!)
             : _curriculum?.buildTutorNotes(_activeMatch!))
         : null;
+    final classNotes =
+        useCurriculum ? await _lookupTeacherNotes(studentMessage) : '';
     final prompt = _buildPrompt(
       studentMessage,
       safetyNote: safetyNote,
       curriculumNotes: notes,
+      teacherNotes: classNotes,
       useCurriculum: useCurriculum,
       languageCode: languageCode,
     );
@@ -172,10 +184,41 @@ class TutorPipeline {
     _nextStage = idx < order.length - 1 ? order[idx + 1] : TutorStage.practice;
   }
 
+  /// Teacher material for this turn, or `''`.
+  ///
+  /// Searches with the matched syllabus lesson's own title and key terms as
+  /// well as the student's words. The full-text index matches words, not
+  /// meanings, so a student asking "how do plants make food" would miss notes
+  /// that only say "photosynthesis" — but the curriculum matcher has already
+  /// mapped that question to the photosynthesis lesson, whose vocabulary does
+  /// hit. Bounded by a timeout: this is an enhancement and must never hold up
+  /// a reply.
+  Future<String> _lookupTeacherNotes(String studentMessage) async {
+    final lookup = teacherNotes;
+    if (lookup == null) return '';
+    final lesson = _activeMatch?.lesson;
+    final searchText = [
+      if (lesson != null) lesson.title,
+      if (lesson != null) ...lesson.keyTerms.keys,
+      studentMessage,
+    ].join(' ');
+    try {
+      return await lookup(searchText)
+          .timeout(const Duration(milliseconds: 600), onTimeout: () => '');
+    } catch (e) {
+      debugPrint('Teacher notes lookup failed: $e');
+      return '';
+    }
+  }
+
+  static String _clip(String text, int max) =>
+      text.length > max ? '${text.substring(0, max - 1)}…' : text;
+
   String _buildPrompt(
     String studentMessage, {
     String? safetyNote,
     String? curriculumNotes,
+    String teacherNotes = '',
     bool useCurriculum = true,
     String languageCode = 'en',
   }) {
@@ -186,18 +229,28 @@ class TutorPipeline {
       languageCode: languageCode,
     );
 
+    // Curriculum and teacher notes share ONE 700-char slot. The engines clip
+    // an over-long prompt from the end, and the student's question is last —
+    // so extra notes on top of the slot would cut the question, not the notes.
+    final curriculum = curriculumNotes?.trim() ?? '';
+    final classNotes = teacherNotes.trim();
     final String notes;
     if (!useCurriculum) {
       notes = 'CURRICULUM: bypassed.\nINSTRUCTION: $kOpenWorldInstruction';
-    } else if (curriculumNotes == null || curriculumNotes.isEmpty) {
+    } else if (curriculum.isEmpty && classNotes.isEmpty) {
       notes =
           'CURRICULUM: none matched.\nINSTRUCTION: $kOpenWorldInstruction';
+    } else if (classNotes.isEmpty) {
+      notes = 'CURRICULUM:\n${_clip(curriculum, 700)}\n'
+          'INSTRUCTION: $kCurriculumHybridInstruction';
+    } else if (curriculum.isEmpty) {
+      notes = "TEACHER'S NOTES:\n${_clip(classNotes, 700)}\n"
+          'INSTRUCTION: $kTeacherNotesOnlyInstruction';
     } else {
-      final clipped = curriculumNotes.length > 700
-          ? '${curriculumNotes.substring(0, 699)}…'
-          : curriculumNotes;
-      notes =
-          'CURRICULUM:\n$clipped\nINSTRUCTION: $kCurriculumHybridInstruction';
+      notes = 'CURRICULUM:\n${_clip(curriculum, 400)}\n'
+          "TEACHER'S NOTES:\n${_clip(classNotes, 300)}\n"
+          'INSTRUCTION: $kCurriculumHybridInstruction '
+          '$kTeacherNotesInstruction';
     }
     // Style lives mainly in the pinned system contract — keep this turn short
     // so prefill stays under llama.cpp n_batch on Windows.

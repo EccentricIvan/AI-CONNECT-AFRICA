@@ -185,7 +185,7 @@ class OfflineStorageService {
     }
   }
 
-  /// `LIKE`-filtered chunks for one subject.
+  /// Full-text matches for [needle] within one subject, best first.
   Future<List<TopicResource>> searchChunks({
     required String subjectId,
     required String needle,
@@ -201,6 +201,21 @@ class OfflineStorageService {
       );
     } catch (e) {
       debugPrint('searchChunks failed: $e');
+      return const [];
+    }
+  }
+
+  /// Full-text matches for [needle] across every subject, best first.
+  Future<List<TopicResource>> searchAllChunks({
+    required String needle,
+    int limit = 20,
+  }) async {
+    final trimmed = needle.trim();
+    if (trimmed.isEmpty) return const [];
+    try {
+      return await _dao.searchAllChunks(needle: trimmed, limit: limit);
+    } catch (e) {
+      debugPrint('searchAllChunks failed: $e');
       return const [];
     }
   }

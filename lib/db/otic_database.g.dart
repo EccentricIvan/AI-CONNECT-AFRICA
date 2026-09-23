@@ -180,6 +180,17 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     requiredDuringInsert: false,
     defaultValue: currentDateAndTime,
   );
+  static const VerificationMeta _classGroupIdMeta = const VerificationMeta(
+    'classGroupId',
+  );
+  @override
+  late final GeneratedColumn<int> classGroupId = GeneratedColumn<int>(
+    'class_group_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -197,6 +208,7 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     totalPoints,
     createdAt,
     lastActiveAt,
+    classGroupId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -320,6 +332,15 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         ),
       );
     }
+    if (data.containsKey('class_group_id')) {
+      context.handle(
+        _classGroupIdMeta,
+        classGroupId.isAcceptableOrUnknown(
+          data['class_group_id']!,
+          _classGroupIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -389,6 +410,10 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_active_at'],
       )!,
+      classGroupId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}class_group_id'],
+      ),
     );
   }
 
@@ -414,6 +439,12 @@ class Student extends DataClass implements Insertable<Student> {
   final int totalPoints;
   final DateTime createdAt;
   final DateTime lastActiveAt;
+
+  /// The class/stream this learner is enrolled in, or null when unassigned.
+  ///
+  /// The declared FK is not enforced (nothing issues `PRAGMA foreign_keys`),
+  /// so deleting a class clears this explicitly — see `ClassGroupDao`.
+  final int? classGroupId;
   const Student({
     required this.id,
     required this.name,
@@ -430,6 +461,7 @@ class Student extends DataClass implements Insertable<Student> {
     required this.totalPoints,
     required this.createdAt,
     required this.lastActiveAt,
+    this.classGroupId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -455,6 +487,9 @@ class Student extends DataClass implements Insertable<Student> {
     map['total_points'] = Variable<int>(totalPoints);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['last_active_at'] = Variable<DateTime>(lastActiveAt);
+    if (!nullToAbsent || classGroupId != null) {
+      map['class_group_id'] = Variable<int>(classGroupId);
+    }
     return map;
   }
 
@@ -479,6 +514,9 @@ class Student extends DataClass implements Insertable<Student> {
       totalPoints: Value(totalPoints),
       createdAt: Value(createdAt),
       lastActiveAt: Value(lastActiveAt),
+      classGroupId: classGroupId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(classGroupId),
     );
   }
 
@@ -503,6 +541,7 @@ class Student extends DataClass implements Insertable<Student> {
       totalPoints: serializer.fromJson<int>(json['totalPoints']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastActiveAt: serializer.fromJson<DateTime>(json['lastActiveAt']),
+      classGroupId: serializer.fromJson<int?>(json['classGroupId']),
     );
   }
   @override
@@ -524,6 +563,7 @@ class Student extends DataClass implements Insertable<Student> {
       'totalPoints': serializer.toJson<int>(totalPoints),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastActiveAt': serializer.toJson<DateTime>(lastActiveAt),
+      'classGroupId': serializer.toJson<int?>(classGroupId),
     };
   }
 
@@ -543,6 +583,7 @@ class Student extends DataClass implements Insertable<Student> {
     int? totalPoints,
     DateTime? createdAt,
     DateTime? lastActiveAt,
+    Value<int?> classGroupId = const Value.absent(),
   }) => Student(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -561,6 +602,7 @@ class Student extends DataClass implements Insertable<Student> {
     totalPoints: totalPoints ?? this.totalPoints,
     createdAt: createdAt ?? this.createdAt,
     lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+    classGroupId: classGroupId.present ? classGroupId.value : this.classGroupId,
   );
   Student copyWithCompanion(StudentsCompanion data) {
     return Student(
@@ -595,6 +637,9 @@ class Student extends DataClass implements Insertable<Student> {
       lastActiveAt: data.lastActiveAt.present
           ? data.lastActiveAt.value
           : this.lastActiveAt,
+      classGroupId: data.classGroupId.present
+          ? data.classGroupId.value
+          : this.classGroupId,
     );
   }
 
@@ -615,7 +660,8 @@ class Student extends DataClass implements Insertable<Student> {
           ..write('lastStreakDate: $lastStreakDate, ')
           ..write('totalPoints: $totalPoints, ')
           ..write('createdAt: $createdAt, ')
-          ..write('lastActiveAt: $lastActiveAt')
+          ..write('lastActiveAt: $lastActiveAt, ')
+          ..write('classGroupId: $classGroupId')
           ..write(')'))
         .toString();
   }
@@ -637,6 +683,7 @@ class Student extends DataClass implements Insertable<Student> {
     totalPoints,
     createdAt,
     lastActiveAt,
+    classGroupId,
   );
   @override
   bool operator ==(Object other) =>
@@ -656,7 +703,8 @@ class Student extends DataClass implements Insertable<Student> {
           other.lastStreakDate == this.lastStreakDate &&
           other.totalPoints == this.totalPoints &&
           other.createdAt == this.createdAt &&
-          other.lastActiveAt == this.lastActiveAt);
+          other.lastActiveAt == this.lastActiveAt &&
+          other.classGroupId == this.classGroupId);
 }
 
 class StudentsCompanion extends UpdateCompanion<Student> {
@@ -675,6 +723,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
   final Value<int> totalPoints;
   final Value<DateTime> createdAt;
   final Value<DateTime> lastActiveAt;
+  final Value<int?> classGroupId;
   const StudentsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -691,6 +740,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.totalPoints = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
+    this.classGroupId = const Value.absent(),
   });
   StudentsCompanion.insert({
     this.id = const Value.absent(),
@@ -708,6 +758,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.totalPoints = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
+    this.classGroupId = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Student> custom({
     Expression<int>? id,
@@ -725,6 +776,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Expression<int>? totalPoints,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastActiveAt,
+    Expression<int>? classGroupId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -742,6 +794,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       if (totalPoints != null) 'total_points': totalPoints,
       if (createdAt != null) 'created_at': createdAt,
       if (lastActiveAt != null) 'last_active_at': lastActiveAt,
+      if (classGroupId != null) 'class_group_id': classGroupId,
     });
   }
 
@@ -761,6 +814,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Value<int>? totalPoints,
     Value<DateTime>? createdAt,
     Value<DateTime>? lastActiveAt,
+    Value<int?>? classGroupId,
   }) {
     return StudentsCompanion(
       id: id ?? this.id,
@@ -778,6 +832,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       totalPoints: totalPoints ?? this.totalPoints,
       createdAt: createdAt ?? this.createdAt,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
+      classGroupId: classGroupId ?? this.classGroupId,
     );
   }
 
@@ -829,6 +884,9 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     if (lastActiveAt.present) {
       map['last_active_at'] = Variable<DateTime>(lastActiveAt.value);
     }
+    if (classGroupId.present) {
+      map['class_group_id'] = Variable<int>(classGroupId.value);
+    }
     return map;
   }
 
@@ -849,7 +907,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
           ..write('lastStreakDate: $lastStreakDate, ')
           ..write('totalPoints: $totalPoints, ')
           ..write('createdAt: $createdAt, ')
-          ..write('lastActiveAt: $lastActiveAt')
+          ..write('lastActiveAt: $lastActiveAt, ')
+          ..write('classGroupId: $classGroupId')
           ..write(')'))
         .toString();
   }
@@ -5955,6 +6014,309 @@ class ChatSessionsCompanion extends UpdateCompanion<ChatSession> {
   }
 }
 
+class $ClassGroupsTable extends ClassGroups
+    with TableInfo<$ClassGroupsTable, ClassGroup> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ClassGroupsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _classNameMeta = const VerificationMeta(
+    'className',
+  );
+  @override
+  late final GeneratedColumn<String> className = GeneratedColumn<String>(
+    'class_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _streamNameMeta = const VerificationMeta(
+    'streamName',
+  );
+  @override
+  late final GeneratedColumn<String> streamName = GeneratedColumn<String>(
+    'stream_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, className, streamName, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'class_groups';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ClassGroup> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('class_name')) {
+      context.handle(
+        _classNameMeta,
+        className.isAcceptableOrUnknown(data['class_name']!, _classNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_classNameMeta);
+    }
+    if (data.containsKey('stream_name')) {
+      context.handle(
+        _streamNameMeta,
+        streamName.isAcceptableOrUnknown(data['stream_name']!, _streamNameMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ClassGroup map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ClassGroup(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      className: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_name'],
+      )!,
+      streamName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stream_name'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ClassGroupsTable createAlias(String alias) {
+    return $ClassGroupsTable(attachedDatabase, alias);
+  }
+}
+
+class ClassGroup extends DataClass implements Insertable<ClassGroup> {
+  final int id;
+  final String className;
+
+  /// Null when the class has no streams.
+  final String? streamName;
+  final DateTime createdAt;
+  const ClassGroup({
+    required this.id,
+    required this.className,
+    this.streamName,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['class_name'] = Variable<String>(className);
+    if (!nullToAbsent || streamName != null) {
+      map['stream_name'] = Variable<String>(streamName);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  ClassGroupsCompanion toCompanion(bool nullToAbsent) {
+    return ClassGroupsCompanion(
+      id: Value(id),
+      className: Value(className),
+      streamName: streamName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(streamName),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory ClassGroup.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ClassGroup(
+      id: serializer.fromJson<int>(json['id']),
+      className: serializer.fromJson<String>(json['className']),
+      streamName: serializer.fromJson<String?>(json['streamName']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'className': serializer.toJson<String>(className),
+      'streamName': serializer.toJson<String?>(streamName),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  ClassGroup copyWith({
+    int? id,
+    String? className,
+    Value<String?> streamName = const Value.absent(),
+    DateTime? createdAt,
+  }) => ClassGroup(
+    id: id ?? this.id,
+    className: className ?? this.className,
+    streamName: streamName.present ? streamName.value : this.streamName,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  ClassGroup copyWithCompanion(ClassGroupsCompanion data) {
+    return ClassGroup(
+      id: data.id.present ? data.id.value : this.id,
+      className: data.className.present ? data.className.value : this.className,
+      streamName: data.streamName.present
+          ? data.streamName.value
+          : this.streamName,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClassGroup(')
+          ..write('id: $id, ')
+          ..write('className: $className, ')
+          ..write('streamName: $streamName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, className, streamName, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ClassGroup &&
+          other.id == this.id &&
+          other.className == this.className &&
+          other.streamName == this.streamName &&
+          other.createdAt == this.createdAt);
+}
+
+class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
+  final Value<int> id;
+  final Value<String> className;
+  final Value<String?> streamName;
+  final Value<DateTime> createdAt;
+  const ClassGroupsCompanion({
+    this.id = const Value.absent(),
+    this.className = const Value.absent(),
+    this.streamName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  ClassGroupsCompanion.insert({
+    this.id = const Value.absent(),
+    required String className,
+    this.streamName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  }) : className = Value(className);
+  static Insertable<ClassGroup> custom({
+    Expression<int>? id,
+    Expression<String>? className,
+    Expression<String>? streamName,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (className != null) 'class_name': className,
+      if (streamName != null) 'stream_name': streamName,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  ClassGroupsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? className,
+    Value<String?>? streamName,
+    Value<DateTime>? createdAt,
+  }) {
+    return ClassGroupsCompanion(
+      id: id ?? this.id,
+      className: className ?? this.className,
+      streamName: streamName ?? this.streamName,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (className.present) {
+      map['class_name'] = Variable<String>(className.value);
+    }
+    if (streamName.present) {
+      map['stream_name'] = Variable<String>(streamName.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClassGroupsCompanion(')
+          ..write('id: $id, ')
+          ..write('className: $className, ')
+          ..write('streamName: $streamName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -5976,6 +6338,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $TopicResourcesTable topicResources = $TopicResourcesTable(this);
   late final $CustomSubjectsTable customSubjects = $CustomSubjectsTable(this);
   late final $ChatSessionsTable chatSessions = $ChatSessionsTable(this);
+  late final $ClassGroupsTable classGroups = $ClassGroupsTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -6010,6 +6373,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final ChatSessionDao chatSessionDao = ChatSessionDao(
     this as OticDatabase,
   );
+  late final ClassGroupDao classGroupDao = ClassGroupDao(this as OticDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -6026,6 +6390,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     topicResources,
     customSubjects,
     chatSessions,
+    classGroups,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -6050,6 +6415,7 @@ typedef $$StudentsTableCreateCompanionBuilder =
       Value<int> totalPoints,
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
+      Value<int?> classGroupId,
     });
 typedef $$StudentsTableUpdateCompanionBuilder =
     StudentsCompanion Function({
@@ -6068,6 +6434,7 @@ typedef $$StudentsTableUpdateCompanionBuilder =
       Value<int> totalPoints,
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
+      Value<int?> classGroupId,
     });
 
 class $$StudentsTableFilterComposer
@@ -6151,6 +6518,11 @@ class $$StudentsTableFilterComposer
 
   ColumnFilters<DateTime> get lastActiveAt => $composableBuilder(
     column: $table.lastActiveAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get classGroupId => $composableBuilder(
+    column: $table.classGroupId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6238,6 +6610,11 @@ class $$StudentsTableOrderingComposer
     column: $table.lastActiveAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get classGroupId => $composableBuilder(
+    column: $table.classGroupId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$StudentsTableAnnotationComposer
@@ -6309,6 +6686,11 @@ class $$StudentsTableAnnotationComposer
     column: $table.lastActiveAt,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get classGroupId => $composableBuilder(
+    column: $table.classGroupId,
+    builder: (column) => column,
+  );
 }
 
 class $$StudentsTableTableManager
@@ -6354,6 +6736,7 @@ class $$StudentsTableTableManager
                 Value<int> totalPoints = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
+                Value<int?> classGroupId = const Value.absent(),
               }) => StudentsCompanion(
                 id: id,
                 name: name,
@@ -6370,6 +6753,7 @@ class $$StudentsTableTableManager
                 totalPoints: totalPoints,
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
+                classGroupId: classGroupId,
               ),
           createCompanionCallback:
               ({
@@ -6388,6 +6772,7 @@ class $$StudentsTableTableManager
                 Value<int> totalPoints = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
+                Value<int?> classGroupId = const Value.absent(),
               }) => StudentsCompanion.insert(
                 id: id,
                 name: name,
@@ -6404,6 +6789,7 @@ class $$StudentsTableTableManager
                 totalPoints: totalPoints,
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
+                classGroupId: classGroupId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -9032,6 +9418,183 @@ typedef $$ChatSessionsTableProcessedTableManager =
       ChatSession,
       PrefetchHooks Function()
     >;
+typedef $$ClassGroupsTableCreateCompanionBuilder =
+    ClassGroupsCompanion Function({
+      Value<int> id,
+      required String className,
+      Value<String?> streamName,
+      Value<DateTime> createdAt,
+    });
+typedef $$ClassGroupsTableUpdateCompanionBuilder =
+    ClassGroupsCompanion Function({
+      Value<int> id,
+      Value<String> className,
+      Value<String?> streamName,
+      Value<DateTime> createdAt,
+    });
+
+class $$ClassGroupsTableFilterComposer
+    extends Composer<_$OticDatabase, $ClassGroupsTable> {
+  $$ClassGroupsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get className => $composableBuilder(
+    column: $table.className,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get streamName => $composableBuilder(
+    column: $table.streamName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ClassGroupsTableOrderingComposer
+    extends Composer<_$OticDatabase, $ClassGroupsTable> {
+  $$ClassGroupsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get className => $composableBuilder(
+    column: $table.className,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get streamName => $composableBuilder(
+    column: $table.streamName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ClassGroupsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $ClassGroupsTable> {
+  $$ClassGroupsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get className =>
+      $composableBuilder(column: $table.className, builder: (column) => column);
+
+  GeneratedColumn<String> get streamName => $composableBuilder(
+    column: $table.streamName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$ClassGroupsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $ClassGroupsTable,
+          ClassGroup,
+          $$ClassGroupsTableFilterComposer,
+          $$ClassGroupsTableOrderingComposer,
+          $$ClassGroupsTableAnnotationComposer,
+          $$ClassGroupsTableCreateCompanionBuilder,
+          $$ClassGroupsTableUpdateCompanionBuilder,
+          (
+            ClassGroup,
+            BaseReferences<_$OticDatabase, $ClassGroupsTable, ClassGroup>,
+          ),
+          ClassGroup,
+          PrefetchHooks Function()
+        > {
+  $$ClassGroupsTableTableManager(_$OticDatabase db, $ClassGroupsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ClassGroupsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ClassGroupsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ClassGroupsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> className = const Value.absent(),
+                Value<String?> streamName = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ClassGroupsCompanion(
+                id: id,
+                className: className,
+                streamName: streamName,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String className,
+                Value<String?> streamName = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+              }) => ClassGroupsCompanion.insert(
+                id: id,
+                className: className,
+                streamName: streamName,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ClassGroupsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $ClassGroupsTable,
+      ClassGroup,
+      $$ClassGroupsTableFilterComposer,
+      $$ClassGroupsTableOrderingComposer,
+      $$ClassGroupsTableAnnotationComposer,
+      $$ClassGroupsTableCreateCompanionBuilder,
+      $$ClassGroupsTableUpdateCompanionBuilder,
+      (
+        ClassGroup,
+        BaseReferences<_$OticDatabase, $ClassGroupsTable, ClassGroup>,
+      ),
+      ClassGroup,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -9061,4 +9624,6 @@ class $OticDatabaseManager {
       $$CustomSubjectsTableTableManager(_db, _db.customSubjects);
   $$ChatSessionsTableTableManager get chatSessions =>
       $$ChatSessionsTableTableManager(_db, _db.chatSessions);
+  $$ClassGroupsTableTableManager get classGroups =>
+      $$ClassGroupsTableTableManager(_db, _db.classGroups);
 }
