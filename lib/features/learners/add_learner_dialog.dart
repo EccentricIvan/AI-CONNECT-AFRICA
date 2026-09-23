@@ -93,7 +93,7 @@ class _AddLearnerDialogState extends ConsumerState<_AddLearnerDialog> {
             if (classes.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
-                value: _classGroupId,
+                initialValue: _classGroupId,
                 decoration: InputDecoration(labelText: tr(context, 'Class')),
                 items: [
                   DropdownMenuItem(

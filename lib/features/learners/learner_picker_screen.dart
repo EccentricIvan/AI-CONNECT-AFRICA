@@ -59,7 +59,6 @@ class _LearnerPickerScreenState extends ConsumerState<LearnerPickerScreen> {
         icon: Icons.switch_account_rounded,
         iconColor: AppColors.primary,
         showBack: true,
-        showMenu: false,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _busy ? null : _add,
