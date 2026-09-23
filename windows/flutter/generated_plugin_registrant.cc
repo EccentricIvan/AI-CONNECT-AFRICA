@@ -8,6 +8,7 @@
 
 #include <flutter_gemma/flutter_gemma_plugin.h>
 #include <flutter_tts/flutter_tts_plugin.h>
+#include <nsd_windows/nsd_windows_plugin_c_api.h>
 #include <share_plus/share_plus_windows_plugin_c_api.h>
 #include <speech_to_text_windows/speech_to_text_windows.h>
 #include <sqlite3_flutter_libs/sqlite3_flutter_libs_plugin.h>
@@ -19,6 +20,8 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("FlutterGemmaPlugin"));
   FlutterTtsPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterTtsPlugin"));
+  NsdWindowsPluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("NsdWindowsPluginCApi"));
   SharePlusWindowsPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("SharePlusWindowsPluginCApi"));
   SpeechToTextWindowsRegisterWithRegistrar(

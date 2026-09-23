@@ -82,6 +82,26 @@ class AiCoderService {
     });
   }
 
+  /// Downloadable FastAPI backend scaffold (export-only — never executed
+  /// on-device). See [generateAppBackendWithCoder].
+  Future<String?> generateAppBackend({
+    required AppBuildIntent intent,
+    void Function(String cumulative)? onToken,
+  }) {
+    return HybridModelOrchestrator.instance.runExclusive(() async {
+      if (!await ensureLoaded()) return null;
+      try {
+        return await generateAppBackendWithCoder(
+          engine: engine,
+          intent: intent,
+          onToken: onToken,
+        );
+      } finally {
+        await releaseAfterJob();
+      }
+    });
+  }
+
   /// App Dev Lab Flutter Dart path.
   Future<String?> generateAppDart({
     required AppBuildIntent intent,

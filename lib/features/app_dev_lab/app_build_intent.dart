@@ -154,6 +154,55 @@ class AppBuildIntent {
     return buf.toString();
   }
 
+  /// Brief for a downloadable backend scaffold (FastAPI/Python).
+  ///
+  /// This is export-only: the app never runs Python itself (offline-first,
+  /// zero network connectivity — see CLAUDE.md). The file is generated so a
+  /// student can take it to a machine that has Python and actually run a
+  /// real server, matching the endpoints their frontend already calls.
+  String toBackendCoderBrief() {
+    final buf = StringBuffer()
+      ..writeln('/no_think')
+      ..writeln(
+        'Write one complete FastAPI backend as a single Python file.',
+      )
+      ..writeln(
+        'Output ONLY Python source. No markdown fences. No commentary. '
+        'No thinking. Start with the imports.',
+      )
+      ..writeln(
+        'Use FastAPI + Pydantic only, stdlib otherwise. Store data in an '
+        'in-memory Python list/dict (no real database, no external '
+        'packages beyond fastapi/pydantic/uvicorn) so the file runs with '
+        'nothing but `pip install fastapi uvicorn` on any machine.',
+      )
+      ..writeln(
+        'Enable permissive CORS (allow_origins=["*"]) so the matching '
+        'frontend HTML can call it from a browser during local testing.',
+      )
+      ..writeln(
+        'End the file with a `if __name__ == "__main__":` block that runs '
+        'uvicorn on 127.0.0.1:8000.',
+      )
+      ..writeln()
+      ..writeln('APP TYPE: $appTypeName ($appTypeId)')
+      ..writeln('PURPOSE: $purpose');
+
+    if (features.isNotEmpty) {
+      buf.writeln();
+      buf.writeln('Give each of these features real REST endpoints '
+          '(GET/POST/PUT/DELETE as appropriate), matching the data the '
+          'frontend needs to show:');
+      for (final f in features) {
+        buf.writeln('- $f');
+      }
+    }
+    buf
+      ..writeln()
+      ..writeln('Do not invent a different app name than the student details.');
+    return buf.toString();
+  }
+
   /// Legacy HTML brief for the chat builder path.
   String toHtmlCoderBrief() {
     final buf = StringBuffer()

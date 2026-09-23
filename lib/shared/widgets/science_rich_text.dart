@@ -8,9 +8,17 @@ import '../../ai_core/science/science_text.dart';
 ///
 /// * Bare formulas (`H2O`, `CO2`, `x^2`) → Unicode sub/superscripts.
 /// * `$H_2O$` / `$$...$$` → [Math.tex] (flutter_math_fork KaTeX, offline).
-/// * Remaining prose → [MarkdownBody].
+/// * Remaining prose → [MarkdownBody], selectable.
 /// * Wide TeX blocks scroll horizontally instead of clipping the card.
-class ScienceRichText extends StatelessWidget {
+///
+/// [splitScienceSpans] runs several regexes over the *whole* string, so a
+/// streamed reply that grows one token per frame would otherwise re-scan the
+/// entire message from scratch on every single frame. This widget is
+/// `Stateful` purely to memoize that split against the exact [text] it was
+/// computed from: most rebuilds during a stream are driven by the parent
+/// (theme, scroll, sibling state) with [text] unchanged, and those now skip
+/// the regex pass entirely instead of re-parsing text nothing about changed.
+class ScienceRichText extends StatefulWidget {
   const ScienceRichText({
     super.key,
     required this.text,
@@ -25,12 +33,28 @@ class ScienceRichText extends StatelessWidget {
   final bool shrinkWrap;
 
   @override
-  Widget build(BuildContext context) {
-    final base = (style ?? DefaultTextStyle.of(context).style).copyWith(
-      color: color ?? style?.color,
-      height: style?.height ?? 1.6,
-    );
+  State<ScienceRichText> createState() => _ScienceRichTextState();
+}
+
+class _ScienceRichTextState extends State<ScienceRichText> {
+  String? _cachedText;
+  List<ScienceSpan> _cachedSpans = const [];
+
+  List<ScienceSpan> _spansFor(String text) {
+    if (_cachedText == text) return _cachedSpans;
     final spans = splitScienceSpans(text);
+    _cachedText = text;
+    _cachedSpans = spans;
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = (widget.style ?? DefaultTextStyle.of(context).style).copyWith(
+      color: widget.color ?? widget.style?.color,
+      height: widget.style?.height ?? 1.6,
+    );
+    final spans = _spansFor(widget.text);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -45,7 +69,8 @@ class ScienceRichText extends StatelessWidget {
           else if (span.text.isNotEmpty)
             MarkdownBody(
               data: formatScienceProse(span.text),
-              shrinkWrap: shrinkWrap,
+              shrinkWrap: widget.shrinkWrap,
+              selectable: true,
               softLineBreak: true,
               styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
                 p: base,
@@ -102,7 +127,7 @@ class _TeXScroller extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final math = Math.tex(
-      tex,
+      sanitizeTexForRender(tex),
       mathStyle: display ? MathStyle.display : MathStyle.text,
       textStyle: fallbackStyle.copyWith(
         fontSize: (fallbackStyle.fontSize ?? 14) * (display ? 1.15 : 1.0),

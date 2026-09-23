@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../otic_database.dart';
 import '../../memory/session_recall_store.dart';
+import '../../services/academic_score_tracker_repository.dart';
 
 // ── Database singleton ────────────────────────────────────────────────────────
 
@@ -244,4 +245,24 @@ final studentProjectsProvider = FutureProvider.family((ref, int studentId) {
 final studentWebsitesProvider = FutureProvider.family((ref, int studentId) {
   final db = ref.watch(dbProvider);
   return db.websiteDao.getWebsitesForStudent(studentId);
+});
+
+// ── App Builder projects ─────────────────────────────────────────────────────
+
+final studentAppBuilderProjectsProvider =
+    FutureProvider.family((ref, int studentId) {
+  final db = ref.watch(dbProvider);
+  return db.appBuilderProjectDao.getProjectsForStudent(studentId);
+});
+
+// ── Academic score tracking (assignments, rolling year progress) ───────────
+
+final academicScoreTrackerProvider =
+    Provider<AcademicScoreTrackerRepository>((ref) {
+  return AcademicScoreTrackerRepository(ref.watch(dbProvider));
+});
+
+final subjectYearProgressProvider = FutureProvider.family
+    .autoDispose<Map<String, SubjectYearProgress>, int>((ref, studentId) {
+  return ref.watch(academicScoreTrackerProvider).yearProgressBySubject(studentId);
 });

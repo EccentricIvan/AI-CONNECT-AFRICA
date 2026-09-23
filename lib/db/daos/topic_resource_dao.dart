@@ -28,7 +28,12 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
     required String resourceTitle,
     required String contentChunk,
     DateTime? createdAt,
+    /// Scoped sync: which class/stream this chunk is pushed to
+    /// ([ClassGroups.groupUuid]). Null means every class — see the column
+    /// doc on [TopicResources.classGroupUuid].
+    String? classGroupUuid,
   }) {
+    final at = (createdAt ?? DateTime.now()).toUtc().toIso8601String();
     return into(topicResources).insert(
       TopicResourcesCompanion.insert(
         subjectId: subjectId,
@@ -36,7 +41,9 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
         termMarker: Value(termMarker),
         resourceTitle: resourceTitle,
         contentChunk: contentChunk,
-        createdAt: (createdAt ?? DateTime.now()).toUtc().toIso8601String(),
+        createdAt: at,
+        classGroupUuid: Value(classGroupUuid),
+        updatedAt: Value(at),
       ),
     );
   }
@@ -178,6 +185,57 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
         .go();
   }
 
+  // ── Scoped sync (lib/collaboration/sync/) ─────────────────────────────────
+
+  /// Every subject with material for [classGroupUuid] (or scoped to every
+  /// class), with its newest [TopicResources.updatedAt] — the handshake
+  /// answer: "these are the channels you can pull, and how fresh each is".
+  Future<List<SubjectVersion>> subjectVersionsForClass(
+      String classGroupUuid) async {
+    final rows = await customSelect(
+      'SELECT subject_id, MAX(COALESCE(updated_at, created_at)) AS version '
+      'FROM topic_resources '
+      'WHERE class_group_uuid IS NULL OR class_group_uuid = ? '
+      'GROUP BY subject_id',
+      variables: [Variable.withString(classGroupUuid)],
+      readsFrom: {topicResources},
+    ).get();
+    return rows
+        .map((r) => SubjectVersion(
+              subjectId: r.read<String>('subject_id'),
+              version: r.read<String>('version'),
+            ))
+        .toList();
+  }
+
+  /// Chunks for one class+subject channel, newer than [sinceIso] — the
+  /// `/sync/channel` answer. `since` compares as text: both sides always
+  /// write ISO-8601 UTC (`YYYY-MM-DDTHH:MM:SS.mmmmmmZ`), which sorts
+  /// correctly as a plain string, so this needs no date parsing in SQL.
+  /// `COALESCE(updated_at, created_at)` so a chunk written before this
+  /// column existed (updated_at NULL) is still reachable by a sync, instead
+  /// of a NULL comparison silently dropping it from every channel forever.
+  Future<List<TopicResource>> channelChunks({
+    required String classGroupUuid,
+    required String subjectId,
+    required String sinceIso,
+  }) async {
+    final rows = await customSelect(
+      'SELECT * FROM topic_resources '
+      'WHERE (class_group_uuid IS NULL OR class_group_uuid = ?) '
+      '  AND subject_id = ? '
+      '  AND COALESCE(updated_at, created_at) > ? '
+      'ORDER BY COALESCE(updated_at, created_at) ASC',
+      variables: [
+        Variable.withString(classGroupUuid),
+        Variable.withString(subjectId),
+        Variable.withString(sinceIso),
+      ],
+      readsFrom: {topicResources},
+    ).get();
+    return rows.map((r) => topicResources.map(r.data)).toList();
+  }
+
   /// One row per distinct resource, for the teacher's resource list.
   ///
   /// Grouped in SQL: a resource is many chunks, but a teacher thinks in
@@ -215,6 +273,16 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 
   /// Wipes every teacher resource. The hardcoded syllabi are untouched.
   Future<void> clear() => delete(topicResources).go();
+}
+
+/// One syncable subject channel and how fresh it is — a handshake row.
+class SubjectVersion {
+  const SubjectVersion({required this.subjectId, required this.version});
+
+  final String subjectId;
+
+  /// ISO-8601 UTC — the newest chunk's `COALESCE(updated_at, created_at)`.
+  final String version;
 }
 
 /// One teacher-visible resource, with its chunking already collapsed away.

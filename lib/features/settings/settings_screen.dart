@@ -62,9 +62,7 @@ appBar: StudioAppBar(
                   title: Text(
                     status.isDemo
                         ? tr(context, 'Demo mode')
-                        : (status.backendLabel?.startsWith('Cloud') == true
-                            ? 'Cloud assistant ready'
-                            : 'Classroom assistant ready'),
+                        : 'Classroom assistant ready',
                   ),
                   subtitle: Text(
                     status.isDemo

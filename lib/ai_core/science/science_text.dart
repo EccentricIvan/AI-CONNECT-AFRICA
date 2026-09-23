@@ -153,6 +153,81 @@ String repairUnclosedMathDelimiters(String text) {
   return out;
 }
 
+/// Common Unicode operators the model sometimes writes literally instead of
+/// as LaTeX commands — flutter_math_fork's KaTeX renders these inconsistently
+/// (some fonts show a box/tofu glyph), so they are normalized to the LaTeX
+/// spelling, which always renders.
+const _texUnicodeOperators = {
+  '×': r'\times',
+  '÷': r'\div',
+  '±': r'\pm',
+  '≤': r'\le',
+  '≥': r'\ge',
+  '≠': r'\neq',
+  '≈': r'\approx',
+  '·': r'\cdot',
+  '−': '-', // U+2212 minus sign, easy to mistake for a hyphen — normalize.
+};
+
+/// Cleans one KaTeX source string — the content of a `$...$`/`$$...$$` span
+/// from [ScienceSpan.text] — right before it reaches [Math.tex].
+///
+/// This is *not* a LaTeX formatter: it only removes the specific ways a
+/// streamed 1.5B model's math output actually breaks, observed in tutor
+/// replies:
+///   * Markdown emphasis/code markers leaking into the span (`**x^2**`,
+///     `` `ax+b` ``) — legal Markdown around an inline formula, illegal
+///     inside the TeX KaTeX actually parses. Only `**`/`__`/`` ` `` are
+///     stripped; a bare `_` is left alone because it is real TeX subscript
+///     syntax, not emphasis.
+///   * A literal two-character `\n` (backslash + n) where the model meant a
+///     line break — this reaches Dart as `\n` verbatim when a model streams
+///     JSON-escaped output that was never actually decoded, and KaTeX reads
+///     it as an undefined control sequence rather than a newline.
+///   * Unbalanced `{`/`}` from a stream cut mid-token (partial-turn render,
+///     or a truncated reply) — closed rather than left to throw.
+///   * Unicode operators standing in for their LaTeX command (see
+///     [_texUnicodeOperators]).
+///   * Doubled/irregular internal whitespace — cosmetic, but a formula with
+///     `a x  ^  2` reads as visibly broken even though KaTeX itself does
+///     not error on it.
+///
+/// Always returns a string, never throws — [Math.tex]'s own
+/// `onErrorFallback` remains the last line of defence for anything this
+/// does not catch.
+String sanitizeTexForRender(String raw) {
+  var tex = raw;
+
+  // Markdown emphasis/code that leaked into the math span.
+  tex = tex.replaceAll('**', '').replaceAll('__', '').replaceAll('`', '');
+
+  // A model that streamed pre-escaped JSON sometimes hands this layer the
+  // literal two characters `\` `n` instead of a real newline — replace with
+  // a space, not `\\`, since a bare linebreak inside an inline formula reads
+  // fine collapsed to whitespace.
+  tex = tex.replaceAll(r'\n', ' ').replaceAll(r'\t', ' ');
+
+  // Collapse doubled/irregular whitespace, but keep TeX's own `\ ` (escaped
+  // space) and `\quad`/`\qquad` spacing commands intact — only touch plain
+  // runs of whitespace.
+  tex = tex.replaceAll(RegExp(r'[^\S\n]{2,}'), ' ').trim();
+
+  for (final entry in _texUnicodeOperators.entries) {
+    tex = tex.replaceAll(entry.key, entry.value);
+  }
+
+  // Balance braces a truncated stream cut off mid-token — appending the
+  // missing closers is the only fix that cannot itself corrupt a formula
+  // that was already well-formed (nothing is removed or reordered).
+  final opens = '{'.allMatches(tex).length;
+  final closes = '}'.allMatches(tex).length;
+  if (opens > closes) {
+    tex = tex + ('}' * (opens - closes));
+  }
+
+  return tex;
+}
+
 /// True when this chunk must skip AfriSLM (formulas, LaTeX, chemistry, code).
 bool isMathPassThrough(String text) {
   final t = text.trim();

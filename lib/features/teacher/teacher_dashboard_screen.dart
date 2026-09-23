@@ -96,6 +96,12 @@ class _TeacherDashboardScreenState
           ),
           const SizedBox(width: 8),
           StudioHeaderIconButton(
+            tooltip: 'Sync class material to student devices',
+            icon: Icons.sync_rounded,
+            onTap: () => context.push('/teacher/sync'),
+          ),
+          const SizedBox(width: 8),
+          StudioHeaderIconButton(
             tooltip: 'Switch learner',
             icon: Icons.switch_account_rounded,
             onTap: () => context.push('/learners'),

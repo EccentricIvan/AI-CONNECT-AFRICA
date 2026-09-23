@@ -16,6 +16,8 @@ class LanPeer {
     required this.points,
     required this.lastSeen,
     required this.address,
+    this.role = 'student',
+    this.syncPort,
   });
 
   final String id;
@@ -24,6 +26,16 @@ class LanPeer {
   final int points;
   final DateTime lastSeen;
   final String address;
+
+  /// 'student' (the default — every existing peer) or 'teacher'.
+  final String role;
+
+  /// Set only when [role] is 'teacher' and that device's
+  /// `TeacherSyncServer` is running — the port a student's
+  /// `SelectiveSyncManager` should call at [address].
+  final int? syncPort;
+
+  bool get isSyncServer => role == 'teacher' && syncPort != null;
 }
 
 class LanDiscoveryService {
@@ -31,6 +43,8 @@ class LanDiscoveryService {
     required this.displayName,
     this.currentTopic = '',
     this.points = 0,
+    this.role = 'student',
+    this.syncPort,
   });
 
   static const _port = 47474;
@@ -40,6 +54,15 @@ class LanDiscoveryService {
   final String displayName;
   String currentTopic;
   int points;
+
+  /// 'student' (default) or 'teacher' — announced so a `SelectiveSyncManager`
+  /// can pick out sync servers from the same broadcast that already carries
+  /// classmate presence, instead of a second discovery mechanism.
+  final String role;
+
+  /// The `TeacherSyncServer` port, when [role] is 'teacher' and it is
+  /// running. Left null (and therefore un-announced) otherwise.
+  int? syncPort;
 
   /// Random per-session ID so we can ignore our own broadcasts.
   final String _selfId =
@@ -88,6 +111,8 @@ class LanDiscoveryService {
       'name': displayName,
       'topic': currentTopic,
       'points': points,
+      'role': role,
+      if (syncPort != null) 'sync_port': syncPort,
     });
     try {
       socket.send(
@@ -114,6 +139,8 @@ class LanDiscoveryService {
         points: (data['points'] as num?)?.toInt() ?? 0,
         lastSeen: DateTime.now(),
         address: dg.address.address,
+        role: (data['role'] as String?) ?? 'student',
+        syncPort: (data['sync_port'] as num?)?.toInt(),
       );
       _emit();
     } catch (_) {

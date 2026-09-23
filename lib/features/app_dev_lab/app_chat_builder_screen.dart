@@ -1,12 +1,21 @@
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'package:drift/drift.dart' show Value;
+
+import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
+import '../../db/otic_database.dart';
+import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
@@ -303,6 +312,17 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   String _buildNote = '';
   bool _autocorrectBusy = false;
 
+  /// Set once this build has been saved, so a second Save updates the same
+  /// row instead of inserting a duplicate every time the student edits.
+  int? _savedProjectId;
+  bool _saving = false;
+
+  /// Downloadable FastAPI scaffold for the current build, or null until the
+  /// student asks for one. Export-only — this app never runs it.
+  String? _backendCode;
+  bool _generatingBackend = false;
+  bool _exporting = false;
+
   @override
   void initState() {
     super.initState();
@@ -526,6 +546,263 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     setState(() {});
   }
 
+  // ── Persistence ───────────────────────────────────────────────────────────
+
+  /// Saves the current build to the active student's profile — a new row on
+  /// the first save, then an update on every save after that (so re-saving
+  /// after an edit does not pile up duplicates of the same app).
+  Future<void> _saveProject() async {
+    if (_appType == null || _saving) return;
+    final student = await ref.read(activeStudentProvider.future);
+    if (!mounted) return;
+    if (student == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'Sign in to save your app.'))),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final intent = _currentIntent();
+      final db = ref.read(dbProvider);
+      final html = _codeController.text;
+      final id = _savedProjectId;
+      if (id == null) {
+        final newId = await db.appBuilderProjectDao.saveProject(
+          AppBuilderProjectsCompanion.insert(
+            studentId: student.id,
+            title: intent.appName,
+            appTypeId: intent.appTypeId,
+            appTypeName: intent.appTypeName,
+            themeColor: Value(intent.themePrimary),
+            htmlContent: html,
+            backendContent: Value(_backendCode),
+            answersJson: Value(jsonEncode(intent.answers)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+        _savedProjectId = newId;
+      } else {
+        await db.appBuilderProjectDao.updateProject(
+          id,
+          AppBuilderProjectsCompanion(
+            title: Value(intent.appName),
+            htmlContent: Value(html),
+            backendContent: Value(_backendCode),
+            answersJson: Value(jsonEncode(intent.answers)),
+            updatedAt: Value(DateTime.now()),
+          ),
+        );
+      }
+      ref.invalidate(studentAppBuilderProjectsProvider(student.id));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, 'App saved to your projects.'))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, "Couldn't save your app. Try again."))),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  // ── Backend scaffold (export-only) ───────────────────────────────────────
+
+  /// Generates a downloadable FastAPI backend matching the current build's
+  /// features. This app never runs it — it exists to hand the student real
+  /// server-side source they can run on a machine that has Python.
+  Future<void> _generateBackend() async {
+    if (_appType == null || _generatingBackend) return;
+    setState(() {
+      _generatingBackend = true;
+      _buildNote = tr(context, 'Writing a backend for your app…');
+    });
+    try {
+      final info = await ref.read(programmingModelInfoProvider.future);
+      if (info.status != ModelStatus.ready) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tr(context, 'Coding model not found — install it in Settings.'),
+            ),
+          ),
+        );
+        return;
+      }
+      final coder = await ref.read(aiCoderServiceProvider.future);
+      final intent = _currentIntent();
+      final backend = await coder
+          .generateAppBackend(intent: intent)
+          .timeout(const Duration(minutes: 3), onTimeout: () => null);
+      if (!mounted) return;
+      if (backend == null || backend.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text(tr(context, "Couldn't write a backend. Try again.")),
+          ),
+        );
+        return;
+      }
+      setState(() => _backendCode = backend);
+      await _showBackendPreview(backend);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, "Couldn't write a backend. Try again."))),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _generatingBackend = false;
+          _buildNote = '';
+        });
+      }
+    }
+  }
+
+  Future<void> _showBackendPreview(String backend) {
+    return showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.75,
+        builder: (_, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.dns_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      tr(context, 'backend.py — export only, not run here'),
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: tr(context, 'Copy'),
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: backend));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(tr(context, 'Copied.'))),
+                      );
+                    },
+                  ),
+                  IconButton(
+                    tooltip: tr(context, 'Close'),
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: SingleChildScrollView(
+                controller: scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: SelectableText(
+                  backend,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Export ────────────────────────────────────────────────────────────────
+
+  /// Saves the build to a file the student can move by USB, email, or chat.
+  ///
+  /// A single `.html` when there is no backend (matches Website Builder's
+  /// export exactly); a `.zip` with the frontend, the backend, and a short
+  /// run-it-yourself README when there is one — the backend is export-only,
+  /// so the zip is what actually makes it runnable somewhere else.
+  Future<void> _exportProject() async {
+    if (_appType == null || _exporting) return;
+    setState(() => _exporting = true);
+    try {
+      final intent = _currentIntent();
+      final slug = intent.appName
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .trim()
+          .replaceAll(RegExp(r'\s+'), '_')
+          .toLowerCase();
+      final baseName = slug.isEmpty ? 'my_app' : slug;
+      final html = _codeController.text;
+      final backend = _backendCode;
+
+      String? path;
+      if (backend == null || backend.trim().isEmpty) {
+        final bytes = Uint8List.fromList(utf8.encode(html));
+        path = await FilePicker.platform.saveFile(
+          dialogTitle: tr(context, 'Export app'),
+          fileName: '$baseName.html',
+          type: FileType.custom,
+          allowedExtensions: ['html'],
+          bytes: bytes,
+        );
+        if (path != null &&
+            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          await File(path).writeAsBytes(bytes);
+        }
+      } else {
+        final archive = Archive()
+          ..addFile(_archiveTextFile('frontend.html', html))
+          ..addFile(_archiveTextFile('backend.py', backend))
+          ..addFile(_archiveTextFile(
+            'README.txt',
+            'Frontend: open frontend.html in a browser.\n\n'
+                'Backend (optional): needs Python 3 on this machine.\n'
+                '  pip install fastapi uvicorn\n'
+                '  python backend.py\n'
+                'Then update the frontend\'s fetch calls to point at '
+                'http://127.0.0.1:8000 if it is not already.\n',
+          ));
+        final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive));
+        path = await FilePicker.platform.saveFile(
+          dialogTitle: tr(context, 'Export app'),
+          fileName: '$baseName.zip',
+          type: FileType.custom,
+          allowedExtensions: ['zip'],
+          bytes: zipBytes,
+        );
+        if (path != null &&
+            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          await File(path).writeAsBytes(zipBytes);
+        }
+      }
+
+      if (!mounted || path == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(trFill(context, 'Saved to {path}', {'path': path}))),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(tr(context, "Couldn't export your app. Try again."))),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  ArchiveFile _archiveTextFile(String name, String content) {
+    final bytes = utf8.encode(content);
+    return ArchiveFile(name, bytes.length, bytes);
+  }
+
   Future<void> _undoLastInstruction() async {
     final previous = _undoSnapshot;
     if (previous == null) return;
@@ -621,6 +898,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     setState(() {
       _building = true;
       _buildNote = tr(context, 'Building your app…');
+      // A fresh build is a different app from whatever was last saved, and
+      // any backend generated for the previous build no longer matches.
+      _savedProjectId = null;
+      _backendCode = null;
     });
 
     final intent = _currentIntent();
@@ -660,11 +941,66 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
             onPressed: () => context.push('/applab'),
             child: Text(tr(context, 'Lessons')),
           ),
-          if (_showStudio)
+          if (_showStudio) ...[
+            IconButton(
+              tooltip: tr(context, 'Save to my projects'),
+              onPressed: _saving ? null : _saveProject,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(_savedProjectId == null
+                      ? Icons.save_outlined
+                      : Icons.save_rounded),
+            ),
+            PopupMenuButton<String>(
+              tooltip: tr(context, 'More'),
+              enabled: !_generatingBackend && !_exporting,
+              icon: (_generatingBackend || _exporting)
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'backend') _generateBackend();
+                if (value == 'view_backend' && _backendCode != null) {
+                  _showBackendPreview(_backendCode!);
+                }
+                if (value == 'export') _exportProject();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: _backendCode == null ? 'backend' : 'view_backend',
+                  child: Row(children: [
+                    const Icon(Icons.dns_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Text(tr(
+                      context,
+                      _backendCode == null
+                          ? 'Write a backend for this app'
+                          : 'View backend',
+                    )),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'export',
+                  child: Row(children: [
+                    const Icon(Icons.ios_share_outlined, size: 18),
+                    const SizedBox(width: 10),
+                    Text(tr(context, 'Export…')),
+                  ]),
+                ),
+              ],
+            ),
             TextButton(
               onPressed: () => setState(() => _showStudio = false),
               child: Text(tr(context, 'Back to chat')),
             ),
+          ],
         ],
       ),
       body: Column(

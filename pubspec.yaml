@@ -16,7 +16,9 @@ dependencies:
   go_router: ^14.0.0
   flutter_riverpod: ^2.5.1
 
-  # AI inference — LiteRT-LM (Qwen3-0.6B chat) + llama.cpp (AfriSLM GGUF)
+  # AI inference — llama.cpp (Qwen2.5-Coder-1.5B brain + AfriSLM GGUF).
+  # flutter_gemma/flutter_gemma_litertlm stay for the optional Android
+  # .litertlm path (no coder .litertlm is published yet — see CLAUDE.md).
   http: ^1.2.0
   flutter_gemma: ^1.1.2
   flutter_gemma_litertlm: ^1.6.1
@@ -66,6 +68,18 @@ dependencies:
   share_plus: ^12.0.2
   package_info_plus: ^9.0.1
   html: ^0.15.4
+
+  # Scoped class/stream/subject sync over the local network — a teacher
+  # device runs the embedded server (shelf), a student device pulls from it.
+  # Pure Dart, LAN-only (see lib/collaboration/sync/).
+  shelf: ^1.4.1
+  uuid: ^4.5.3
+
+  # mDNS/NSD sync-server discovery, additive to the UDP broadcast already
+  # used for presence — Android/iOS/macOS/Windows only, no Linux plugin
+  # exists, so lib/collaboration/sync/mdns_discovery.dart treats Linux (and
+  # web) as "unsupported, fall back to UDP" rather than failing.
+  nsd: ^5.0.1
 
 dev_dependencies:
   flutter_test:

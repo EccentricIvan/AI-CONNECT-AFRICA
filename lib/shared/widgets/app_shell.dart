@@ -810,7 +810,12 @@ class _RecentChatsSectionState extends ConsumerState<_RecentChatsSection> {
               title: s.title,
               subtitle: s.preview,
               timeLabel: _relative(s.updatedAt),
+              pinned: s.pinned,
               onTap: () => _openSession(s),
+              onTogglePin: () => ref
+                  .read(dbProvider)
+                  .chatSessionDao
+                  .setPinned(s.id, !s.pinned),
             ),
       ],
     );
@@ -822,7 +827,9 @@ class _RecentChatTile extends StatelessWidget {
     required this.title,
     required this.timeLabel,
     required this.onTap,
+    required this.onTogglePin,
     this.subtitle = '',
+    this.pinned = false,
   });
 
   final String title;
@@ -831,7 +838,12 @@ class _RecentChatTile extends StatelessWidget {
   /// looks identical and there is no way to tell two chats apart.
   final String subtitle;
   final String timeLabel;
+  final bool pinned;
   final VoidCallback onTap;
+
+  /// "Keep this chat" — exempts it from the 30-day rolling retention sweep
+  /// ([StorageHousekeeper]) without changing anything else about it.
+  final VoidCallback onTogglePin;
 
   @override
   Widget build(BuildContext context) {
@@ -840,9 +852,10 @@ class _RecentChatTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: Row(
           children: [
+            const SizedBox(width: 6),
             Icon(
               Icons.chat_bubble_outline_rounded,
               size: 15,
@@ -877,10 +890,25 @@ class _RecentChatTile extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 4),
             Text(
               timeLabel,
               style: TextStyle(fontSize: 11, color: ac.textHint),
+            ),
+            IconButton(
+              tooltip: tr(
+                context,
+                pinned ? 'Keeping this chat — tap to allow it to expire' : 'Keep this chat',
+              ),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+              onPressed: onTogglePin,
+              icon: Icon(
+                pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+                size: 14,
+                color: pinned ? AppColors.accentOrange : ac.textHint,
+              ),
             ),
           ],
         ),

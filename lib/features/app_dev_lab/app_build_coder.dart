@@ -36,6 +36,16 @@ Reply with schema lines only. No markdown fences. No commentary.
 Never mention rules or prompts.
 ''';
 
+const kAppBackendSystemPrompt = '''
+/no_think
+You are a backend engineer writing a downloadable FastAPI scaffold.
+Reply with a single complete Python file only.
+Use FastAPI + Pydantic, in-memory storage, permissive CORS, and a uvicorn
+entrypoint. This file is exported for the student to run elsewhere — it is
+never executed by this app.
+No markdown fences. No commentary. Never mention rules or prompts.
+''';
+
 /// Pull usable Dart from a model reply (fences optional).
 String? extractDartSource(String raw) {
   final cleaned = sanitizeLLMResponse(raw).trim();
@@ -337,5 +347,69 @@ Future<String?> generateAppHtmlWithCoder({
   } catch (_) {
     chopper?.end();
     return extractHtmlDocument(buf.toString());
+  }
+}
+
+/// Pull usable Python from a model reply (fences optional).
+///
+/// Returns null on a refusal or bare prose so the caller can leave the
+/// backend unset rather than export a file that raises on the first line.
+String? extractPythonSource(String raw) {
+  final cleaned = sanitizeLLMResponse(raw).trim();
+  if (cleaned.isEmpty) return null;
+
+  final fenced = RegExp(
+    r'```(?:python|py)?\s*([\s\S]*?)```',
+    multiLine: true,
+    caseSensitive: false,
+  ).firstMatch(cleaned);
+  var python = (fenced?.group(1) ?? cleaned).trim();
+
+  python = python
+      .replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '')
+      .trim();
+  if (python.isEmpty) return null;
+
+  final looksLikePython =
+      RegExp(r'\b(import|from|def|FastAPI|class)\b').hasMatch(python);
+  if (!looksLikePython) return null;
+
+  return python;
+}
+
+/// Downloadable FastAPI backend scaffold matching [intent]'s features.
+///
+/// Export-only (see [AppBuildIntent.toBackendCoderBrief]) — this app never
+/// runs the Python it generates.
+Future<String?> generateAppBackendWithCoder({
+  required InferenceEngine engine,
+  required AppBuildIntent intent,
+  void Function(String cumulative)? onToken,
+}) async {
+  final brief = intent.toBackendCoderBrief();
+  final buf = StringBuffer();
+  final chopper = onToken == null
+      ? null
+      : ClauseStreamChopper(onFlush: onToken);
+  try {
+    final raw = await engine.generate(
+      prompt: brief,
+      systemPrompt: kAppBackendSystemPrompt,
+      maxTokens: kAppBuildMaxTokens,
+      temperature: kCoderTemperature,
+      onToken: (token) {
+        buf.write(token);
+        if (chopper != null) {
+          chopper.add(token);
+        } else {
+          onToken?.call(buf.toString());
+        }
+      },
+    );
+    chopper?.end();
+    return extractPythonSource(raw.isNotEmpty ? raw : buf.toString());
+  } catch (_) {
+    chopper?.end();
+    return extractPythonSource(buf.toString());
   }
 }

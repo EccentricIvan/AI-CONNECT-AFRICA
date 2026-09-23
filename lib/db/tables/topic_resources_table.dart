@@ -56,6 +56,20 @@ class TopicResources extends Table {
   /// ISO-8601 UTC timestamp. TEXT rather than drift's default integer
   /// `DateTimeColumn` so the physical column type matches the agreed schema.
   TextColumn get createdAt => text()();
+
+  /// Scoped sync: which class/stream this chunk was pushed to, by
+  /// [ClassGroups.groupUuid] — not [ClassGroups.id], which is device-local
+  /// and meaningless once a chunk has travelled to a different device. Null
+  /// means "every class" (the resource's state before this column existed,
+  /// and the right default for a resource with no class-specific content),
+  /// matching how `termMarker: 0` already means "every term".
+  TextColumn get classGroupUuid => text().nullable()();
+
+  /// ISO-8601 UTC. The version token a scoped-sync pull compares against a
+  /// student device's `SyncState.lastSyncedAt` — null falls back to
+  /// [createdAt], so a resource written before this column existed is still
+  /// syncable (just always looks "current" until it is next edited).
+  TextColumn get updatedAt => text().nullable()();
 }
 
 /// `term_marker` value meaning "every term".

@@ -12,10 +12,10 @@
   directory, so quantizing that way yields a model the app silently falls
   back to English around.
 
-  The chat model is not handled here and needs no quantization step: the
-  litert-community Qwen3-0.6B .litertlm is already published quantized
-  (~330 MB dynamic int4, see model_manager.dart:69). Download that file
-  rather than building one.
+  The chat model (Qwen2.5-Coder-1.5B-Instruct) is not handled here either —
+  it ships pre-quantized as a GGUF (Apache-2.0, safe to redistribute; see
+  CLAUDE.md). No .litertlm export of it is published yet, so Android runs
+  it on llama.cpp CPU like every other platform, same as this file.
 
   Build-time tool. It fetches llama.cpp on a dev machine with internet; the
   app it feeds still runs fully offline. Nothing here touches the device.

@@ -2,13 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../cloud/cloud_api_settings.dart';
 import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
 import '../inference/litert_lm_engine.dart';
 import '../inference/llama_cpp_engine.dart';
 import '../inference/mock_engine.dart';
-import '../inference/openai_compatible_engine.dart';
 import '../tutor/tutor_contract.dart';
 import '../model/bundled_model_bootstrap.dart';
 import '../model/dual_gguf_plan.dart';
@@ -175,8 +173,6 @@ class DualModelRuntime {
 }
 
 final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
-  ref.watch(cloudApiReloadTickProvider);
-
   Future<DualModelRuntime> demo(DemoReason reason) async {
     final mock = MockEngine(demoReason: reason);
     await mock.loadModel('');
@@ -184,22 +180,6 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
   }
 
   try {
-    CloudApiConfig cloud;
-    try {
-      cloud = await ref.watch(cloudApiSettingsProvider.future);
-    } catch (e) {
-      debugPrint('cloudApiSettingsProvider failed: $e');
-      cloud = const CloudApiConfig();
-    }
-    if (cloud.isConfigured) {
-      try {
-        final engine = OpenAiCompatibleEngine(cloud);
-        await engine.loadModel('');
-        ref.onDispose(engine.dispose);
-        return DualModelRuntime(reasoner: engine);
-      } catch (_) {}
-    }
-
     if (kIsWeb) return demo(DemoReason.web);
 
     await ref.watch(bundledModelsBootstrapProvider.future);
@@ -620,13 +600,10 @@ class AiStatus {
         backendLabel: engine.backendLabel,
       );
     }
-    final isCloud = engine.backendLabel.startsWith('Cloud');
     return AiStatus(
       isDemo: false,
-      title: isCloud ? 'Cloud AI ready' : 'AI ready',
-      detail: isCloud
-          ? 'Live answers via ${engine.backendLabel} (needs internet)'
-          : 'Using ${engine.backendLabel}',
+      title: 'AI ready',
+      detail: 'Using ${engine.backendLabel}',
       backendLabel: engine.backendLabel,
     );
   }
@@ -1244,12 +1221,6 @@ String _chromeFollowUp(String followUp, String lang) {
 
 String _friendlyAiError(Object e) {
   final raw = e.toString();
-  if (raw.contains('No internet') || raw.contains('SocketException')) {
-    return 'No internet for Cloud AI. Connect online, or turn off cloud API in Settings.';
-  }
-  if (raw.contains('Cloud AI') || raw.contains('api key') || raw.contains('401')) {
-    return 'Cloud AI failed. Check your API key and internet in Settings, then try again.';
-  }
   if (raw.contains('ModelLoadException') || raw.contains('failed to load')) {
     return 'The AI model failed to load. Open Settings to check the model, then try again.';
   }

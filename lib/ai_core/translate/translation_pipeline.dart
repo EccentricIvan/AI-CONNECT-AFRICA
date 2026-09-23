@@ -303,6 +303,11 @@ class TranslationPipeline {
   }
 
   /// Local-language student text → English, for the tutor.
+  ///
+  /// Whole-text first (cache-friendly, and the common case since a student
+  /// message is usually one short question). If that is rejected, each
+  /// sentence is tried on its own — the same recovery [fromEnglishDetailed]
+  /// already had, now on both directions instead of just one.
   Future<TranslationOutcome> toEnglishDetailed(
     String text,
     String fromLanguageCode, {
@@ -319,7 +324,7 @@ class TranslationPipeline {
     }
     final islands = protectMathIslands(trimmed);
     final source = islands.text.trim().isEmpty ? trimmed : islands.text;
-    final out = await _translate(
+    final whole = await _translate(
       text: source,
       fromName: chatTranslatePromptName(fromLanguageCode),
       toName: 'English',
@@ -327,14 +332,29 @@ class TranslationPipeline {
       direction: 'to_en',
       cacheLangCode: fromLanguageCode,
     );
-    if (!out.translated) return out;
-    final restored = islands.restore(out.text);
-    await emitToken(onToken, restored);
-    return TranslationOutcome(
-      text: restored,
-      translated: true,
-      fromCache: out.fromCache,
+    if (whole.translated) {
+      final restored = islands.restore(whole.text);
+      await emitToken(onToken, restored);
+      return TranslationOutcome(
+        text: restored,
+        translated: true,
+        fromCache: whole.fromCache,
+      );
+    }
+    final recovered = await _translatePiecewise(
+      source,
+      fromName: chatTranslatePromptName(fromLanguageCode),
+      toName: 'English',
+      toCode: 'en',
+      direction: 'to_en',
+      cacheLangCode: fromLanguageCode,
     );
+    if (recovered.translated) {
+      final restored = islands.restore(recovered.text);
+      await emitToken(onToken, restored);
+      return TranslationOutcome(text: restored, translated: true);
+    }
+    return whole;
   }
 
   /// English tutor text → the student's learning language.
@@ -378,7 +398,11 @@ class TranslationPipeline {
     }
     final recovered = await _translatePiecewise(
       source,
-      toLanguageCode,
+      fromName: 'English',
+      toName: chatTranslatePromptName(toLanguageCode),
+      toCode: toLanguageCode,
+      direction: 'from_en',
+      cacheLangCode: toLanguageCode,
     );
     if (recovered.translated) {
       final restored = islands.restore(recovered.text);
@@ -388,10 +412,17 @@ class TranslationPipeline {
     return whole;
   }
 
+  /// Splits [text] into sentences and translates each on its own — used by
+  /// both directions when a whole-text attempt is rejected, so one bad
+  /// sentence cannot blank the rest of an otherwise-translatable message.
   Future<TranslationOutcome> _translatePiecewise(
-    String text,
-    String toLanguageCode,
-  ) async {
+    String text, {
+    required String fromName,
+    required String toName,
+    required String toCode,
+    required String direction,
+    required String cacheLangCode,
+  }) async {
     final units = splitTranslationUnits(text);
     if (units.length <= 1) {
       return TranslationOutcome.passthrough(text);
@@ -401,11 +432,11 @@ class TranslationPipeline {
     for (final unit in units) {
       final outcome = await _translate(
         text: unit,
-        fromName: 'English',
-        toName: chatTranslatePromptName(toLanguageCode),
-        toCode: toLanguageCode,
-        direction: 'from_en',
-        cacheLangCode: toLanguageCode,
+        fromName: fromName,
+        toName: toName,
+        toCode: toCode,
+        direction: direction,
+        cacheLangCode: cacheLangCode,
       );
       if (outcome.translated) {
         ok++;

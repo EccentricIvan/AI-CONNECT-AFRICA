@@ -14,6 +14,7 @@ import 'features/model_setup/model_not_installed_screen.dart';
 import 'l10n/app_locale.dart';
 import 'l10n/language_provider.dart';
 import 'services/model_fetch_service.dart';
+import 'services/storage_housekeeper.dart';
 
 class OticApp extends ConsumerStatefulWidget {
   const OticApp({super.key});
@@ -25,6 +26,7 @@ class OticApp extends ConsumerStatefulWidget {
 class _OticAppState extends ConsumerState<OticApp> {
   bool _ready = false;
   bool _didWarmTranslate = false;
+  bool _didRunHousekeeping = false;
 
   @override
   void initState() {
@@ -58,6 +60,28 @@ class _OticAppState extends ConsumerState<OticApp> {
     }
   }
 
+  /// Runs once per app launch, well after startup — a proxy for "idle"
+  /// rather than real OS idle-callback detection (Flutter has no portable
+  /// one across Android/Windows/Linux). A cold model load already keeps the
+  /// device busy for the first several seconds; waiting this long out means
+  /// the sweep's own disk I/O never competes with that or with the first
+  /// screen's own first paint.
+  Future<void> _runHousekeeping() async {
+    await Future.delayed(const Duration(seconds: 8));
+    if (!mounted) return;
+    try {
+      final db = ref.read(dbProvider);
+      final report = await StorageHousekeeper(db).runSweep();
+      if (report.removed > 0) {
+        debugPrint('StorageHousekeeper: ${report.expiredSessions} chat(s) '
+            'aged out past ${kChatHistoryRetention.inDays} days, '
+            '${report.orphanedFiles} orphaned file(s) removed.');
+      }
+    } catch (e) {
+      debugPrint('StorageHousekeeper kickoff failed: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeMode = ref.watch(themeModeProvider);
@@ -81,6 +105,10 @@ class _OticAppState extends ConsumerState<OticApp> {
       if (languageCode != 'en') {
         unawaited(_warmTranslationPipeline());
       }
+    }
+    if (!_didRunHousekeeping) {
+      _didRunHousekeeping = true;
+      unawaited(_runHousekeeping());
     }
     return MaterialApp.router(
       title: 'AI Connect Africa',

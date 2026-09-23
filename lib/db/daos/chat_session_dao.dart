@@ -106,4 +106,32 @@ class ChatSessionDao extends DatabaseAccessor<OticDatabase>
     final rows = await select(chatSessions).get();
     return {for (final r in rows) r.id};
   }
+
+  /// Removes every chat whose last activity is before [cutoff] — every
+  /// student, not one, and never a pinned one — and returns their ids so
+  /// the caller can also delete the matching recall files. Used by
+  /// [StorageHousekeeper]'s rolling retention sweep.
+  ///
+  /// `updated_at`, not `created_at`: a chat a student keeps coming back to
+  /// stays, even if it started months ago — only one that has genuinely gone
+  /// quiet for the whole window ages out.
+  Future<Set<String>> deleteOlderThan(DateTime cutoff) async {
+    final rows = await (select(chatSessions)
+          ..where((t) =>
+              t.updatedAt.isSmallerThanValue(cutoff) &
+              t.pinned.equals(false)))
+        .get();
+    if (rows.isEmpty) return const {};
+    await (delete(chatSessions)
+          ..where((t) =>
+              t.updatedAt.isSmallerThanValue(cutoff) &
+              t.pinned.equals(false)))
+        .go();
+    return {for (final r in rows) r.id};
+  }
+
+  /// "Keep this chat" toggle — see `ChatSessions.pinned`.
+  Future<void> setPinned(String id, bool pinned) =>
+      (update(chatSessions)..where((t) => t.id.equals(id)))
+          .write(ChatSessionsCompanion(pinned: Value(pinned)));
 }

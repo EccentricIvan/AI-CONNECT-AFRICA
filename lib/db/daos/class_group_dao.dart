@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../collaboration/sync/sync_ids.dart';
 import '../otic_database.dart';
 import '../tables/class_groups_table.dart';
 import '../tables/students_table.dart';
@@ -30,7 +31,32 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
     return into(classGroups).insert(ClassGroupsCompanion.insert(
       className: className.trim(),
       streamName: Value(stream == null || stream.isEmpty ? null : stream),
+      groupUuid: Value(newSyncId()),
     ));
+  }
+
+  /// The class/stream a scoped-sync request named by its portable id.
+  Future<ClassGroup?> findByUuid(String groupUuid) =>
+      (select(classGroups)..where((t) => t.groupUuid.equals(groupUuid)))
+          .getSingleOrNull();
+
+  /// Backfills [ClassGroups.groupUuid] for rows written before that column
+  /// existed, so a class created before scoped sync shipped is still
+  /// syncable without the teacher having to recreate it. Called once from
+  /// the schema-11 migration.
+  Future<void> backfillGroupUuids() async {
+    final rows =
+        await (select(classGroups)..where((t) => t.groupUuid.isNull())).get();
+    if (rows.isEmpty) return;
+    await batch((b) {
+      for (final row in rows) {
+        b.update(
+          classGroups,
+          ClassGroupsCompanion(groupUuid: Value(newSyncId())),
+          where: (t) => t.id.equals(row.id),
+        );
+      }
+    });
   }
 
   Future<void> renameClass(int id,

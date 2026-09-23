@@ -32,6 +32,14 @@ class ChatSessions extends Table {
   /// Number of exchanges retained in the recall file.
   IntColumn get turnCount => integer().withDefault(const Constant(0))();
 
+  /// "Keep this chat" — exempts this row from
+  /// `ChatSessionDao.deleteOlderThan`'s rolling retention sweep
+  /// ([StorageHousekeeper]). Everything else about a pinned chat is
+  /// unchanged: it still ages off the top of "Recent chats" once 30 other
+  /// chats are more recent (that list is a recency window, not an
+  /// archive) — pinning only stops the *deletion*, not the sort order.
+  BoolColumn get pinned => boolean().withDefault(const Constant(false))();
+
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 
