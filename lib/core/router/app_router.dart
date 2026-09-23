@@ -19,6 +19,7 @@ import '../../features/python_lab/python_lab_screen.dart';
 import '../../features/curriculum_browser/subjects_screen.dart';
 import '../../features/curriculum_browser/units_screen.dart';
 import '../../features/learn/learn_screen.dart';
+import '../../features/learners/learner_picker_screen.dart';
 import '../../features/learn/path/path_detail_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 import '../../features/practice/practice_screen.dart';
@@ -166,6 +167,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/admin', builder: (_, __) => const AdminScreen()),
           GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+          GoRoute(
+            path: '/learners',
+            builder: (_, __) => const LearnerPickerScreen(),
+          ),
         ],
       ),
     ],

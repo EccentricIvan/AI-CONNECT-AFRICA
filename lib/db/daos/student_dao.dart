@@ -26,11 +26,17 @@ class StudentDao extends DatabaseAccessor<OticDatabase>
       (select(students)..orderBy([(t) => OrderingTerm.desc(t.lastActiveAt)]))
           .get();
 
+  /// Every profile, alphabetical, updating live — the learner picker and the
+  /// teacher's class lists.
+  Stream<List<Student>> watchAllStudents() =>
+      (select(students)..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
+
   Future<int> createStudent(StudentsCompanion entry) =>
       into(students).insert(entry);
 
-  /// Permanently removes a profile. Related rows (sessions, paths, badges,
-  /// projects) cascade-delete via their foreign keys.
+  /// Permanently removes the profile row. The declared cascades on child
+  /// tables are not enforced (no `PRAGMA foreign_keys = ON`); callers clear
+  /// dependent rows explicitly — see the admin screen.
   Future<void> deleteStudent(int id) =>
       (delete(students)..where((t) => t.id.equals(id))).go();
 

@@ -203,6 +203,21 @@ appBar: StudioAppBar(
                   color: Theme.of(context).hintColor,
                 ),
               ),
+              ListTile(
+                leading: Icon(
+                  Icons.switch_account_outlined,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                title: Text(tr(context, 'Switch learner')),
+                subtitle: Text(
+                  tr(context, 'Hand this device to another learner'),
+                ),
+                onTap: () => context.push('/learners'),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
             ]),
 
             // ── Streak & Points ───────────────────────────────────────────────
