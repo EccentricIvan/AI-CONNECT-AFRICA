@@ -27,6 +27,8 @@ import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
+import '../../features/teacher/teacher_pin.dart';
+import '../../features/teacher/teacher_pin_screen.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
 import '../../features/web_dev_lab/web_dev_lab_screen.dart';
 import '../../features/website/website_builder_screen.dart';
@@ -44,24 +46,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       if (state.matchedLocation == '/onboarding') return null;
 
-      // Fast path: SharedPreferences is written synchronously by onboarding
-      // before it navigates away, so a name here means onboarding is done —
-      // no need to wait on the (slower, background-written) database.
-      final prefs = await SharedPreferences.getInstance();
-      final name = prefs.getString('student_name');
-      if (name != null && name.isNotEmpty) return null;
+      final onboarding = await _onboardingRedirect(ref);
+      if (onboarding != null) return onboarding;
 
-      // On web there's no database — SharedPreferences is authoritative.
-      if (kIsWeb) return '/onboarding';
-
-      try {
-        final hasProfile = await ref.read(hasProfileProvider.future)
-            .timeout(const Duration(seconds: 3));
-        if (!hasProfile) return '/onboarding';
-      } catch (_) {
-        return '/onboarding';
-      }
-      return null;
+      // Teacher and Admin areas sit behind the teacher PIN, when one is set.
+      if (!isTeacherRoute(state.uri.path)) return null;
+      return teacherGateRedirect(
+        state.uri,
+        unlocked: ref.read(teacherUnlockedProvider),
+        pinSet: await ref.read(teacherPinProvider).isSet(),
+      );
     },
     routes: [
       // Onboarding is outside the shell (no nav bar/sidebar)
@@ -171,8 +165,43 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/learners',
             builder: (_, __) => const LearnerPickerScreen(),
           ),
+          GoRoute(
+            path: '/unlock',
+            builder: (_, state) {
+              final to = state.uri.queryParameters['to'] ?? '/teacher';
+              // Only ever continue into the gated area, never to an
+              // arbitrary location passed in the query string.
+              return TeacherUnlockScreen(
+                destination:
+                    isTeacherRoute(Uri.parse(to).path) ? to : '/teacher',
+              );
+            },
+          ),
         ],
       ),
     ],
   );
 });
+
+/// Where to send someone who has not finished onboarding, or null.
+Future<String?> _onboardingRedirect(Ref ref) async {
+  // Fast path: SharedPreferences is written synchronously by onboarding
+  // before it navigates away, so a name here means onboarding is done —
+  // no need to wait on the (slower, background-written) database.
+  final prefs = await SharedPreferences.getInstance();
+  final name = prefs.getString('student_name');
+  if (name != null && name.isNotEmpty) return null;
+
+  // On web there's no database — SharedPreferences is authoritative.
+  if (kIsWeb) return '/onboarding';
+
+  try {
+    final hasProfile = await ref
+        .read(hasProfileProvider.future)
+        .timeout(const Duration(seconds: 3));
+    if (!hasProfile) return '/onboarding';
+  } catch (_) {
+    return '/onboarding';
+  }
+  return null;
+}

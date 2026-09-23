@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show DatabaseConnection;
@@ -13,6 +12,7 @@ import 'package:ai_connect_africa/ai_core/tutor/tutor_pipeline.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/learners/learner_switcher.dart';
+import 'package:ai_connect_africa/features/teacher/teacher_pin.dart';
 import 'package:ai_connect_africa/memory/session_recall_store.dart';
 import 'package:ai_connect_africa/services/chat_inference_pipeline.dart';
 import 'package:ai_connect_africa/services/qwen_chat_service.dart';
@@ -157,6 +157,19 @@ void main() {
 
     await container.read(chatProvider.notifier).send('What is a cell?');
     expect(engine.prompts.last, isNot(contains('gravity')));
+  });
+
+  test('handing the device to a learner locks the teacher area again',
+      () async {
+    await onboard('Amina');
+    final brian = await container
+        .read(studentNotifierProvider.notifier)
+        .addLearner(name: 'Brian');
+    container.read(teacherUnlockedProvider.notifier).state = true;
+
+    await container.read(learnerSwitcherProvider).switchTo(brian);
+
+    expect(container.read(teacherUnlockedProvider), isFalse);
   });
 
   test('a saved choice pointing at a deleted learner falls back', () async {

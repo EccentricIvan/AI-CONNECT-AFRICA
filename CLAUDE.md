@@ -82,6 +82,46 @@ own prompt. Don't confuse it with the Teacher *role*/dashboard, which stays.
 - Teachers: read student data, create groups/quizzes, cannot modify platform
 - Admins: device/user/update management, no learning features
 
+### Shared devices, classes and the teacher PIN
+
+Devices are **shared**: learners take turns on one classroom PC/tablet.
+
+- **Active learner** is the id saved in `SharedPreferences` (`active_student_id`),
+  resolved by `resolveActiveStudent`. It falls back to the most recently
+  active profile on installs that predate it. Every screen reads it through
+  `activeStudentProvider`.
+- **Switching** (`LearnerSwitcher.switchTo`, `/learners`) is a privacy
+  boundary. It resets the chat thread, the tutor memory and the engine KV
+  session. It also takes the new learner's language and re-locks the teacher
+  area.
+- **Adding a learner** uses `StudentNotifier.addLearner`, which always inserts
+  and never switches. `createProfile` stays onboarding-only and keeps its
+  "update instead of insert" guard.
+- **Classes/streams** live in the `class_groups` table plus
+  `students.class_group_id`. A learner is in at most one; a stream is a
+  separate row, e.g. "S2 East". Progress rollups are computed on read from
+  `topic_progress` and never stored. Subjects stay device-wide.
+- **Teacher PIN** (`teacher_pin.dart`) gates `/teacher*` and `/admin*`. It
+  stores only a salted hash, and with no PIN set nothing is gated. It keeps
+  learners out; it is not real security.
+
+### Teacher notes → tutor (offline knowledge base)
+
+Uploaded files become plain text, which is split into sections and then into
+~500-char rows in `topic_resources`. The original file is not kept.
+`topic_resources_fts` is an external-content **FTS5** index: porter
+tokenizer, BM25 ranking, kept in sync by triggers. It comes from the SQLite
+that `sqlite3_flutter_libs` ships. It is created by raw SQL in
+`OticDatabase._createResourceSearchIndex`, because drift has no FTS5 table
+class, so `createAll` doesn't know about it.
+
+`TutorPipeline` searches it on every turn using the matched curriculum
+lesson's title and key terms plus the student's words. The notes share the
+existing 700-char notes slot, because the question sits at the end of the
+prompt and the engines clip from the end. Notes *supplement* the model; they
+do not override it. There are no embeddings: a third model does not fit
+4 GB Android.
+
 ## Student Memory Engine
 
 Store compressed summaries only — never full conversation logs. Stored fields: age, interests, learning style, strengths, weaknesses, projects, achievements, certificates, progress, goals. Storage is local SQLite per device.
