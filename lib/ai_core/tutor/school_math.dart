@@ -1,6 +1,6 @@
 /// Deterministic school-math solver (MathGPT-style).
 ///
-/// Qwen3-0.6B predicts words; it does not compute. When a problem matches
+/// The tutor model predicts words; it does not compute. When a problem matches
 /// a known school pattern we calculate in Dart and fill named steps so the
 /// learner never sees invented sums like 250+100=350.
 library;

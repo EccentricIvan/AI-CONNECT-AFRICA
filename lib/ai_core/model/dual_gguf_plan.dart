@@ -1,44 +1,25 @@
 import 'model_manager.dart';
 
-/// Qwen 0.6B is the general tutor brain. Qwen 1.5B Coder is programming.
-/// AfriSLM is the translator. AfriSLM is never used as a brain.
+/// Assigns the two on-disk models to their roles.
+///
+/// The brain (Qwen2.5-Coder-1.5B) does all reasoning and answering; AfriSLM
+/// only translates. AfriSLM is never used as the brain.
 class DualGgufPlan {
-  const DualGgufPlan({
-    this.qwenPath,
-    this.afrislmPath,
-    this.programmingPath,
-  });
+  const DualGgufPlan({this.brainPath, this.afrislmPath});
 
-  final String? qwenPath;
+  final String? brainPath;
   final String? afrislmPath;
-  final String? programmingPath;
 
-  bool get canTutor => qwenPath != null && qwenPath!.isNotEmpty;
+  bool get canTutor => brainPath != null && brainPath!.isNotEmpty;
   bool get canTranslate => afrislmPath != null && afrislmPath!.isNotEmpty;
-  bool get canProgram =>
-      programmingPath != null && programmingPath!.isNotEmpty;
 
   /// True only if both roles pointed at the same file (mis-install).
-  bool get sameFile =>
-      canTutor && canTranslate && qwenPath == afrislmPath;
+  bool get sameFile => canTutor && canTranslate && brainPath == afrislmPath;
 }
 
-/// Assigns on-disk files to roles. AfriSLM is never used as the brain.
-DualGgufPlan planDualGgufs(
-  ModelInfo qwen,
-  ModelInfo translate, [
-  ModelInfo programming = const ModelInfo(status: ModelStatus.notInstalled),
-]) {
-  String? programmingPath;
-  if (programming.isReady &&
-      programming.path != null &&
-      programming.path != qwen.path &&
-      programming.path != translate.path) {
-    programmingPath = programming.path;
-  }
+DualGgufPlan planDualGgufs(ModelInfo brain, ModelInfo translate) {
   return DualGgufPlan(
-    qwenPath: qwen.isReady ? qwen.path : null,
+    brainPath: brain.isReady ? brain.path : null,
     afrislmPath: translate.isReady ? translate.path : null,
-    programmingPath: programmingPath,
   );
 }

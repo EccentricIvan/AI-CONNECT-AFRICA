@@ -25,7 +25,7 @@ void main() async {
 
   debugPrint(
     'Low-latency hybrid: '
-    '${shouldInitializeLiteRt ? 'Android LiteRT chat+coder (NNAPI/GPU)' : 'Desktop GGUF chat+coder (AVX2 CPU×2)'} · '
+    '${shouldInitializeLiteRt ? 'Android · Qwen2.5-Coder brain + AfriSLM' : 'Desktop GGUF · Qwen2.5-Coder brain + AfriSLM (CPU)'} · '
     'isolated translator · pinned KV',
   );
   runApp(const ProviderScope(child: OticApp()));

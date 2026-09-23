@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../l10n/app_locale.dart';
 import '../../../ai_core/tutor/programming_topic.dart';
-import '../../../services/ai_model_manager.dart';
 import '../../../shared/widgets/responsive.dart';
 import '../../../shared/widgets/studio_page.dart';
 import '../../settings/coder_package_prompt.dart';
@@ -392,7 +391,6 @@ class _GeneratingView extends ConsumerWidget {
                   final coderOk =
                       await promptAndFetchCoderPackage(context, ref);
                   if (!coderOk || !context.mounted) return;
-                  scheduleLiteRtMode(ActiveModelMode.appCoder);
                 }
                 await ref
                     .read(pathNotifierProvider.notifier)

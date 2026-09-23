@@ -1,7 +1,7 @@
 /// Compact on-device tutor contract used as the chat/system prompt.
 ///
 /// Full spec: `assets/prompts/learning_tutor.txt`.
-/// Kept short for Qwen3-0.6B speed (pinned KV on LiteRT; less prefill on GGUF).
+/// Kept short for speed on a small on-device model (less prefill on GGUF).
 ///
 /// Combines app curriculum notes with the model's own knowledge in one reply.
 /// Reasoning is always English; AfriSLM localizes prose for the student.

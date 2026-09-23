@@ -77,43 +77,30 @@ void main() {
     }
   });
 
-  test('Install Packages queue is tutor + translation + coder', () {
+  test('Install Packages is the brain and the translator — nothing else', () {
     final ids = ModelFetchService.allPackages.map((p) => p.id).toList();
-    expect(ids, ['core_chat', 'core_translate', 'coder']);
-    expect(ModelFetchService.corePackages.map((p) => p.id).toList(),
-        ['core_chat', 'core_translate']);
+    expect(ids, ['core_chat', 'core_translate']);
+    // The coder IS the brain: one file, downloaded once.
+    expect(ModelFetchService.coderPackage.fileName,
+        ModelFetchService.coreChatPackage.fileName);
+    final files = ModelFetchService.allPackages.map((p) => p.fileName);
+    expect(files.toSet(), hasLength(files.length),
+        reason: 'no file may be queued twice');
   });
 
-  test('Windows and Android resolve platform-correct HF package URLs', () {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    expect(ModelFetchFiles.chat, 'qwen-0.6b-instruct.gguf');
-    expect(
-      ModelFetchService.coreChatPackage.url,
-      '$kModelFetchHfBaseUrl/qwen-0.6b-instruct.gguf',
-    );
-    expect(
-      ModelFetchService.coreTranslatePackage.url,
-      '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
-    );
-    expect(
-      ModelFetchService.coderPackage.url,
-      '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
-    );
-
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    expect(ModelFetchFiles.chat, 'chat-model.litertlm');
-    expect(
-      ModelFetchService.coreChatPackage.url,
-      '$kModelFetchHfBaseUrl/chat-model.litertlm',
-    );
-    expect(
-      ModelFetchService.coreTranslatePackage.url,
-      '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
-    );
-    expect(
-      ModelFetchService.coderPackage.url,
-      '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
-    );
+  test('every platform downloads the same coder GGUF as its brain', () {
+    for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+      debugDefaultTargetPlatformOverride = platform;
+      expect(ModelFetchFiles.chat, 'qwen2.5-coder-1.5b-instruct.gguf');
+      expect(
+        ModelFetchService.coreChatPackage.url,
+        '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
+      );
+      expect(
+        ModelFetchService.coreTranslatePackage.url,
+        '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
+      );
+    }
   });
 
   test('downloads land in canonical install directory', () async {
@@ -132,18 +119,19 @@ void main() {
     );
   });
 
-  test('checkPackagesCached requires all three packages', () async {
+  test('checkPackagesCached requires the brain and the translator', () async {
     final models = Directory(p.join(tmp.path, 'models'));
     await models.create(recursive: true);
-    await File(p.join(models.path, ModelFetchFiles.chat)).writeAsString('ok');
     await File(p.join(models.path, ModelFetchFiles.translate))
         .writeAsString('ok');
 
     final svc = _TestFetchService(_NoNetworkDownloader(), models.path);
     expect(await svc.checkPackagesCached(), isFalse);
 
-    await File(p.join(models.path, ModelFetchFiles.coder)).writeAsString('ok');
+    await File(p.join(models.path, ModelFetchFiles.chat)).writeAsString('ok');
     expect(await svc.checkPackagesCached(), isTrue);
+    expect(await svc.isCoderReady(), isTrue,
+        reason: 'coding runs on the brain');
   });
 
   test('fetchMissingPackages streams white-label progress only', () async {

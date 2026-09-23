@@ -7,7 +7,6 @@ import '../ai_core/inference/litert_lm_engine.dart';
 import '../ai_core/inference/runtime_config.dart';
 import '../ai_core/tutor/conversation_memory.dart';
 import '../ai_core/tutor/tutor_contract.dart';
-import 'ai_model_manager.dart';
 import 'grounded_tutor_prompt.dart';
 import 'hybrid_model_orchestrator.dart';
 
@@ -55,7 +54,6 @@ class QwenChatService {
   String historyBlock() => englishMemory.promptBlock(maxChars: 720);
 
   Future<void> _beforeGenerate(String? systemPrompt) async {
-    await AiModelManager.instance.prepareModelForMode(ActiveModelMode.chatBrain);
     if (!_kvWarmed) await warmKvCache(systemPrompt: systemPrompt);
     final litert = _engine;
     if (litert is LiteRtLmEngineImpl && modelPath != null) {

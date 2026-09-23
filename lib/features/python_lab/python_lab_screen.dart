@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
-import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart';
 import '../../shared/coding/code_lab_session.dart';
 import '../../shared/coding/python_tutor.dart';
@@ -240,7 +239,6 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
   @override
   void initState() {
     super.initState();
-    scheduleLiteRtMode(ActiveModelMode.appCoder);
     _tabController = TabController(length: 2, vsync: this);
 
     final saved =

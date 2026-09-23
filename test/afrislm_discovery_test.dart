@@ -115,13 +115,14 @@ void main() {
     expect(info.path, contains('translate-afrislm.gguf'));
   });
 
-  test('Qwen manager finds the 0.6B GGUF brain, not AfriSLM', () async {
+  test('the brain manager finds the coder GGUF, not AfriSLM', () async {
     final fixture = File(
-      p.join(Directory.current.path, 'models', 'qwen-0.6b-instruct.gguf'),
+      p.join(Directory.current.path, 'models', ModelManager.brainGgufFileName),
     );
     final hadFixture = await fixture.exists();
     if (!hadFixture) {
-      await _writeGgufStub(fixture, fixtureBytes);
+      // Above the brain's 400 MB truncation floor.
+      await _writeGgufStub(fixture, 420 * 1024 * 1024);
       addTearDown(() async {
         if (await fixture.exists()) await fixture.delete();
       });
@@ -129,8 +130,7 @@ void main() {
 
     final info = await ModelManager().checkModel();
     expect(info.isReady, isTrue, reason: '${info.status} ${info.path}');
-    expect(info.path!.toLowerCase(), contains('qwen-0.6b-instruct.gguf'));
+    expect(info.path!.toLowerCase(), contains('coder-1.5b'));
     expect(info.path!.toLowerCase().contains('afrislm'), isFalse);
-    expect(info.path!.toLowerCase().contains('1.5b'), isFalse);
   });
 }

@@ -14,7 +14,6 @@ import '../model/bundled_model_bootstrap.dart';
 import '../model/dual_gguf_plan.dart';
 import '../model/model_manager.dart';
 import '../model/model_runtime_policy.dart';
-import '../model/programming_model_manager.dart';
 import '../translate/afrislm_model_manager.dart';
 import '../translate/drift_translation_store.dart';
 import '../translate/follow_up_glossary.dart';
@@ -38,7 +37,6 @@ import '../../safety/emotional_safety.dart';
 import '../../services/afrislm_translation_service.dart';
 import '../../services/ai_coder_service.dart';
 import '../../services/ai_engine_service.dart';
-import '../../services/ai_model_manager.dart';
 import '../../services/chat_inference_pipeline.dart';
 import '../../services/offline_rag_service.dart';
 import '../../services/qwen_chat_service.dart';
@@ -82,60 +80,47 @@ final bundledModelsBootstrapProvider =
   }
 });
 
+/// The brain model file (Qwen2.5-Coder-1.5B) and whether it is usable.
 final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
   if (kIsWeb) {
     return const ModelInfo(status: ModelStatus.notInstalled);
   }
   try {
-    final boot = await ref.watch(bundledModelsBootstrapProvider.future);
-    final info = await ref.watch(modelManagerProvider).checkModel();
-    if (info.isReady) return info;
-    if (boot.chatBundledInApk && useLiteRtChatBrain) {
-      return const ModelInfo(
-        status: ModelStatus.ready,
-        path: ModelManager.bundledChatModelPath,
-        platform: 'Android (LiteRT-LM · Qwen 0.6B)',
-      );
-    }
-    return info;
+    await ref.watch(bundledModelsBootstrapProvider.future);
+    return await ref.watch(modelManagerProvider).checkModel();
   } catch (e, st) {
     debugPrint('modelInfoProvider failed: $e\n$st');
     return const ModelInfo(status: ModelStatus.notInstalled);
   }
 });
 
-/// Qwen (brain) + AfriSLM (translator) as two llama.cpp instances.
+/// The two on-device models: one brain and one translator.
+///
+/// [reasoner] is Qwen2.5-Coder-1.5B. It does all reasoning and answer
+/// generation — tutoring, practice, learning paths, and code for the labs
+/// and builders. AfriSLM is the [translator] and is never used as a brain.
 ///
 /// [shared] is only true when both roles accidentally point at the same
 /// GGUF file — then hops stay sequential to avoid a nested native lock.
-/// AfriSLM is never loaded as the tutor brain.
-/// Qwen 0.6B (general) + optional Qwen 1.5B Coder + AfriSLM translator.
-///
-/// AfriSLM is never loaded as the tutor brain. The 1.5B file is loaded on
-/// the first programming turn so non-coding students do not pay that RAM.
 class DualModelRuntime {
   DualModelRuntime({
     required this.reasoner,
     InferenceEngine? translator,
     this.shared = false,
-    this.programmingPath,
     this.afrislmPath,
-    InferenceEngine? programming,
-  })  : _translator = translator,
-        _programming = programming;
+  }) : _translator = translator;
 
   final InferenceEngine reasoner;
   InferenceEngine? _translator;
   final bool shared;
-  String? programmingPath;
 
   /// On-disk AfriSLM path for lazy / retry load after Install Packages.
   String? afrislmPath;
-  InferenceEngine? _programming;
 
   InferenceEngine? get translator => _translator;
 
-  InferenceEngine? get programming => _programming;
+  /// Programming work runs on the same brain — there is no second model.
+  InferenceEngine get programming => reasoner;
 
   Future<InferenceEngine?>? _translatorLoad;
 
@@ -179,46 +164,14 @@ class DualModelRuntime {
     }
   }
 
-  Future<InferenceEngine?> ensureProgramming() async {
-    if (_programming != null && _programming!.isReady) return _programming;
-    var path = programmingPath;
-    // On-demand coder fetch may land after DualModelRuntime was built with
-    // a null path — rediscover from disk instead of forever falling back
-    // to the 0.6B chat brain for labs / Create / Practice.
-    if (path == null || path.isEmpty) {
-      final info = await ProgrammingModelManager().checkModel();
-      final discovered = info.path;
-      if (!info.isReady || discovered == null) return null;
-      path = discovered;
-      programmingPath = discovered;
-    }
-
-    final lower = path.toLowerCase();
-    final wantsLiteRt = useLiteRtCoderRuntime &&
-        (lower.endsWith('.litertlm') ||
-            lower.endsWith('.literlm') ||
-            lower.startsWith('bundled:'));
-    if (wantsLiteRt) {
-      AiModelManager.instance.registerAppCoderPath(path);
-      await AiModelManager.instance.prepareModelForMode(ActiveModelMode.appCoder);
-      final eng = AiModelManager.instance.coderEngine;
-      if (eng == null || !eng.isReady) return null;
-      _programming = eng;
-      _coderService ??= AiCoderService(engine: eng);
-      return eng;
-    }
-
-    final coder = AiCoderService();
-    final ok = await coder.loadFromPath(path);
-    if (!ok || coder.engine == null) return null;
-    _programming = coder.engine;
-    _coderService = coder;
-    return _programming;
-  }
+  /// Kept so existing callers keep working: always the brain.
+  Future<InferenceEngine?> ensureProgramming() async => reasoner;
 
   AiCoderService? _coderService;
 
-  AiCoderService? get coderService => _coderService;
+  /// Build prompts (sites, apps) on the brain.
+  AiCoderService get coderService =>
+      _coderService ??= AiCoderService(engine: reasoner);
 }
 
 final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
@@ -250,73 +203,53 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
     if (kIsWeb) return demo(DemoReason.web);
 
     await ref.watch(bundledModelsBootstrapProvider.future);
-    final qwenInfo = await ref.watch(modelInfoProvider.future);
+    final brainInfo = await ref.watch(modelInfoProvider.future);
     final translateInfo = await ref.watch(translateModelInfoProvider.future);
-    final programmingInfo = await ref.watch(programmingModelInfoProvider.future);
-    final plan = planDualGgufs(qwenInfo, translateInfo, programmingInfo);
-    final programmingPath = plan.programmingPath;
+    final plan = planDualGgufs(brainInfo, translateInfo);
 
-    if (!plan.canTutor ||
-        plan.qwenPath == null ||
-        !isAllowedChatBrainPath(plan.qwenPath!)) {
+    final brainPath = plan.brainPath;
+    if (brainPath == null || !isAllowedBrainPath(brainPath)) {
       debugPrint(
-        useLiteRtChatBrain
-            ? 'CHAT BRAIN missing. Place chat-model.litertlm '
-                '(LiteRT-LM) in the APK or Install from file.'
-            : 'CHAT BRAIN missing. Place qwen_brain_0.6b.Q4_K_M.gguf or '
-                'qwen-0.6b-instruct.gguf in models/.',
+        'BRAIN missing. Place ${ModelManager.brainGgufFileName} in models/ '
+        '(or use Install Packages).',
       );
       return demo(DemoReason.modelNotInstalled);
     }
 
-    final qwenPath = plan.qwenPath!;
     final InferenceEngine reasoner;
-    final chatIsLiteRt = useLiteRtChatBrain &&
-        (qwenPath.toLowerCase().endsWith('.litertlm') ||
-            qwenPath.toLowerCase().endsWith('.literlm') ||
-            qwenPath.toLowerCase().startsWith('bundled:'));
-    if (chatIsLiteRt) {
-      reasoner = LiteRtLmEngineImpl(roleLabel: 'Qwen 0.6B chat');
+    final liteRt = useLiteRtRuntime && isLiteRtModelPath(brainPath);
+    if (liteRt) {
+      reasoner = LiteRtLmEngineImpl(roleLabel: 'Qwen2.5-Coder 1.5B');
     } else {
-      // Windows/Linux GGUF, or Android HF-fetched GGUF fallback.
       reasoner = LlamaCppEngineImpl(
         schedulerLane: EngineLane.reason,
-        backendLabel: 'llama.cpp · Qwen 0.6B chat (AVX2 · CPU×2)',
+        backendLabel: 'llama.cpp · Qwen2.5-Coder 1.5B (CPU×2)',
         nGpuLayers: 0,
         threads: 2,
+        // `/no_think` is a Qwen3 switch; Qwen2.5 would read it as text.
+        appendNoThink: false,
       );
     }
-    await reasoner.loadModel(qwenPath);
+    await reasoner.loadModel(brainPath);
     if (reasoner is LiteRtLmEngineImpl) {
-      AiModelManager.instance.registerChatBrain(
-        engine: reasoner,
-        path: qwenPath,
-      );
       await reasoner.pinSystemPrompt(kTutorContract);
     }
-    if (useLiteRtCoderRuntime &&
-        programmingPath != null &&
-        (programmingPath.toLowerCase().endsWith('.litertlm') ||
-            programmingPath.toLowerCase().endsWith('.literlm') ||
-            programmingPath.toLowerCase().startsWith('bundled:'))) {
-      AiModelManager.instance.registerAppCoderPath(programmingPath);
-    }
     debugPrint(
-      'CHAT BRAIN loaded ${chatIsLiteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
-      'at $qwenPath',
+      'BRAIN loaded ${liteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
+      'at $brainPath',
     );
 
     InferenceEngine? translator;
-    var shared = false;
+    const shared = false;
     final afrislmPath = plan.afrislmPath;
     if (plan.canTranslate) {
       if (plan.sameFile) {
         debugPrint(
-          'TRANSLATION OFF: AfriSLM path collided with the chat brain. '
+          'TRANSLATION OFF: AfriSLM path collided with the brain. '
           'Install the translation GGUF separately.',
         );
       } else {
-        // Soft-fail: never take down the chat brain if AfriSLM OOM / fails
+        // Soft-fail: never take down the brain if AfriSLM OOM / fails
         // after Install Packages on a 4 GB phone.
         try {
           final engine = LlamaCppEngineImpl(
@@ -328,7 +261,7 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
           debugPrint('TRANSLATION ON: AfriSLM at $afrislmPath');
         } catch (e, st) {
           debugPrint(
-            'TRANSLATION LOAD FAILED (chat stays up; retry on demand): $e\n$st',
+            'TRANSLATION LOAD FAILED (brain stays up; retry on demand): $e\n$st',
           );
           translator = null;
         }
@@ -337,24 +270,10 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       debugPrint('TRANSLATION OFF: no AfriSLM GGUF. English-only tutor.');
     }
 
-    if (programmingPath != null) {
-      debugPrint(
-        useLiteRtCoderRuntime
-            ? 'CODER ready (LiteRT path) at $programmingPath'
-            : 'CODER ready (GGUF CPU path) at $programmingPath',
-      );
-    } else {
-      debugPrint(
-        'CODER missing. Place qwen2.5-coder-1.5b-instruct.gguf '
-        '(or Android LiteRT qwen_coder_1.5b.litertlm) in models/.',
-      );
-    }
-
     final runtime = DualModelRuntime(
       reasoner: reasoner,
       translator: translator,
       shared: shared,
-      programmingPath: programmingPath,
       afrislmPath: afrislmPath,
     );
     ref.onDispose(() async {
@@ -362,10 +281,6 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
       final t = runtime.translator;
       if (t != null && !identical(t, reasoner)) {
         await t.dispose();
-      }
-      await runtime.coderService?.dispose();
-      if (runtime.coderService == null) {
-        await runtime.programming?.dispose();
       }
     });
     return runtime;
@@ -381,38 +296,21 @@ final engineLoadedProvider = FutureProvider<InferenceEngine>((ref) async {
   return (await ref.watch(dualModelRuntimeProvider.future)).reasoner;
 });
 
-final programmingModelManagerProvider =
-    Provider<ProgrammingModelManager>((_) => ProgrammingModelManager());
-
-final programmingModelInfoProvider = FutureProvider<ModelInfo>((ref) async {
-  if (kIsWeb) {
-    return const ModelInfo(status: ModelStatus.notInstalled);
-  }
-  try {
-    await ref.watch(bundledModelsBootstrapProvider.future);
-    return ref.watch(programmingModelManagerProvider).checkModel();
-  } catch (e, st) {
-    debugPrint('programmingModelInfoProvider failed: $e\n$st');
-    return const ModelInfo(status: ModelStatus.notInstalled);
-  }
+/// Same file as [modelInfoProvider] — programming uses the one brain. Kept
+/// as its own name because screens ask "is the coder ready?".
+final programmingModelInfoProvider = FutureProvider<ModelInfo>((ref) {
+  return ref.watch(modelInfoProvider.future);
 });
 
-/// 1.5B Coder when installed, otherwise the 0.6B general brain.
-final programmingEngineProvider = FutureProvider<InferenceEngine>((ref) async {
-  final runtime = await ref.watch(dualModelRuntimeProvider.future);
-  return await runtime.ensureProgramming() ?? runtime.reasoner;
+/// The brain. Kept as its own name for the labs and builders.
+final programmingEngineProvider = FutureProvider<InferenceEngine>((ref) {
+  return ref.watch(engineLoadedProvider.future);
 });
 
-/// Hybrid multi-platform coder (LiteRT Android / GGUF CPU Windows).
+/// Site/app build prompts on the brain.
 final aiCoderServiceProvider = FutureProvider<AiCoderService>((ref) async {
   final runtime = await ref.watch(dualModelRuntimeProvider.future);
-  await runtime.ensureProgramming();
-  final existing = runtime.coderService;
-  if (existing != null) return existing;
-  final coder = AiCoderService();
-  await coder.ensureLoaded();
-  ref.onDispose(coder.dispose);
-  return coder;
+  return runtime.coderService;
 });
 
 /// GGUF / LiteRT chat brain service.

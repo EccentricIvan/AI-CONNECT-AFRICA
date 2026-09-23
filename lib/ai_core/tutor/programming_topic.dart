@@ -1,7 +1,7 @@
 /// Programming Learn subjects and the 1.5B coder brain.
 ///
-/// Qwen 0.6B tutors everything else. Qwen 1.5B Coder tutors Python, websites,
-/// and apps. AfriSLM still does the language hops for both brains.
+/// One model (Qwen2.5-Coder-1.5B) tutors everything; programming subjects just
+/// get the programming contract. AfriSLM does the language hops.
 library;
 
 const kProgrammingSubjectIds = {

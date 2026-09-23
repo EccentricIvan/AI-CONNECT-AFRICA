@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_lab.dart';
 import '../../shared/coding/code_lab_session.dart';
 
@@ -20,13 +19,6 @@ class AppDevLabScreen extends ConsumerStatefulWidget {
 }
 
 class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // Autocorrect still reaches the coder; nothing else on this screen does.
-    scheduleLiteRtMode(ActiveModelMode.appCoder);
-  }
-
   @override
   Widget build(BuildContext context) {
     return const CodeLabScaffold(

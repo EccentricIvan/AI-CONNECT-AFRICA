@@ -1,7 +1,7 @@
 /// On-device dual-SLM budget and generation knobs.
 ///
 /// Both engines stay mapped, not copied:
-///   * Reasoning — Qwen-0.6B-Instruct GGUF via llama.cpp
+///   * Reasoning — Qwen2.5-Coder-1.5B-Instruct GGUF via llama.cpp
 ///   * Translation — TranslatePsy-AfriSLM 0.8B GGUF via llama.cpp
 ///
 /// Decode is greedy: [kTutorTemperature] 0.1, [kDoSample] false, [kTopK] 1
@@ -34,7 +34,7 @@ const int kTopK = 1;
 /// Fixed seed so two identical prompts decode the same way.
 const int kRandomSeed = 0;
 
-/// Hard cap on tutor decode length (0.6B general reasoning).
+/// Hard cap on tutor decode length.
 /// Enough room for a full mentor beat even if a few think tokens leak first.
 const int kMaxNewTokens = 350;
 

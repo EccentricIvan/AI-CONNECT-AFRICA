@@ -8,7 +8,7 @@ import 'offline_storage_service.dart';
 ///
 /// ## Why full-text search and not embeddings
 ///
-/// The target device is a 4 GB Android phone already holding a 0.6B chat model
+/// The target device is a 4 GB Android phone already holding a 1.5B brain
 /// and a 0.8B translator in memory. A third model for embeddings would not fit,
 /// and even if it did, embedding the query on every turn would add a model load
 /// to the critical path — the exact latency failure this product keeps hitting.
@@ -29,7 +29,7 @@ class OfflineRagService {
 
   final OfflineStorageService _storage;
 
-  /// How many chunks reach the prompt. Three is the agreed budget: on a 0.6B
+  /// How many chunks reach the prompt. Three is the agreed budget: on a small
   /// model a longer fact book crowds out the student's actual question.
   static const topChunks = 3;
 

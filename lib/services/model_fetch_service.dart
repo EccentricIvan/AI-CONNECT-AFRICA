@@ -9,8 +9,6 @@ import '../ai_core/model/model_download_service.dart';
 import '../ai_core/model/model_locations.dart';
 import '../ai_core/model/model_manager.dart';
 import '../ai_core/model/model_package.dart';
-import '../ai_core/model/model_runtime_policy.dart';
-import '../ai_core/model/programming_model_manager.dart';
 import '../ai_core/providers/ai_provider.dart';
 import '../ai_core/translate/afrislm_model_manager.dart';
 
@@ -30,35 +28,20 @@ const kModelFetchHfBaseUrl = String.fromEnvironment(
 /// Filenames match the HF package repo so Install Packages can resolve
 /// without rewriting. Discovery managers also accept legacy aliases.
 class ModelFetchFiles {
-  /// Android LiteRT tutor; desktop llama.cpp GGUF.
-  static String get chat => useLiteRtChatBrain
-      ? ModelManager.chatModelFileName
-      : ModelManager.qwenGgufFileName;
-
-  static String get chatSha256 => useLiteRtChatBrain
-      ? '555579ff2f4fd13379abe69c1c3ab5200f7338bc92471557f1d6614a6e5ab0b4'
-      : 'ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a';
-
-  static int get chatApproxBytes =>
-      useLiteRtChatBrain ? 614236160 : 396705472;
+  /// The brain: Qwen2.5-Coder-1.5B-Instruct GGUF. It answers everything —
+  /// tutoring and code — on every platform.
+  static const chat = ModelManager.brainGgufFileName;
+  static const chatSha256 =
+      'cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046';
+  static const chatApproxBytes = 1117320768;
 
   static const translate = 'afrislm-0.8b-q4_k_m.gguf';
   static const translateSha256 =
       '4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc';
   static const translateApproxBytes = 672329792;
 
-  /// Preferred Android LiteRT name (upload when available).
-  static const coderLiteRt = 'qwen_coder_1.5b.litertlm';
-
-  /// HF package currently ships this GGUF for Windows/Linux (and Android
-  /// fallback until a LiteRT coder artifact is published).
-  static const coderGguf = 'qwen2.5-coder-1.5b-instruct.gguf';
-  static const coderSha256 =
-      'cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046';
-  static const coderApproxBytes = 1117320768;
-
-  /// Platform-appropriate coder filename for fetch + presence checks.
-  static String get coder => coderGguf;
+  /// Coding runs on the brain; there is no separate coder file.
+  static const coder = chat;
 }
 
 enum ModelFetchPhase {
@@ -135,18 +118,15 @@ class ModelFetchService {
 
   CancellationToken? _token;
 
-  static ModelPackage get coreChatPackage {
-    final name = ModelFetchFiles.chat;
-    return ModelPackage(
-      id: 'core_chat',
-      label: 'Classroom package',
-      fileName: name,
-      url: '$kModelFetchHfBaseUrl/$name',
-      sha256: ModelFetchFiles.chatSha256,
-      approxBytes: ModelFetchFiles.chatApproxBytes,
-      essential: true,
-    );
-  }
+  static ModelPackage get coreChatPackage => const ModelPackage(
+        id: 'core_chat',
+        label: 'Classroom package',
+        fileName: ModelFetchFiles.chat,
+        url: '$kModelFetchHfBaseUrl/${ModelFetchFiles.chat}',
+        sha256: ModelFetchFiles.chatSha256,
+        approxBytes: ModelFetchFiles.chatApproxBytes,
+        essential: true,
+      );
 
   static ModelPackage get coreTranslatePackage => const ModelPackage(
         id: 'core_translate',
@@ -158,29 +138,16 @@ class ModelFetchService {
         essential: true,
       );
 
-  static ModelPackage get coderPackage {
-    final name = ModelFetchFiles.coder;
-    return ModelPackage(
-      id: 'coder',
-      label: 'Studio package',
-      fileName: name,
-      url: '$kModelFetchHfBaseUrl/$name',
-      sha256: ModelFetchFiles.coderSha256,
-      approxBytes: ModelFetchFiles.coderApproxBytes,
-      essential: false,
-    );
-  }
+  /// Coding runs on the brain, so "the coder package" is the brain package.
+  static ModelPackage get coderPackage => coreChatPackage;
 
   static List<ModelPackage> get corePackages => [
         coreChatPackage,
         coreTranslatePackage,
       ];
 
-  /// Every package Install Packages pulls in one pass (tutor + translate + coder).
-  static List<ModelPackage> get allPackages => [
-        ...corePackages,
-        coderPackage,
-      ];
+  /// Every package Install Packages pulls: the brain and the translator.
+  static List<ModelPackage> get allPackages => corePackages;
 
   /// Canonical install directory (same as USB / manager discovery).
   ///
@@ -207,8 +174,6 @@ class ModelFetchService {
         return (await ModelManager().checkModel()).isReady;
       case 'core_translate':
         return (await AfriSlmModelManager().checkModel()).isReady;
-      case 'coder':
-        return (await ProgrammingModelManager().checkModel()).isReady;
       default:
         final path = await pathFor(pkg.fileName);
         return _fileReady(path, pkg.approxBytes);
@@ -234,7 +199,7 @@ class ModelFetchService {
     return true;
   }
 
-  /// True when tutor + translation + coder are all discoverable.
+  /// True when the brain and the translator are both discoverable.
   Future<bool> areAllPackagesReady() async {
     for (final pkg in allPackages) {
       if (!await isPackagePresent(pkg)) return false;
@@ -244,7 +209,7 @@ class ModelFetchService {
 
   /// Pre-flight used by the Install Packages screen / ModelGate.
   ///
-  /// True when every package (including coder) is already on disk — the UI
+  /// True when both packages are already on disk — the UI
   /// must skip the installer and go straight to home.
   Future<bool> checkPackagesCached() => areAllPackagesReady();
 
@@ -291,13 +256,13 @@ class ModelFetchService {
 
   void cancel() => _token?.cancel();
 
-  /// Fetch tutor + translation + coder in one Install Packages pass.
+  /// Fetch the brain and the translator in one Install Packages pass.
   /// Skips any file already on disk.
   Future<ModelFetchUiState> fetchAllPackages({
     void Function(ModelFetchUiState state)? onState,
   }) async {
     if (await areAllPackagesReady()) {
-      final ready = ModelFetchUiState(
+      const ready = ModelFetchUiState(
         phase: ModelFetchPhase.ready,
         statusLabel: 'Ready',
         receivedBytes: 1,
@@ -409,7 +374,7 @@ class ModelFetchService {
   }) =>
       fetchAllPackages(onState: onState);
 
-  /// Fallback when coder was deleted after the one-time Install Packages pass.
+  /// Labs ask for "the coder"; that is the brain, fetched with everything else.
   Future<ModelFetchUiState> fetchCoderPackage({
     void Function(ModelFetchUiState state)? onState,
   }) async {
@@ -446,7 +411,7 @@ final modelFetchServiceProvider = Provider<ModelFetchService>(
   (ref) => ModelFetchService(),
 );
 
-/// True when tutor + translation + coder are all on disk (Install Packages done).
+/// True when the brain and the translator are on disk (Install Packages done).
 final classroomPackagesReadyProvider = FutureProvider<bool>((ref) async {
   return ref.watch(modelFetchServiceProvider).checkPackagesCached();
 });
@@ -565,8 +530,6 @@ class ModelFetchController extends StateNotifier<ModelFetchUiState> {
 
   void _invalidateCoderStack() {
     _ref.invalidate(programmingModelInfoProvider);
-    // Drop stale "coder missing → chat fallback" futures without reloading
-    // the chat brain (dualModelRuntime stays warm).
     _ref.invalidate(programmingEngineProvider);
     _ref.invalidate(aiCoderServiceProvider);
   }

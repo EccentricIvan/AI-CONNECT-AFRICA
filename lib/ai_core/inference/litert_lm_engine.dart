@@ -9,8 +9,9 @@ import 'runtime_config.dart';
 import 'sanitize_llm_response.dart';
 
 /// Chat engine for every desktop/mobile platform — Google LiteRT-LM runtime
-/// via flutter_gemma_litertlm, registered in main.dart. Runs Qwen3-0.6B
-/// entirely on-device from a single .litertlm model file.
+/// via flutter_gemma_litertlm, registered in main.dart. Runs a `.litertlm`
+/// export of the brain (Qwen2.5-Coder-1.5B) on Android when one is installed;
+/// otherwise the brain runs as a GGUF on llama.cpp.
 ///
 /// On Windows/Linux this always requests the CPU backend. On-device testing
 /// on a real (weak/older) Windows GPU found the native WebGPU backend
@@ -27,7 +28,7 @@ import 'sanitize_llm_response.dart';
 /// default (GPU/NPU delegate when available), since it's the primary target
 /// and this machine's finding doesn't generalize to it.
 class LiteRtLmEngineImpl extends InferenceEngine {
-  LiteRtLmEngineImpl({this.roleLabel = 'Qwen3-0.6B'});
+  LiteRtLmEngineImpl({this.roleLabel = 'Qwen2.5-Coder 1.5B'});
 
   /// Distinguishes chat vs coder in logs when both share FlutterGemma.
   final String roleLabel;

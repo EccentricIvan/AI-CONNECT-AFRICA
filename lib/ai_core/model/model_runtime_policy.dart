@@ -1,63 +1,33 @@
-/// Platform runtime policy for the hybrid three-model stack.
+/// Platform runtime policy for the two-model stack.
 ///
-/// | Role        | Android                              | Windows / Linux                 |
-/// |-------------|--------------------------------------|---------------------------------|
-/// | Chat brain  | LiteRT-LM (`.litertlm`, NNAPI/GPU)   | llama.cpp GGUF (AVX2 CPU)       |
-/// | Coder       | LiteRT-LM (`.litertlm`)              | llama.cpp GGUF (CPU×2)          |
-/// | Translator  | Isolated via [AiEngineService]       | Isolated via [AiEngineService]  |
+/// | Role       | Model                     | Android                        | Windows / Linux      |
+/// |------------|---------------------------|--------------------------------|----------------------|
+/// | Brain      | Qwen2.5-Coder-1.5B        | llama.cpp GGUF, or LiteRT-LM   | llama.cpp GGUF (CPU) |
+/// |            | (reasoning, answers, code)| `.litertlm` when one exists    |                      |
+/// | Translator | AfriSLM 0.8B              | llama.cpp GGUF                 | llama.cpp GGUF       |
 library;
 
 import 'package:flutter/foundation.dart';
 
-/// Android chat uses LiteRT for NNAPI / GPU delegates.
-bool get useLiteRtChatBrain =>
+/// Android may run the brain on LiteRT-LM (NNAPI/GPU) when a `.litertlm`
+/// export is installed; everywhere else it is llama.cpp.
+bool get useLiteRtRuntime =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-/// Desktop chat stays on llama.cpp GGUF.
-bool get useGgufChatBrain =>
-    !kIsWeb && defaultTargetPlatform != TargetPlatform.android;
+/// flutter_gemma / LiteRT only needs initializing where it can run.
+bool get shouldInitializeLiteRt => useLiteRtRuntime;
 
-bool get useLiteRtCoderRuntime =>
-    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-
-bool get useGgufCoderRuntime =>
-    !kIsWeb && defaultTargetPlatform != TargetPlatform.android;
-
-/// FlutterGemma / LiteRT needed whenever Android chat or coder runs.
-bool get shouldInitializeLiteRt =>
-    useLiteRtChatBrain || useLiteRtCoderRuntime;
-
-bool isAllowedChatBrainPath(String path) {
+/// True for a LiteRT-LM model (file or APK-bundled asset).
+bool isLiteRtModelPath(String path) {
   final lower = path.toLowerCase();
-  if (useLiteRtChatBrain) {
-    // Prefer LiteRT on Android; also accept HF-fetched GGUF so one package
-    // set works across Play Store installs until a .litertlm is present.
-    return lower.endsWith('.litertlm') ||
-        lower.endsWith('.literlm') ||
-        lower.endsWith('.tflite') ||
-        lower.endsWith('.gguf') ||
-        lower.startsWith('bundled:');
-  }
-  return lower.endsWith('.gguf');
+  return lower.endsWith('.litertlm') ||
+      lower.endsWith('.literlm') ||
+      lower.startsWith('bundled:');
 }
 
-bool isAllowedCoderPath(String path) {
+/// Whether [path] is a brain model this platform can load.
+bool isAllowedBrainPath(String path) {
   final lower = path.toLowerCase();
-  if (useLiteRtCoderRuntime) {
-    // Prefer LiteRT on Android; accept HF GGUF coder until a .litertlm
-    // artifact is published on the package repo.
-    return lower.endsWith('.litertlm') ||
-        lower.endsWith('.literlm') ||
-        lower.endsWith('.gguf') ||
-        lower.startsWith('bundled:');
-  }
-  return lower.endsWith('.gguf');
+  if (lower.endsWith('.gguf')) return true;
+  return useLiteRtRuntime && isLiteRtModelPath(path);
 }
-
-bool get useLiteRtTutorRuntime => useLiteRtChatBrain;
-
-bool get useGgufTutorRuntime => useGgufChatBrain;
-
-bool isAllowedTutorModelPath(String path) => isAllowedChatBrainPath(path);
-
-bool get loadProgrammingGguf => useGgufCoderRuntime;

@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 AI Connect Africa is a **fully offline AI-powered Learning Operating System**. It runs entirely on-device — no internet, no cloud, no external APIs, ever. Two on-device models are bundled and run locally:
 
-- **Chat/tutor — Qwen3-0.6B** → **Android**: LiteRT-LM (`.litertlm`, via `flutter_gemma`/`flutter_gemma_litertlm`) with NNAPI/GPU acceleration — see `lib/ai_core/inference/litert_lm_engine.dart`. **Windows/Linux**: the same Qwen3-0.6B as a GGUF running in-process via llama.cpp (`llm_llamacpp`), CPU-only — see `lib/ai_core/inference/llama_cpp_engine.dart`. Apache-2.0, no license click-through needed (`litert-community/Qwen3-0.6B` on Hugging Face).
-- **Translation — TranslatePsy-AfriSLM (GGUF)** → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. Runs in-process via llama.cpp (`llm_llamacpp`) on **every platform** (Android, Windows, Linux) — one engine, no Ollama server, no separate runtime install. See `lib/ai_core/translate/afrislm_model_manager.dart` and `lib/ai_core/inference/llama_cpp_engine.dart`.
+- **Brain — Qwen2.5-Coder-1.5B-Instruct (GGUF)** → the one reasoning model. It does **all** reasoning and answer generation: tutoring, practice, learning paths, *and* code for the labs and builders (programming subjects just get the programming contract, `kProgrammingTutorContract`, on the same engine). Runs in-process via llama.cpp (`llm_llamacpp`), CPU-only, on every platform — see `lib/ai_core/model/model_manager.dart` and `dualModelRuntimeProvider` in `lib/ai_core/providers/ai_provider.dart`. Android also accepts a LiteRT-LM `.litertlm` export if one is installed (none is published yet). Apache-2.0. **There is no Qwen3-0.6B any more** — it was removed on 2026-09-23 so one model does both jobs; don't reintroduce a separate chat or coder model.
+- **Translation — TranslatePsy-AfriSLM (GGUF)** → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. Runs in-process via llama.cpp (`llm_llamacpp`) on **every platform** (Android, Windows, Linux) — one engine, no Ollama server, no separate runtime install. `/no_think` is sent to AfriSLM (a Qwen3.5 fine-tune) but not to the Qwen2.5 brain (`LlamaCppEngineImpl.appendNoThink`). See `lib/ai_core/translate/afrislm_model_manager.dart` and `lib/ai_core/inference/llama_cpp_engine.dart`.
 
 Both models expose the same Dart inference interface from `lib/ai_core/inference/inference_engine.dart`. Chat and translation are both wired up and shipping. On Windows, llama.cpp's `ggml.dll` carries a load-time import on `ggml-vulkan.dll` → `vulkan-1.dll` even though inference runs CPU-only (`nGpuLayers: 0`); the build ships a bundled Vulkan loader (`tools/fetch_vulkan_loader.ps1`, `windows/CMakeLists.txt`) so machines without a Vulkan-capable display driver can still load llama.cpp at all.
 
@@ -136,14 +136,13 @@ Store compressed summaries only — never full conversation logs. Stored fields:
 Model files are large and are never committed to git — always gitignored. Two distribution paths now exist:
 
 1. **USB / local school server** (original, still supported) — the model file is transferred by hand and dropped into the platform's expected folder (see `ModelManager`/`AfriSlmModelManager`). No internet needed anywhere in this path.
-2. **Bundled in the GitHub Release zip** (Windows, added for a plug-and-play download) — the release zip ships with a `models/` folder next to the executable, containing the Qwen chat GGUF (`qwen-0.6b-instruct.gguf` on Windows/Linux; `chat-model.litertlm` is the Android-only LiteRT name) and `afrislm-0.8b-q4_k_m.gguf`. Both model managers check this bundled path automatically (`<exe dir>/models/...`), so the app works immediately after extracting, no manual install step. The app itself still runs fully offline once downloaded — this only changes how the model bytes are *obtained*, not the offline runtime constraint.
+2. **Bundled in the GitHub Release zip** (Windows, added for a plug-and-play download) — the release zip ships with a `models/` folder next to the executable, containing the brain (`qwen2.5-coder-1.5b-instruct.gguf`) and `afrislm-0.8b-q4_k_m.gguf`. Both model managers check this bundled path automatically (`<exe dir>/models/...`), so the app works immediately after extracting, no manual install step. The app itself still runs fully offline once downloaded — this only changes how the model bytes are *obtained*, not the offline runtime constraint.
 
-Bundling a model into a public release requires its license to permit redistribution — verify before adding a new model here (Qwen3-0.6B is confirmed Apache-2.0).
+Bundling a model into a public release requires its license to permit redistribution — verify before adding a new model here (Qwen2.5-Coder-1.5B is confirmed Apache-2.0).
 
 | Role | Platform | Format | Model | Size |
 |------|----------|--------|-------|------|
-| Chat/tutor | Android | `.litertlm` (LiteRT-LM) | Qwen3-0.6B | ~330–590 MB |
-| Chat/tutor | Windows / Linux | GGUF 4-bit (llama.cpp) | Qwen3-0.6B | ~330–590 MB |
+| Brain (tutor + code) | Android, Windows, Linux | GGUF 4-bit (llama.cpp) | Qwen2.5-Coder-1.5B-Instruct | ~1.1 GB |
 | Translation | Android, Windows, Linux | GGUF 4-bit (llama.cpp) | AfriSLM 0.8B Q4 | ~0.5–1 GB |
 
 The app must detect whether the model file is present at startup (checking the bundled path before falling back to the USB-installed path) and show a clear "Model not installed — transfer via USB" screen rather than failing silently when neither is found.
@@ -215,7 +214,7 @@ After install, PATH must include the Flutter `bin` directory — open a new term
 
 Follow this order — do not jump ahead to gamification or certificates before the core tutor works:
 
-1. Local LLM integration (Qwen3-0.6B loading + inference via LiteRT-LM)
+1. Local LLM integration (brain loading + inference via llama.cpp)
 2. Basic Learn mode (ask question → get mentor response)
 3. Student memory (profile creation + summary storage)
 4. Learning paths (auto-generate curriculum for a topic)

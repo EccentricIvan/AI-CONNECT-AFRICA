@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_lab.dart';
 import '../../shared/coding/code_lab_session.dart';
 
@@ -18,12 +17,6 @@ class WebDevLabScreen extends ConsumerStatefulWidget {
 }
 
 class _WebDevLabScreenState extends ConsumerState<WebDevLabScreen> {
-  @override
-  void initState() {
-    super.initState();
-    scheduleLiteRtMode(ActiveModelMode.appCoder);
-  }
-
   @override
   Widget build(BuildContext context) {
     return const CodeLabScaffold(

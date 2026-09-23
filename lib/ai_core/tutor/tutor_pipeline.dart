@@ -261,7 +261,6 @@ class TutorPipeline {
     return '''$notes
 $replyShape
 ${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock(maxChars: memoryBudget)}CURRENT: $q
-/no_think
 Tutor:''';
   }
 

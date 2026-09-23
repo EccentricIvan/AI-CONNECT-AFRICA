@@ -1,6 +1,7 @@
 <#
 .SYNOPSIS
-  Builds a plug-and-play Android APK that embeds chat + translation models,
+  Builds a plug-and-play Android APK that embeds the two models (the
+  Qwen2.5-Coder-1.5B brain + the AfriSLM translator),
   and optionally a Windows zip with a models/ folder beside the exe.
 
 .DESCRIPTION
@@ -12,7 +13,7 @@
   removed so the working tree stays clean.
 
 .PARAMETER ModelPackDir
-  Folder containing chat-model.litertlm and translate-afrislm.gguf
+  Folder containing qwen2.5-coder-1.5b-instruct.gguf and translate-afrislm.gguf
   (default: <repo>\dist\models)
 
 .PARAMETER Version
@@ -38,7 +39,8 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 if (-not $ModelPackDir) { $ModelPackDir = Join-Path $repoRoot 'dist\models' }
 if (-not $OutDir) { $OutDir = Join-Path $repoRoot 'dist' }
 
-$chatName = 'chat-model.litertlm'
+# The one brain: reasoning, tutoring and code.
+$chatName = 'qwen2.5-coder-1.5b-instruct.gguf'
 $translateName = 'translate-afrislm.gguf'
 $chatSrc = Join-Path $ModelPackDir $chatName
 $translateSrc = Join-Path $ModelPackDir $translateName

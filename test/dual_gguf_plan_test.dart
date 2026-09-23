@@ -5,9 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   const missing = ModelInfo(status: ModelStatus.notInstalled);
-  const qwen = ModelInfo(
+  const coder = ModelInfo(
     status: ModelStatus.ready,
-    path: r'C:\models\qwen-0.6b-instruct.gguf',
+    path: r'C:\models\qwen2.5-coder-1.5b-instruct.gguf',
   );
   const afrislm = ModelInfo(
     status: ModelStatus.ready,
@@ -18,55 +18,35 @@ void main() {
     final plan = planDualGgufs(missing, afrislm);
     expect(plan.canTutor, isFalse);
     expect(plan.canTranslate, isTrue);
-    expect(plan.qwenPath, isNull);
+    expect(plan.brainPath, isNull);
     expect(plan.afrislmPath, afrislm.path);
   });
 
-  test('Qwen alone tutors in English with no translator', () {
-    final plan = planDualGgufs(qwen, missing);
+  test('the coder alone tutors in English with no translator', () {
+    final plan = planDualGgufs(coder, missing);
     expect(plan.canTutor, isTrue);
     expect(plan.canTranslate, isFalse);
-    expect(plan.qwenPath, qwen.path);
+    expect(plan.brainPath, coder.path);
   });
 
   test('both files keep separate roles', () {
-    final plan = planDualGgufs(qwen, afrislm);
-    expect(plan.canTutor, isTrue);
-    expect(plan.canTranslate, isTrue);
-    expect(plan.qwenPath, qwen.path);
+    final plan = planDualGgufs(coder, afrislm);
+    expect(plan.brainPath, coder.path);
     expect(plan.afrislmPath, afrislm.path);
     expect(plan.sameFile, isFalse);
-    expect(plan.canProgram, isFalse);
   });
 
-  test('1.5B coder is a third role, never AfriSLM or 0.6B', () {
-    const coder = ModelInfo(
-      status: ModelStatus.ready,
-      path: r'C:\models\qwen2.5-coder-1.5b-instruct.gguf',
-    );
-    final plan = planDualGgufs(qwen, afrislm, coder);
-    expect(plan.canProgram, isTrue);
-    expect(plan.programmingPath, coder.path);
-    expect(plan.qwenPath, qwen.path);
-    expect(plan.afrislmPath, afrislm.path);
-  });
-
-  test('desktop prefers GGUF tutor names; Android prefers LiteRT chat', () {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    expect(
-      ModelManager.ggufChatFileNames.first,
-      ModelManager.canonicalChatGgufFileName,
-    );
-    expect(
-      ModelManager.chatFileNamesForPlatform(),
-      ModelManager.ggufChatFileNames,
-    );
-
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    expect(
-      ModelManager.chatFileNamesForPlatform().first,
-      ModelManager.chatModelFileName,
-    );
+  test('the brain is the coder on every platform; no 0.6B names remain', () {
+    for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
+      debugDefaultTargetPlatformOverride = platform;
+      final names = ModelManager.brainFileNamesForPlatform();
+      expect(names, contains(ModelManager.brainGgufFileName));
+      expect(names.where((n) => n.contains('0.6b') || n.contains('0.6B')),
+          isEmpty);
+      expect(names.where((n) => n == 'chat-model.litertlm'), isEmpty);
+    }
+    debugDefaultTargetPlatformOverride = null;
+    expect(ModelManager.ggufBrainFileNames.first,
+        'qwen2.5-coder-1.5b-instruct.gguf');
   });
 }

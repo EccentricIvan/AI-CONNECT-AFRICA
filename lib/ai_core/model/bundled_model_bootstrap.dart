@@ -13,14 +13,8 @@ class BundledModelBootstrapResult {
     required this.chatReady,
     required this.translateReady,
     required this.extractedAnything,
-    this.chatBundledInApk = false,
     this.error,
   });
-
-  /// True when the chat model is being served in place from the APK's own
-  /// assets rather than from a file in app storage — the engine then loads
-  /// it via flutter_gemma's `fromBundled`, and nothing is extracted.
-  final bool chatBundledInApk;
 
   final bool chatReady;
   final bool translateReady;
@@ -28,12 +22,11 @@ class BundledModelBootstrapResult {
   final String? error;
 }
 
-/// Prepares the APK-bundled models for the engines on first launch.
+/// Prepares APK-bundled models for the engines on first launch.
 ///
-/// Only the translation GGUF is extracted: llama.cpp opens a filesystem
-/// path, not an AssetManager entry. The chat model stays inside the APK and
-/// is loaded in place by LiteRT-LM via flutter_gemma's `fromBundled`, so it
-/// is stored exactly once on the device instead of twice.
+/// Both models are GGUFs run by llama.cpp, which opens a filesystem path,
+/// not an AssetManager entry — so a fat APK's brain and translator are each
+/// extracted once into app storage.
 ///
 /// Slim / debug APKs without those assets no-op and leave "Install from file"
 /// as the install path. Desktop builds are skipped (they use exe-adjacent
@@ -46,7 +39,7 @@ class BundledModelBootstrap {
         _translate = translateManager ?? AfriSlmModelManager();
 
   static const _channelName = 'ai_connect_africa/bundled_models';
-  static const chatAssetPath = 'models/${ModelManager.chatModelFileName}';
+  static const brainAssetPath = 'models/${ModelManager.brainGgufFileName}';
 
   /// Fat APK / asset-pack names. Install Packages uses Q4; Windows zips and
   /// older fat APKs still ship `translate-afrislm.gguf`.
@@ -85,7 +78,7 @@ class BundledModelBootstrap {
     try {
       final chatInfo = await _chat.checkModel();
       final translateInfo = await _translate.checkModel();
-      final hasChatAsset = await _hasAsset(chatAssetPath);
+      final hasBrainAsset = await _hasAsset(brainAssetPath);
       String? translateAsset;
       for (final asset in translateAssetCandidates) {
         if (await _hasAsset(asset)) {
@@ -97,11 +90,14 @@ class BundledModelBootstrap {
       var extracted = false;
       String? error;
 
-      // The chat model is NOT extracted when the APK carries it. LiteRT-LM
-      // reads the asset in place, so copying it into app storage would just
-      // be a second ~600 MB of the same bytes. Translation still needs a
-      // real file: llama.cpp opens a path, not an AssetManager entry.
       final steps = <({String asset, String dest, String label})>[];
+      if (!chatInfo.isReady && hasBrainAsset) {
+        steps.add((
+          asset: brainAssetPath,
+          dest: await _chat.installTargetPath(),
+          label: 'Tutor model',
+        ));
+      }
       if (!translateInfo.isReady && translateAsset != null) {
         steps.add((
           asset: translateAsset,
@@ -112,8 +108,7 @@ class BundledModelBootstrap {
 
       if (steps.isEmpty) {
         return BundledModelBootstrapResult(
-          chatReady: chatInfo.isReady || hasChatAsset,
-          chatBundledInApk: hasChatAsset && !chatInfo.isReady,
+          chatReady: chatInfo.isReady,
           translateReady: translateInfo.isReady,
           extractedAnything: false,
         );
@@ -141,8 +136,7 @@ class BundledModelBootstrap {
       final chatAfter = await _chat.checkModel();
       final translateAfter = await _translate.checkModel();
       return BundledModelBootstrapResult(
-        chatReady: chatAfter.isReady || hasChatAsset,
-        chatBundledInApk: hasChatAsset && !chatAfter.isReady,
+        chatReady: chatAfter.isReady,
         translateReady: translateAfter.isReady,
         extractedAnything: extracted,
         error: error,
@@ -156,21 +150,6 @@ class BundledModelBootstrap {
         extractedAnything: false,
       );
     }
-  }
-
-  /// Falls back to a real file when LiteRT-LM cannot load the chat model
-  /// straight out of the APK. Costs a second ~600 MB copy, so it only runs
-  /// after an in-place load has actually failed.
-  Future<String> materializeChatModel({
-    void Function(double progress)? onProgress,
-  }) async {
-    final dest = await _chat.installTargetPath();
-    await _extract(
-      assetPath: chatAssetPath,
-      destPath: dest,
-      onProgress: onProgress,
-    );
-    return dest;
   }
 
   Future<bool> _hasAsset(String assetPath) async {

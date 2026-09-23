@@ -1,17 +1,14 @@
 import 'dart:io';
 
 import 'package:ai_connect_africa/ai_core/inference/llama_cpp_engine.dart';
-import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
+import 'package:ai_connect_africa/ai_core/translate/afrislm_model_manager.dart';
 import 'package:ai_connect_africa/ai_core/science/science_text.dart';
 import 'package:ai_connect_africa/ai_core/tutor/school_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
 String? _ggufPath() {
-  const names = [
-    ModelManager.chatModelFileName,
-    ...ModelManager.alternateChatFileNames,
-  ];
+  final names = AfriSlmModelManager.allFileNames;
   const roots = [
     'assets/models',
     'dist/models',

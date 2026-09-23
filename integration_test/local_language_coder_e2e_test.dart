@@ -1,7 +1,7 @@
 import 'package:ai_connect_africa/ai_core/inference/engine_scheduler.dart';
 import 'package:ai_connect_africa/ai_core/inference/llama_cpp_engine.dart';
 import 'package:ai_connect_africa/ai_core/inference/runtime_config.dart';
-import 'package:ai_connect_africa/ai_core/model/programming_model_manager.dart';
+import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
 import 'package:ai_connect_africa/ai_core/translate/afrislm_model_manager.dart';
 import 'package:ai_connect_africa/ai_core/translate/translation_pipeline.dart';
 import 'package:ai_connect_africa/ai_core/tutor/tutor_contract.dart';
@@ -12,10 +12,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-/// Coder brain (Qwen 1.5B) with AfriSLM. The 0.6B chat brain is not loaded.
+/// The brain (Qwen2.5-Coder-1.5B) on the programming contract, with AfriSLM.
 ///
-/// Run this in a fresh process after the chat e2e so llama.cpp never holds
-/// 0.6B, 1.5B, and AfriSLM at once.
+/// Run in a fresh process after the chat e2e so llama.cpp never holds two
+/// copies of the brain alongside AfriSLM.
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -23,7 +23,7 @@ void main() {
   testWidgets(
     'Qwen 1.5B coder, then AfriSLM for Luganda',
     (tester) async {
-      final coderInfo = await ProgrammingModelManager().checkModel();
+      final coderInfo = await ModelManager().checkModel();
       final afrislmInfo = await AfriSlmModelManager().checkModel();
       expect(coderInfo.isReady && coderInfo.path != null, isTrue,
           reason: 'Coder GGUF missing: ${coderInfo.status} ${coderInfo.path}');
@@ -36,7 +36,8 @@ void main() {
       debugPrint('LOAD CODER');
       final coder = LlamaCppEngineImpl(
         schedulerLane: EngineLane.program,
-        backendLabel: 'llama.cpp · Qwen 1.5B Coder',
+        backendLabel: 'llama.cpp · Qwen2.5-Coder 1.5B',
+        appendNoThink: false,
       );
       await coder.loadModel(coderInfo.path!);
       debugPrint('LOADED CODER');

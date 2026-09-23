@@ -16,9 +16,9 @@ Future<void> emitToken(TokenCallback? onToken, String token) async {
 }
 
 /// Unified inference interface.
-/// - Chat brain (Android + Windows): Qwen 0.6B GGUF → [LlamaCppEngineImpl]
-/// - Coder Android: Qwen 1.5B LiteRT → [LiteRtLmEngineImpl]
-/// - Coder Windows: Qwen 1.5B GGUF CPU → [LlamaCppEngineImpl]
+/// - Brain (every platform): Qwen2.5-Coder-1.5B GGUF → [LlamaCppEngineImpl],
+///   or a `.litertlm` export on Android → [LiteRtLmEngineImpl]. It does all
+///   reasoning and answering, tutoring and code alike.
 /// - Translate: AfriSLM via isolated [AiEngineService] / llama.cpp
 /// - Dev/Test → [MockEngine]
 abstract class InferenceEngine {
@@ -84,7 +84,7 @@ class ModelLoadException implements Exception {
   String toString() => 'ModelLoadException: $message';
 }
 
-/// Reasoning engine — LiteRT-LM Qwen3-0.6B (`.litertlm`).
+/// LiteRT-LM engine for a `.litertlm` brain export.
 InferenceEngine createPlatformEngine() {
   return LiteRtLmEngineImpl();
 }

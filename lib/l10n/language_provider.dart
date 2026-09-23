@@ -41,7 +41,7 @@ final persistedLanguageProvider = FutureProvider<String?>((ref) async {
 /// Both halves of the dual-model setup hang off this one value:
 ///
 ///   * static UI labels  → [AppLocale] / `tr()`, table lookups, instant
-///   * dynamic chat text → AfriSLM round-trip around the Qwen3-0.6B tutor
+///   * dynamic chat text → AfriSLM round-trip around the Qwen2.5-Coder tutor
 ///
 /// Before this, each half resolved the language independently from
 /// [activeStudentProvider] — the UI in `app.dart` and the engine in

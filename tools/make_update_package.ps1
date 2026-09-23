@@ -40,7 +40,7 @@ AI Connect Africa update package — $stamp (WITH MODELS)
 ANDROID
   1. Copy "AI Connect Africa v$Version-with-models.apk" to the phone.
   2. Open it and allow Install unknown apps.
-  3. First launch unpacks the bundled chat + translation models (~1 GB free space).
+  3. First launch unpacks the bundled tutor + translation models (~2 GB free space).
   4. No separate model USB step.
 
 WINDOWS
@@ -90,7 +90,7 @@ ANDROID
 AI MODELS (slim package — install once per device)
   Prefer rebuilding with -WithModels for a single fat APK.
   Otherwise use Install from file in the app:
-  - Chat: chat-model.litertlm
+  - Tutor (all answers and code): qwen2.5-coder-1.5b-instruct.gguf
   - Translation: translate-afrislm.gguf
 
 No internet connection is required for any step.

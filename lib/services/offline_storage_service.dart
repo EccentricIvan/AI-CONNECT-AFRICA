@@ -280,7 +280,7 @@ String normalizeTopicKey(String raw) {
 /// as to a person, and a retrieval that returns three of them wastes the
 /// prompt budget it was given. Overlap is deliberately omitted: it multiplies
 /// row count for material that is already small, and duplicate sentences in a
-/// prompt push a 0.6B model toward repeating them.
+/// prompt push a small model toward repeating them.
 List<String> chunkContent(String content, {int size = kResourceChunkSize}) {
   final text = content.trim().replaceAll(RegExp(r'\r\n?'), '\n');
   if (text.isEmpty) return const [];

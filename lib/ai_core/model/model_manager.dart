@@ -41,68 +41,58 @@ class ModelInfo {
   bool get isReady => status == ModelStatus.ready;
 }
 
-/// Locates the Qwen 0.6B chat/tutor brain.
+/// Locates the app's one reasoning model: **Qwen2.5-Coder-1.5B-Instruct**.
 ///
-/// - Android → LiteRT `.litertlm` (NNAPI / GPU)
-/// - Windows / Linux → llama.cpp `.gguf` (AVX2 CPU)
+/// It does all reasoning and answer generation — tutoring, practice, paths
+/// and code alike. The only other model on the device is the AfriSLM
+/// translator (`AfriSlmModelManager`), which never answers questions.
+///
+/// - Windows / Linux / Android → llama.cpp GGUF (CPU).
+/// - Android also accepts a LiteRT-LM `.litertlm` export of the same model,
+///   preferred when present for the NNAPI/GPU delegates. None is published
+///   yet, so today Android runs the GGUF too.
 class ModelManager {
-  /// Canonical hybrid-orchestration chat brain filename (desktop GGUF).
-  static const canonicalChatGgufFileName = 'qwen_brain_0.6b.Q4_K_M.gguf';
+  /// Canonical file name — what Install Packages downloads and what the
+  /// Windows release zip ships in `models/`.
+  static const brainGgufFileName = 'qwen2.5-coder-1.5b-instruct.gguf';
 
-  /// Legacy tutor brain name still used by Windows release zips.
-  static const qwenGgufFileName = 'qwen-0.6b-instruct.gguf';
-
-  /// Android LiteRT chat brain (APK bundle + USB install).
-  static const chatModelFileName = 'chat-model.litertlm';
-
-  /// GGUF discovery order (Android + desktop).
-  static const ggufChatFileNames = [
-    canonicalChatGgufFileName,
-    qwenGgufFileName,
-    'Qwen3-0.6B-Q4_K_M.gguf',
-    'Qwen3-0.6B-Instruct-Q4_K_M.gguf',
-    'qwen3-0.6b-instruct.gguf',
-    'qwen-0.6b.gguf',
-    'chat-model.gguf',
+  /// GGUF discovery order (every platform).
+  static const ggufBrainFileNames = [
+    brainGgufFileName,
+    'qwen_coder_1.5b.Q4_K_M.gguf',
+    'qwen2.5-coder-1.5b-instruct-q4_k_m.gguf',
+    'Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf',
+    'qwen2.5-coder-1.5b-q4.gguf',
   ];
 
-  /// Historical combined list — prefer [chatFileNamesForPlatform].
-  static const alternateChatFileNames = [
-    ...ggufChatFileNames,
-    chatModelFileName,
+  /// Android LiteRT export names, tried before the GGUF.
+  static const liteRtBrainFileNames = [
+    'qwen_coder_1.5b.litertlm',
+    'qwen2.5-coder-1.5b.litertlm',
+    'qwen_coder_1.5b.literlm', // common typo in briefs
   ];
 
   /// Discovery order for the current platform.
-  static List<String> chatFileNamesForPlatform() {
+  static List<String> brainFileNamesForPlatform() {
     if (defaultTargetPlatform == TargetPlatform.android) {
-      return const [
-        chatModelFileName,
-        'qwen_brain_0.6b.litertlm',
-        'qwen3-0.6b.litertlm',
-        // HF fetch package (GGUF) also accepted when LiteRT is absent.
-        canonicalChatGgufFileName,
-        qwenGgufFileName,
-      ];
+      return const [...liteRtBrainFileNames, ...ggufBrainFileNames];
     }
-    return ggufChatFileNames;
+    return ggufBrainFileNames;
   }
 
-  /// Marks a [ModelInfo.path] that is not a filesystem path at all but the
-  /// model sitting inside the APK's own `assets/models/` folder.
+  /// Marks a [ModelInfo.path] that is not a filesystem path but a model
+  /// inside the APK's own `assets/models/`, loaded in place by LiteRT-LM.
   static const bundledAssetPrefix = 'bundled:';
 
-  /// Path value handed to the engine when the chat model is served straight
-  /// out of the APK.
-  static const bundledChatModelPath = '$bundledAssetPrefix$chatModelFileName';
-  // Smallest supported AfriSLM GGUF (Q4_K_M) is ~500 MB; reject truncations.
-  static const _minSizeBytes = 250 * 1024 * 1024; // 250 MB
+  // A Q4 1.5B is ~1 GB; anything under this is a truncated copy.
+  static const _minSizeBytes = 400 * 1024 * 1024;
 
   Future<ModelInfo> checkModel() async {
-    final names = chatFileNamesForPlatform();
+    final names = brainFileNamesForPlatform();
     ModelInfo? truncated;
     for (final name in names) {
       final candidates = await _candidatePathsFor(name);
-      debugPrint('CHAT MODEL ($name) candidates:\n  ${candidates.join('\n  ')}');
+      debugPrint('BRAIN MODEL ($name) candidates:\n  ${candidates.join('\n  ')}');
       for (final path in candidates) {
         final file = File(path);
         try {
@@ -116,7 +106,7 @@ class ModelManager {
             status: ModelStatus.corrupted,
             path: path,
             sizeBytes: size,
-            platform: _platformLabel,
+            platform: _platformLabel(path),
           );
           continue;
         }
@@ -124,7 +114,7 @@ class ModelManager {
           status: ModelStatus.ready,
           path: path,
           sizeBytes: size,
-          platform: _platformLabel,
+          platform: _platformLabel(path),
         );
       }
     }
@@ -162,26 +152,26 @@ class ModelManager {
     ];
   }
 
-  String get _platformLabel {
+  String _platformLabel(String path) {
+    final liteRt = path.toLowerCase().endsWith('.litertlm') ||
+        path.toLowerCase().endsWith('.literlm');
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        return 'Android (LiteRT-LM · Qwen 0.6B)';
+        return liteRt
+            ? 'Android (LiteRT-LM · Qwen2.5-Coder 1.5B)'
+            : 'Android (llama.cpp · Qwen2.5-Coder 1.5B GGUF)';
       case TargetPlatform.windows:
-        return 'Windows (llama.cpp · Qwen 0.6B GGUF · AVX2)';
+        return 'Windows (llama.cpp · Qwen2.5-Coder 1.5B GGUF · CPU)';
       case TargetPlatform.linux:
-        return 'Linux (llama.cpp · Qwen 0.6B GGUF)';
+        return 'Linux (llama.cpp · Qwen2.5-Coder 1.5B GGUF · CPU)';
       default:
         return 'Unknown';
     }
   }
 
-  /// Destination used when the user installs a model through the app.
-  Future<String> installTargetPath() async {
-    final name = defaultTargetPlatform == TargetPlatform.android
-        ? chatModelFileName
-        : qwenGgufFileName;
-    return canonicalModelInstallPath(name, ensureDirectory: true);
-  }
+  /// Destination used when the user installs the model through the app.
+  Future<String> installTargetPath() =>
+      canonicalModelInstallPath(brainGgufFileName, ensureDirectory: true);
 
   /// Copies a user-picked model file into the expected location.
   ///
@@ -199,31 +189,31 @@ class ModelManager {
 
     final ext = p.extension(sourcePath).toLowerCase();
     final android = defaultTargetPlatform == TargetPlatform.android;
-    if (android &&
-        ext != '.litertlm' &&
-        ext != '.literlm' &&
-        ext != '.tflite') {
-      throw const ModelInstallException(
-        'Wrong file type. On Android the chat brain is chat-model.litertlm '
-        '(LiteRT-LM / NNAPI).',
-      );
-    }
-    if (!android && ext != '.gguf') {
-      throw const ModelInstallException(
-        'Wrong file type. On Windows the chat brain is a Qwen 0.6B .gguf '
-        '(llama.cpp / AVX2).',
+    final liteRt = ext == '.litertlm' || ext == '.literlm';
+    if (ext != '.gguf' && !(android && liteRt)) {
+      throw ModelInstallException(
+        android
+            ? 'Wrong file type. The tutor model is '
+                '$brainGgufFileName (or a .litertlm export of it).'
+            : 'Wrong file type. The tutor model is $brainGgufFileName.',
       );
     }
 
     final size = await source.length();
     if (size < _minSizeBytes) {
       throw const ModelInstallException(
-        'That file is too small to be the chat model — it should be at '
-        'least a few hundred MB. The download or copy may be incomplete.',
+        'That file is too small to be the tutor model — it should be about '
+        '1 GB. The download or copy may be incomplete.',
       );
     }
 
-    final targetPath = await installTargetPath();
+    // A LiteRT export keeps its own name so discovery can tell the two apart.
+    final targetPath = liteRt
+        ? await canonicalModelInstallPath(
+            liteRtBrainFileNames.first,
+            ensureDirectory: true,
+          )
+        : await installTargetPath();
     final target = File(targetPath);
     await target.parent.create(recursive: true);
 
@@ -248,7 +238,7 @@ class ModelManager {
       if (e is FileSystemException) {
         throw const ModelInstallException(
           'Could not copy the model — the device may not have enough '
-          'free storage (about 1 GB is needed).',
+          'free storage (about 1.2 GB is needed).',
         );
       }
       rethrow;
@@ -256,25 +246,12 @@ class ModelManager {
     return checkModel();
   }
 
-  /// Where to tell the user to put the model file.
+  /// Where to tell the user to put the model files.
   Future<String> installInstructions() async {
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'Transfer the model file to this device, then choose it with '
-          'Install from file.\n\n'
-          'Chat brain (Android LiteRT / NNAPI):\n'
-          '  models/chat-model.litertlm\n\n'
-          'Coder (Android LiteRT):\n'
-          '  models/qwen_coder_1.5b.litertlm\n\n'
-          'Translator: AfriSLM GGUF\n'
-          '  models/afrislm-0.8b-q4_k_m.gguf';
-    }
-    return 'Transfer the model file to this device, then choose it with '
+    return 'Transfer the model files to this device, then choose them with '
         'Install from file.\n\n'
-        'Chat brain (Windows llama.cpp / AVX2):\n'
-        '  models/qwen_brain_0.6b.Q4_K_M.gguf\n'
-        '  models/qwen-0.6b-instruct.gguf\n\n'
-        'Coder (Windows GGUF CPU×2):\n'
-        '  models/qwen_coder_1.5b.Q4_K_M.gguf\n\n'
+        'Tutor (all answers and code):\n'
+        '  models/$brainGgufFileName\n\n'
         'Translator: AfriSLM GGUF\n'
         '  models/afrislm-0.8b-q4_k_m.gguf';
   }

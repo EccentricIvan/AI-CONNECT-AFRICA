@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
-import '../../services/ai_model_manager.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
 import '../../shared/coding/interactive_html.dart' show escapeHtml;
@@ -307,7 +306,6 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   @override
   void initState() {
     super.initState();
-    scheduleLiteRtMode(ActiveModelMode.appCoder);
     WidgetsBinding.instance.addPostFrameCallback((_) => _startIntro());
   }
 

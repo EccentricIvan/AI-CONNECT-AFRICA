@@ -45,7 +45,7 @@ class SanitizedTokenStream {
 /// [ThinkTagFilter] hides `<think>` tags token-by-token. This cleaner is the
 /// second pass for a complete (or cumulative) string: leftover tags, a
 /// trailing `</think>`, `/no_think`, and the "Okay, let's see…" preamble
-/// Qwen 0.6B writes when it ignores the thinking switch.
+/// Qwen models write when they ignore the thinking switch.
 ///
 /// Trailing whitespace is kept so streamed token boundaries (e.g. `"Plants "`)
 /// are not collapsed mid-reply. Callers that want a final bubble string should
@@ -138,7 +138,7 @@ String sanitizeLLMResponse(String rawText) {
     }
   }
 
-  // Qwen 0.6B often writes the whole reply as one reasoning paragraph and
+  // Small Qwen models often write the whole reply as one reasoning paragraph and
   // never emits `\n\n`. Hide that rather than paint it in the bubble.
   if (!cleaned.contains('\n\n') &&
       _isBareReasoningPreamble(cleaned.trimRight())) {

@@ -22,6 +22,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
     int? threads,
     int? contextSize,
     int? batchSize,
+    this.appendNoThink = true,
   })  : _backendLabel = backendLabel,
         nGpuLayers = nGpuLayers ?? llamaGpuLayersForLane(schedulerLane),
         threads = threads ?? kLlamaThreads,
@@ -45,6 +46,11 @@ class LlamaCppEngineImpl extends InferenceEngine {
 
   final int contextSize;
   final int batchSize;
+
+  /// Append Qwen3's `/no_think` switch to each user turn. True for AfriSLM (a
+  /// Qwen3.5 fine-tune); false for the Qwen2.5 brain, which has no thinking
+  /// mode and would read the switch as literal text.
+  final bool appendNoThink;
 
   llama.LlamaCppChatRepository? _repo;
   String? _modelPath;
@@ -181,7 +187,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
           llama.LLMMessage(role: llama.LLMRole.system, content: sys),
         llama.LLMMessage(
           role: llama.LLMRole.user,
-          content: _withNoThink(user),
+          content: appendNoThink ? _withNoThink(user) : user,
         ),
       ],
       think: false,

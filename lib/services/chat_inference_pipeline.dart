@@ -103,7 +103,7 @@ class ChatInferencePipeline {
       _programmingThread = true;
       return (_programmingTutor!, _programmingReasoner!);
     } catch (e) {
-      debugPrint('PROGRAMMING BRAIN load failed, using 0.6B: $e');
+      debugPrint('Programming tutor setup failed, using the general tutor: $e');
       return (tutor, reasoner);
     }
   }

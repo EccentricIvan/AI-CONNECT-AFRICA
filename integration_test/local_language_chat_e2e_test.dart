@@ -15,7 +15,7 @@ import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-/// Chat brain (Qwen 0.6B) with AfriSLM. The 1.5B coder is not loaded here.
+/// The brain (Qwen2.5-Coder-1.5B) tutoring, with AfriSLM for local languages.
 ///
 /// One GGUF at a time: reason first, unload, then AfriSLM. Loading a second
 /// llama.cpp model while another is (or was) mapped has crashed this harness.
@@ -27,7 +27,8 @@ Future<InferenceEngine> _loadChatBrain(String path) async {
   if (path.toLowerCase().endsWith('.gguf')) {
     final engine = LlamaCppEngineImpl(
       schedulerLane: EngineLane.reason,
-      backendLabel: 'llama.cpp · Qwen 0.6B',
+      backendLabel: 'llama.cpp · Qwen2.5-Coder 1.5B',
+      appendNoThink: false,
     );
     await engine.loadModel(path);
     debugPrint('LOADED CHAT');
@@ -46,7 +47,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'Qwen 0.6B chat, then AfriSLM for every local language',
+    'Coder brain tutoring, then AfriSLM for every local language',
     (tester) async {
       expect(
         kPrimaryChatLanguages.where((c) => c != 'en').toList(),
