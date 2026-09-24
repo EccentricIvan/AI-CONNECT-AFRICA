@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import '../../gamification/badge_service.dart';
 import 'block_models.dart';
 import 'html_generator.dart';
 
@@ -234,6 +235,9 @@ class WebsiteBuilderNotifier extends AutoDisposeNotifier<BuilderState> {
         ),
       );
       state = state.copyWith(projectId: id, dirty: false);
+      // Counts toward Achievements the same as any other saved project —
+      // see the Creator badge and Achievements' combined project count.
+      await ref.read(badgeServiceProvider).onProjectSaved(student.id);
     } else {
       await db.websiteDao.updateWebsite(
         state.projectId!,

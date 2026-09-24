@@ -38,13 +38,53 @@ class BadgeService {
     return awarded;
   }
 
-  // ── Trigger: practice exercise answered ──────────────────────────────────
+  // ── Trigger: a curriculum-browser lesson was passed ──────────────────────
 
-  Future<List<BadgeDef>> onPracticeAnswered(
-      int studentId, int totalCorrectInSession) async {
+  /// Separate from [onLessonCompleted] (auto-generated LearningPaths) —
+  /// the curriculum browser tracks its own lessons via LessonProgress.
+  /// Only call this when `LessonProgress.markCompleteFor` returned true, so
+  /// revisiting an already-passed lesson never re-counts it.
+  Future<List<BadgeDef>> onCurriculumLessonCompleted(int studentId) async {
     final awarded = await _touchStreak(studentId);
+    final student = await _db.studentDao.getStudentById(studentId);
+    if (student == null) return awarded;
+
+    await _db.studentDao.updateStudent(StudentsCompanion(
+      id: Value(studentId),
+      totalLessonsCompleted: Value(student.totalLessonsCompleted + 1),
+    ));
+    _refreshStats(studentId);
+
+    await _award(studentId, 'first_lesson', awarded);
+    return awarded;
+  }
+
+  // ── Trigger: practice exercise(s) answered ───────────────────────────────
+
+  /// [attempted]/[correct] are the counts from *this* event (1/0 or 1/1 for
+  /// a single quiz question, or a whole quiz's totals at once) — they are
+  /// added to the student's lifetime counters, never treated as the total
+  /// themselves, so re-entering Practice never double counts or resets what
+  /// the Achievements screen shows.
+  Future<List<BadgeDef>> onPracticeAnswered(
+    int studentId, {
+    required int attempted,
+    required int correct,
+  }) async {
+    final awarded = await _touchStreak(studentId);
+    final student = await _db.studentDao.getStudentById(studentId);
+    if (student == null) return awarded;
+
+    await _db.studentDao.updateStudent(StudentsCompanion(
+      id: Value(studentId),
+      totalPracticeAttempted:
+          Value(student.totalPracticeAttempted + attempted),
+      totalPracticeCorrect: Value(student.totalPracticeCorrect + correct),
+    ));
+    _refreshStats(studentId);
+
     await _award(studentId, 'practice_starter', awarded);
-    if (totalCorrectInSession >= 5) {
+    if (student.totalPracticeCorrect + correct >= 5) {
       await _award(studentId, 'sharp_mind', awarded);
     }
     return awarded;
@@ -52,10 +92,19 @@ class BadgeService {
 
   // ── Trigger: apply scenario evaluated ────────────────────────────────────
 
-  Future<List<BadgeDef>> onApplyEvaluated(
-      int studentId, int sessionScenarioCount) async {
+  Future<List<BadgeDef>> onApplyEvaluated(int studentId) async {
     final awarded = await _touchStreak(studentId);
-    if (sessionScenarioCount >= 5) {
+    final student = await _db.studentDao.getStudentById(studentId);
+    if (student == null) return awarded;
+
+    final total = student.totalScenariosCompleted + 1;
+    await _db.studentDao.updateStudent(StudentsCompanion(
+      id: Value(studentId),
+      totalScenariosCompleted: Value(total),
+    ));
+    _refreshStats(studentId);
+
+    if (total >= 5) {
       await _award(studentId, 'scenario_solver', awarded);
     }
     return awarded;
@@ -124,6 +173,15 @@ class BadgeService {
   void _refreshAchievements(int studentId) {
     _ref.invalidate(earnedBadgesProvider(studentId));
     _ref.invalidate(activeStudentProvider);
+    _refreshStats(studentId);
+  }
+
+  /// Achievements-only refresh — see [studentStatsProvider]. Every write to
+  /// the student row goes through here or [_refreshAchievements] so the
+  /// screen never shows a stale counter, without rebuilding the rest of the
+  /// app on every practice answer.
+  void _refreshStats(int studentId) {
+    _ref.invalidate(studentStatsProvider(studentId));
   }
 
   /// Update streak — call once per day at first interaction.

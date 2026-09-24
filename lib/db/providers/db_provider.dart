@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../otic_database.dart';
 import '../../memory/session_recall_store.dart';
 import '../../services/academic_score_tracker_repository.dart';
+import '../../services/learner_data_wiper.dart';
 
 // ── Database singleton ────────────────────────────────────────────────────────
 
@@ -55,6 +56,19 @@ final hasProfileProvider = FutureProvider<bool>((ref) async {
   return student != null;
 });
 
+/// A fresh read of one student row, keyed by id.
+///
+/// [activeStudentProvider] is watched widely (chat, router, the app shell),
+/// so invalidating it on every Practice answer or Apply scenario would
+/// rebuild all of that just to move a counter. Achievements is the only
+/// screen that needs those counters live, so BadgeService invalidates this
+/// instead — autoDispose means it costs nothing once the screen closes.
+final studentStatsProvider =
+    FutureProvider.family.autoDispose<Student?, int>((ref, studentId) {
+  final db = ref.watch(dbProvider);
+  return db.studentDao.getStudentById(studentId);
+});
+
 // ── Session history ───────────────────────────────────────────────────────────
 
 final recentSessionsProvider =
@@ -66,6 +80,14 @@ final recentSessionsProvider =
 /// Per-session recall files, beside the student database.
 final sessionRecallStoreProvider =
     Provider((ref) => SessionRecallStore());
+
+/// Deletes a learner's own data (never app/teacher resources) — see
+/// LearnerDataWiper's own doc for exactly what that covers. Teacher/Admin
+/// only: the screens that read this are behind the teacher PIN gate.
+final learnerDataWiperProvider = Provider((ref) => LearnerDataWiper(
+      ref.watch(dbProvider),
+      recallStore: ref.watch(sessionRecallStoreProvider),
+    ));
 
 /// One entry per saved chat, newest activity first.
 ///

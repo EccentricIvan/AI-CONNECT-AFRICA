@@ -175,7 +175,15 @@ the Recent chats sidebar reads.
 
 Note: nothing in this app issues `PRAGMA foreign_keys = ON`, so the
 `onDelete: cascade` declared on child tables is never enforced. Deleting a
-student must clear dependent rows explicitly (see `ChatSessionDao.deleteForStudent`).
+student must clear dependent rows explicitly — `LearnerDataWiper`
+(`lib/services/learner_data_wiper.dart`) is the one place that does this for
+every table actually scoped to a student; route both the Admin per-learner
+delete and the Admin "Reset all student data" action through it rather than
+deleting a student row directly. Its `wipedTableNames` set is checked against
+the database's own table list in `test/learner_data_wiper_test.dart`, so a
+newly added student-scoped table fails that test until it's classified as
+wiped or kept (kept = shared resources: `topic_resources`, `custom_subjects`,
+`class_groups`, the translation cache, `sync_state`).
 
 ## Update Mechanism
 

@@ -84,7 +84,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -234,6 +234,84 @@ class OticDatabase extends _$OticDatabase {
             // which chats age out until a student actually pins one.
             if (!await _columnExists('chat_sessions', 'pinned')) {
               await m.addColumn(chatSessions, chatSessions.pinned);
+            }
+          }
+          if (from < 14) {
+            // Lifetime Practice/Apply counters behind the Achievements
+            // badge progress bars — see BadgeService. Every existing
+            // learner starts these at 0, which reads as a contradiction
+            // next to an already-earned badge (Sharp Mind shown Completed
+            // beside a "0/5 correct" bar) — schema 15 below backfills a
+            // floor from the badges already on record.
+            if (!await _columnExists('students', 'total_practice_attempted')) {
+              await m.addColumn(students, students.totalPracticeAttempted);
+            }
+            if (!await _columnExists('students', 'total_practice_correct')) {
+              await m.addColumn(students, students.totalPracticeCorrect);
+            }
+            if (!await _columnExists('students', 'total_scenarios_completed')) {
+              await m.addColumn(students, students.totalScenariosCompleted);
+            }
+            if (!await _columnExists('students', 'total_lessons_completed')) {
+              await m.addColumn(students, students.totalLessonsCompleted);
+            }
+          }
+          if (from < 15) {
+            // Same standing rule as `if (from < 9)` above: check the
+            // database itself, don't trust `from`. A device could reach
+            // this block already sitting at schema 14 but missing a column
+            // the 14-step added later in development — repeating the
+            // guards here means the UPDATEs below never hit "no such
+            // column" regardless of exactly which shape of v14 a real
+            // install upgraded from.
+            if (!await _columnExists('students', 'total_practice_attempted')) {
+              await m.addColumn(students, students.totalPracticeAttempted);
+            }
+            if (!await _columnExists('students', 'total_practice_correct')) {
+              await m.addColumn(students, students.totalPracticeCorrect);
+            }
+            if (!await _columnExists('students', 'total_scenarios_completed')) {
+              await m.addColumn(students, students.totalScenariosCompleted);
+            }
+            if (!await _columnExists('students', 'total_lessons_completed')) {
+              await m.addColumn(students, students.totalLessonsCompleted);
+            }
+
+            // Backfill for the schema-14 counters above, for a learner who
+            // earned practice_starter/sharp_mind/scenario_solver under the
+            // old session-scored logic before those counters existed.
+            // Floors only (MAX, never overwrites a higher real count), so
+            // this is safe to re-run and never contradicts activity BadgeService
+            // has already recorded since the schema-14 upgrade. Guarded on
+            // the table existing — always true on a real device (created at
+            // schema 3) — because a synthetic test fixture that jumps
+            // straight to an early schema may not have created it yet.
+            if (await _tableExists('earned_badges')) {
+              await customStatement('''
+                UPDATE students SET total_practice_attempted =
+                  MAX(total_practice_attempted, 1)
+                WHERE id IN (
+                  SELECT student_id FROM earned_badges
+                  WHERE badge_id = 'practice_starter'
+                )
+              ''');
+              await customStatement('''
+                UPDATE students SET
+                  total_practice_correct = MAX(total_practice_correct, 5),
+                  total_practice_attempted = MAX(total_practice_attempted, 5)
+                WHERE id IN (
+                  SELECT student_id FROM earned_badges
+                  WHERE badge_id = 'sharp_mind'
+                )
+              ''');
+              await customStatement('''
+                UPDATE students SET total_scenarios_completed =
+                  MAX(total_scenarios_completed, 5)
+                WHERE id IN (
+                  SELECT student_id FROM earned_badges
+                  WHERE badge_id = 'scenario_solver'
+                )
+              ''');
             }
           }
         },

@@ -115,7 +115,7 @@ class ApplyNotifier extends AutoDisposeNotifier<ApplyState> {
 
       final student = await ref.read(activeStudentProvider.future);
       if (student != null) {
-        await ref.read(badgeServiceProvider).onApplyEvaluated(student.id, newCount);
+        await ref.read(badgeServiceProvider).onApplyEvaluated(student.id);
       }
     } catch (e) {
       state = state.copyWith(isEvaluating: false, error: e.toString());

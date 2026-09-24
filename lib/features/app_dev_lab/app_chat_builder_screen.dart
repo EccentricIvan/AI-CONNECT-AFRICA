@@ -16,6 +16,7 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
@@ -583,6 +584,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
           ),
         );
         _savedProjectId = newId;
+        // Counts toward Achievements the same as any other saved project —
+        // see the Creator badge and Achievements' combined project count.
+        await ref.read(badgeServiceProvider).onProjectSaved(student.id);
       } else {
         await db.appBuilderProjectDao.updateProject(
           id,

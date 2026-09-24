@@ -9,6 +9,19 @@ class LessonProgress {
     await prefs.setBool('$_prefix${subjectId}_${unitIndex}_$lessonIndex', true);
   }
 
+  /// Per-student variant of [markComplete] — on a shared device, "done" for
+  /// one learner must never read as done for another. Returns true only the
+  /// first time this lesson is marked for this student, so a badge/counter
+  /// caller can tell a genuine first completion from a revisit.
+  Future<bool> markCompleteFor(
+      int studentId, String subjectId, int unitIndex, int lessonIndex) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = '${_prefix}s${studentId}_${subjectId}_${unitIndex}_$lessonIndex';
+    if (prefs.getBool(key) ?? false) return false;
+    await prefs.setBool(key, true);
+    return true;
+  }
+
   Future<bool> isComplete(String subjectId, int unitIndex, int lessonIndex) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('$_prefix${subjectId}_${unitIndex}_$lessonIndex') ?? false;

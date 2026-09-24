@@ -68,7 +68,14 @@ class _ScienceRichTextState extends State<ScienceRichText> {
             )
           else if (span.text.isNotEmpty)
             MarkdownBody(
-              data: formatScienceProse(span.text),
+              // A fenced code block is `isMath: false` too (see
+              // splitScienceSpans), but formatScienceProse's bare-subscript
+              // conversion is meant for chemistry notation, not identifiers
+              // — `item_1` in a Python snippet must stay `item_1`, not
+              // become `item₁`, especially since the student may copy it.
+              data: span.text.trimLeft().startsWith('```')
+                  ? span.text
+                  : formatScienceProse(span.text),
               shrinkWrap: widget.shrinkWrap,
               selectable: true,
               softLineBreak: true,

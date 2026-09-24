@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:drift/drift.dart' hide isNotNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 
 /// Regression coverage for `MigrationStrategy.onUpgrade` — the one path this
 /// project otherwise never exercises. Every DAO test opens a fresh in-memory
@@ -10,22 +13,20 @@ import 'package:flutter_test/flutter_test.dart';
 /// starts at 0 and jumps straight to the current [OticDatabase.schemaVersion].
 /// `onUpgrade` — the step-by-step `if (from < N)` ladder — only runs on a
 /// device that already has data from an older version, and nothing here had
-/// ever actually run it.
+/// ever actually run it before this file existed.
 ///
 /// That gap is exactly how `ClassGroups.groupUuid` shipped as `UNIQUE` on the
 /// column: `onCreate`'s `CREATE TABLE ... UNIQUE` is legal SQLite and passed
 /// every existing test; `onUpgrade`'s `ALTER TABLE ... ADD COLUMN ... UNIQUE`
 /// is not legal SQLite (`SqliteException(1): Cannot add a UNIQUE column`) and
-/// nothing here ran it until a real upgrading device did.
-///
-/// This test builds the schema as it looked right before schema 11 by hand,
-/// sets `PRAGMA user_version` to match, then opens a real [OticDatabase] on
-/// top of it — which makes drift discover the version gap and run the actual
-/// `onUpgrade` ladder, the same as a real app update would.
+/// nothing here ran it until a real upgrading device did. The same class of
+/// gap is what let schema 14's counters ship starting every existing learner
+/// at 0 even when they already held the badge those counters back — see the
+/// schema-15 tests below.
 void main() {
   test('upgrading a pre-11 database does not throw on ClassGroups.groupUuid',
       () async {
-    // The relevant slice of schema 10 — enough for the full 10→13 upgrade
+    // The relevant slice of schema 10 — enough for the full 10→N upgrade
     // ladder to run for real (every `if (from < N)` step in between fires
     // too, not just schema 11's), not the whole database. Includes a
     // pre-existing class/stream row — the exact case the migration's own
@@ -158,5 +159,120 @@ void main() {
     expect(groups.single.groupUuid, isNotNull);
 
     await db.close();
+  });
+
+  test('an existing v13 database upgrades to v14 without throwing, and the '
+      'new student columns default to 0', () async {
+    final dir = await Directory.systemTemp.createTemp('otic_migration_test');
+    final file = File(p.join(dir.path, 'test.sqlite'));
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    // Build a real, fully-current database first (exercises onCreate), then
+    // strip it back down to what a v13 install actually looks like. That
+    // way the "v13 shape" here is derived from the real schema instead of
+    // hand-typed and possibly wrong.
+    final seed = OticDatabase.forTesting(NativeDatabase(file));
+    await seed.studentDao.createStudent(
+      StudentsCompanion.insert(name: 'Amina'),
+    );
+    for (final column in [
+      'total_practice_attempted',
+      'total_practice_correct',
+      'total_scenarios_completed',
+      'total_lessons_completed',
+    ]) {
+      await seed.customStatement('ALTER TABLE students DROP COLUMN $column');
+    }
+    await seed.customStatement('PRAGMA user_version = 13');
+    await seed.close();
+
+    // Reopening against the same file is what should trigger onUpgrade.
+    final upgraded = OticDatabase.forTesting(NativeDatabase(file));
+    final student = await upgraded.studentDao.getStudentById(1);
+    expect(student, isNotNull);
+    expect(student!.name, 'Amina');
+    expect(student.totalPracticeAttempted, 0);
+    expect(student.totalPracticeCorrect, 0);
+    expect(student.totalScenariosCompleted, 0);
+    expect(student.totalLessonsCompleted, 0);
+    await upgraded.customStatement('PRAGMA user_version = 13');
+    await upgraded.close();
+
+    // Re-running the same upgrade (e.g. a device that jumps versions twice)
+    // must stay a no-op, not throw on "duplicate column name" — see the
+    // standing note in otic_database.dart on why every step here is guarded.
+    final reupgraded = OticDatabase.forTesting(NativeDatabase(file));
+    expect(
+      (await reupgraded.studentDao.getStudentById(1))!.totalPracticeAttempted,
+      0,
+    );
+    await reupgraded.close();
+  });
+
+  test('a badge earned before schema 14 backfills its counter on upgrade, '
+      'instead of showing Completed next to a 0/5 bar', () async {
+    final dir = await Directory.systemTemp.createTemp('otic_migration_test');
+    final file = File(p.join(dir.path, 'test.sqlite'));
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    final seed = OticDatabase.forTesting(NativeDatabase(file));
+    await seed.studentDao.createStudent(
+      StudentsCompanion.insert(name: 'Amina'),
+    );
+    // Earned under the old session-scored logic, before the schema-14
+    // counters existed to record it — earned_badges' shape is unchanged
+    // across 13/14/15, so this is exactly what a real pre-14 install has.
+    await seed.badgeDao.awardBadge(
+      studentId: 1,
+      badgeId: 'sharp_mind',
+      badgeName: 'Sharp Mind',
+    );
+    for (final column in [
+      'total_practice_attempted',
+      'total_practice_correct',
+      'total_scenarios_completed',
+      'total_lessons_completed',
+    ]) {
+      await seed.customStatement('ALTER TABLE students DROP COLUMN $column');
+    }
+    await seed.customStatement('PRAGMA user_version = 13');
+    await seed.close();
+
+    final upgraded = OticDatabase.forTesting(NativeDatabase(file));
+    final student = await upgraded.studentDao.getStudentById(1);
+    expect(student!.totalPracticeCorrect, 5);
+    expect(student.totalPracticeAttempted, 5);
+    await upgraded.close();
+  });
+
+  test('a device already at schema 14 but missing a column that step later '
+      'grew is still repaired by the schema-15 step, not left to throw '
+      "'no such column' on every read", () async {
+    final dir = await Directory.systemTemp.createTemp('otic_migration_test');
+    final file = File(p.join(dir.path, 'test.sqlite'));
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    final seed = OticDatabase.forTesting(NativeDatabase(file));
+    await seed.studentDao.createStudent(
+      StudentsCompanion.insert(name: 'Amina'),
+    );
+    // Only the one column schema 14 grew last is missing — simulating a
+    // device that upgraded partway through schema 14's development.
+    await seed.customStatement(
+        'ALTER TABLE students DROP COLUMN total_lessons_completed');
+    await seed.customStatement('PRAGMA user_version = 14');
+    await seed.close();
+
+    final upgraded = OticDatabase.forTesting(NativeDatabase(file));
+    final student = await upgraded.studentDao.getStudentById(1);
+    expect(student, isNotNull);
+    expect(student!.totalLessonsCompleted, 0);
+    await upgraded.close();
   });
 }

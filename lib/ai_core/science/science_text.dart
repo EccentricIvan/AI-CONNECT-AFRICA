@@ -385,8 +385,88 @@ String applyChemistryUnicode(String text) {
   return out;
 }
 
+/// A bare `\text{...}`/`\mathrm{...}`/`\ce{...}` that leaked outside
+/// `$...$`/`$$...$$` delimiters — KaTeX renders these fine inside an actual
+/// math span, but this is plain prose, so the command itself is clutter the
+/// student would see literally (`\text{6CO}_2`). Unwraps to the content,
+/// applying a trailing `_N`/`_{N}` as a Unicode subscript the same way a
+/// bare chemical formula already is — matches the small tutor model
+/// occasionally emitting LaTeX chemistry without wrapping it in `$`.
+final _bareWrapperCommand =
+    RegExp(r'\\(?:text|mathrm|ce)\{([^{}]*)\}(?:_\{?(\d+)\}?)?');
+
+/// Zero-argument LaTeX commands that read as clutter, not content, once
+/// they leak outside a real math span — the same failure mode as
+/// [_bareWrapperCommand], just without braces to unwrap.
+///
+/// Matched by one alternation with a negative lookahead for a following
+/// letter, not a series of plain `replaceAll` calls — a naive substring
+/// replace of `\le` would also fire inside `\left`/`\leq`, corrupting real
+/// TeX (`\leq` → `≤q`, `\left(` → `≤ft(`). This also runs as the KaTeX
+/// error fallback in `_TeXScroller`, so it sees real, well-formed TeX
+/// constantly, not just leaked prose.
+final _bareSymbolCommand = RegExp(
+  r'\\(rightleftharpoons|longrightarrow|rightarrow|leq|geq|neq|approx|'
+  r'times|cdots|cdot|pm|to|le|ge)(?![A-Za-z])',
+);
+const _bareSymbols = {
+  'rightleftharpoons': '⇌',
+  'longrightarrow': '→',
+  'rightarrow': '→',
+  'to': '→',
+  'leq': '≤',
+  'le': '≤',
+  'geq': '≥',
+  'ge': '≥',
+  'neq': '≠',
+  'approx': '≈',
+  'times': '×',
+  'cdots': '⋯',
+  'cdot': '·',
+  'pm': '±',
+};
+
+String stripBareLatexCommands(String text) {
+  var out = text;
+  if (out.contains(r'\')) {
+    out = out.replaceAllMapped(_bareWrapperCommand, (m) {
+      final inner = m.group(1) ?? '';
+      final sub = m.group(2);
+      if (sub == null) return inner;
+      final digits = sub.split('').map((d) => _sub[d] ?? d).join();
+      return '$inner$digits';
+    });
+    out = out.replaceAllMapped(
+        _bareSymbolCommand, (m) => _bareSymbols[m.group(1)!]!);
+  }
+  return out;
+}
+
+/// A chain of element symbols with LaTeX-style `_N`/`_{N}` subscripts and no
+/// `$` delimiters — e.g. `C_6H_{12}O_6` — converted to Unicode. Unlike
+/// [_latexChem] (built for [protectMathIslands], which only needs to *spot*
+/// this notation), this must consume the *whole* chain in one match, or a
+/// formula like `C_6H_{12}O_6` only converts its first element and leaves
+/// `_{12}O_6` for Markdown to mis-parse as emphasis.
+final _latexChemChain = RegExp('(?:$_elements(?:_\\{?\\d+\\}?)?)+');
+
+String applyLatexChemistryUnicode(String text) {
+  if (!text.contains('_')) return text;
+  return text.replaceAllMapped(_latexChemChain, (m) {
+    final raw = m.group(0)!;
+    // A run of element symbols with no subscript at all is not chemistry
+    // notation being missed — e.g. a lone "N" inside ordinary prose — so
+    // only rewrite chains that actually carry at least one `_digits` group.
+    if (!raw.contains('_')) return raw;
+    return raw.replaceAllMapped(RegExp(r'_\{?(\d+)\}?'), (sub) {
+      return sub.group(1)!.split('').map((d) => _sub[d] ?? d).join();
+    });
+  });
+}
+
 /// Prose gets Unicode chemistry; math spans keep TeX for KaTeX.
-String formatScienceProse(String text) => applyChemistryUnicode(text);
+String formatScienceProse(String text) => applyChemistryUnicode(
+    applyLatexChemistryUnicode(stripBareLatexCommands(text)));
 
 /// Pull complete clauses out of a growing English buffer for AfriSLM.
 List<String> takeReadyTranslationChunks(StringBuffer buffer, {bool flush = false}) {

@@ -237,16 +237,24 @@ class _PracticeTabState extends ConsumerState<_PracticeTab> {
 
   Future<void> _answer(int index) async {
     if (_answered) return;
+    // Captured before the setState/await below re-enables Next — reading
+    // _currentQ after an await risks scoring against a question the
+    // student has already moved past.
+    final correct = index == _questions[_currentQ].correct;
     setState(() {
       _selectedAnswer = index;
       _answered = true;
       _total++;
-      if (index == _questions[_currentQ].correct) _score++;
+      if (correct) _score++;
     });
 
     final student = await ref.read(activeStudentProvider.future);
     if (student != null) {
-      await ref.read(badgeServiceProvider).onPracticeAnswered(student.id, _score);
+      await ref.read(badgeServiceProvider).onPracticeAnswered(
+            student.id,
+            attempted: 1,
+            correct: correct ? 1 : 0,
+          );
     }
   }
 

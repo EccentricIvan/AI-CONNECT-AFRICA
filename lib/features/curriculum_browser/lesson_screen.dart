@@ -50,7 +50,19 @@ class _LessonScreenState extends ConsumerState<LessonScreen> {
       // Award badges
       final student = await ref.read(activeStudentProvider.future);
       if (student != null) {
-        final badges = await ref.read(badgeServiceProvider).onPracticeAnswered(student.id, correct);
+        final badgeService = ref.read(badgeServiceProvider);
+        final badges = await badgeService.onPracticeAnswered(
+              student.id,
+              attempted: totalQuestions,
+              correct: correct,
+            );
+        // Per-student, so a shared device never credits one learner's
+        // lesson to another — see LessonProgress.markCompleteFor.
+        final firstTime = await progress.markCompleteFor(
+            student.id, widget.subjectId, widget.unitIndex, widget.lessonIndex);
+        if (firstTime) {
+          badges.addAll(await badgeService.onCurriculumLessonCompleted(student.id));
+        }
         if (mounted && badges.isNotEmpty) {
           setState(() => _badgeEarned = badges.first.name);
         }

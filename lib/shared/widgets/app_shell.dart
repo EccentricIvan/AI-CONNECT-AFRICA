@@ -93,18 +93,18 @@ class AppShell extends ConsumerWidget {
   );
 
   /// Extra destinations shown in the mobile drawer and desktop sidebar.
+  ///
+  /// Lesson Materials used to be listed here too, reachable by any student.
+  /// It is teacher-only workspace (already PIN-gated behind `/teacher*` —
+  /// see teacher_pin.dart) and is reached from the Teacher dashboard's own
+  /// toolbar button instead (teacher_dashboard_screen.dart), so it has no
+  /// business in the student-facing nav at all.
   static const _overflow = [
     _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,
       Icons.emoji_events_rounded,
       '/achievements',
-    ),
-    _NavDest(
-      'Lesson Materials',
-      Icons.folder_copy_outlined,
-      Icons.folder_copy_rounded,
-      '/teacher/materials',
     ),
   ];
 

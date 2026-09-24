@@ -20,6 +20,10 @@ Student _student({required String language}) {
     goalsJson: '[]',
     streakDays: 0,
     totalPoints: 0,
+    totalPracticeAttempted: 0,
+    totalPracticeCorrect: 0,
+    totalScenariosCompleted: 0,
+    totalLessonsCompleted: 0,
     createdAt: now,
     lastActiveAt: now,
   );

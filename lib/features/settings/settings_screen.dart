@@ -364,7 +364,7 @@ appBar: StudioAppBar(
                 ),
                 title: const Text('Admin dashboard'),
                 subtitle: const Text(
-                  'Device info, model status, profiles, update management',
+                  'Device info, model status, profiles, reset student data',
                 ),
                 onTap: () => context.go('/admin'),
                 trailing: Icon(
@@ -374,53 +374,11 @@ appBar: StudioAppBar(
               ),
             ]),
 
-            // ── Danger zone ───────────────────────────────────────────────────
-            _Section('Data', [
-              ListTile(
-                leading: const Icon(Icons.delete_forever, color: Colors.red),
-                title: const Text(
-                  'Reset all data',
-                  style: TextStyle(color: Colors.red),
-                ),
-                subtitle: const Text(
-                  'Deletes student profile, progress, and sessions',
-                ),
-                onTap: () => _confirmReset(context, ref),
-              ),
-            ]),
-
             const SizedBox(height: 32),
           ],
         ),
       ),
     );
-  }
-
-  void _confirmReset(BuildContext context, WidgetRef ref) {
-    showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset all data?'),
-        content: const Text(
-          'This permanently deletes your student profile, all progress, paths, badges, and session history. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete everything'),
-          ),
-        ],
-      ),
-    ).then((confirmed) async {
-      if (confirmed != true) return;
-      // Go to onboarding which will recreate the profile
-      if (context.mounted) context.go('/onboarding');
-    });
   }
 }
 

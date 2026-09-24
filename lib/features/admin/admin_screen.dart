@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:go_router/go_router.dart';
+
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/app_info_provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -11,6 +13,7 @@ import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../teacher/teacher_pin.dart';
 
 /// Admin dashboard — device, user, and update management.
 /// Admins manage the platform; they have no learning features here.
@@ -22,6 +25,7 @@ class AdminScreen extends ConsumerWidget {
     final modelAsync = ref.watch(modelInfoProvider);
     final studentsAsync = ref.watch(_allStudentsProvider);
     final packageInfoAsync = ref.watch(packageInfoProvider);
+    final pinSetAsync = ref.watch(_pinSetProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -156,11 +160,99 @@ class AdminScreen extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
+
+            // ── Danger zone ──────────────────────────────────────────────
+            const _SectionTitle('Reset'),
+            pinSetAsync.when(
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (pinSet) => _InfoCard(
+                children: [
+                  ListTile(
+                    leading: Icon(
+                      Icons.delete_forever,
+                      color: pinSet ? Colors.red : Theme.of(context).hintColor,
+                    ),
+                    title: Text(
+                      'Reset all student data',
+                      style: TextStyle(
+                        color: pinSet ? Colors.red : Theme.of(context).hintColor,
+                      ),
+                    ),
+                    subtitle: Text(
+                      pinSet
+                          ? 'Deletes every learner profile, their progress, '
+                              'badges, projects and chat sessions on this '
+                              'device. Curriculum, teacher notes/subjects, '
+                              'classes and installed models are untouched.'
+                          : 'Set a Teacher PIN first (Settings → Teacher '
+                              'PIN) — this stays locked until this device '
+                              'requires one to reach Teacher/Admin at all.',
+                    ),
+                    enabled: pinSet,
+                    onTap: pinSet ? () => _confirmResetAll(context, ref) : null,
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 40),
           ],
         ),
       ),
     );
+  }
+
+  void _confirmResetAll(BuildContext context, WidgetRef ref) {
+    // Captured before the dialog's await, not merely before the wipe — the
+    // callback below already runs past one async gap by the time it's
+    // reached (the dialog itself), which is exactly what
+    // use_build_context_synchronously is warning about.
+    final router = GoRouter.of(context);
+    showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset all student data?'),
+        content: const Text(
+          'This permanently deletes every learner profile on this device — '
+          'progress, badges, projects, and chat sessions. Curriculum, '
+          'teacher notes/subjects, classes and installed models stay. This '
+          'cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete everything'),
+          ),
+        ],
+      ),
+    ).then((confirmed) async {
+      if (confirmed != true) return;
+      // router was captured before the dialog opened. Navigating off
+      // /admin before the teacher-area lock changes below is defensive:
+      // the router's redirect reads teacherUnlockedProvider on every
+      // navigation and /admin is a gated route, so ordering it this way
+      // means a lock-then-navigate race can't strand this screen on
+      // /unlock even if something later makes that state trigger a
+      // refresh — it doesn't appear to today.
+      await ref.read(learnerDataWiperProvider).wipeAll();
+      ref.invalidate(_allStudentsProvider);
+      ref.invalidate(activeStudentProvider);
+      ref.invalidate(hasProfileProvider);
+      router.go('/onboarding');
+      // Stronger than an ordinary learner switch (CLAUDE.md treats that as
+      // its own privacy boundary): the learner this device was mid-session
+      // as is now gone entirely, so its chat thread, tutor memory and the
+      // engine's KV cache must not carry over to whoever onboards next —
+      // and the device hands back to a learner, so the teacher area locks.
+      ref.read(chatProvider.notifier).reset();
+      ref.read(teacherUnlockedProvider.notifier).state = false;
+    });
   }
 }
 
@@ -170,12 +262,29 @@ final _allStudentsProvider = FutureProvider<List<Student>>((ref) {
   return db.studentDao.getAllStudents();
 });
 
+/// Whether a Teacher PIN exists — the reset tile stays locked without one,
+/// since with no PIN set nothing gates `/admin` at all (see teacher_pin.dart)
+/// and "teachers/admins only" would otherwise be nominal.
+///
+/// autoDispose, not a plain FutureProvider: a PIN set moments ago in
+/// Settings must unlock this tile the next time Admin is opened, not only
+/// after the app restarts and the cached `false` is gone.
+final _pinSetProvider = FutureProvider.autoDispose<bool>((ref) {
+  return ref.watch(teacherPinProvider).isSet();
+});
+
 class _StudentRow extends ConsumerWidget {
   const _StudentRow({required this.student});
   final Student student;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Same lock as "Reset all student data" below, and for the same
+    // reason: with no PIN set nothing gates /admin at all (teacher_pin.dart),
+    // so without this check any learner who opens Admin could delete
+    // another learner's profile — exactly what "teachers/admins only" is
+    // supposed to prevent.
+    final pinSet = ref.watch(_pinSetProvider).valueOrNull ?? false;
     return ListTile(
       title: Text(student.name, style: const TextStyle(fontSize: 14)),
       subtitle: Text(
@@ -183,14 +292,24 @@ class _StudentRow extends ConsumerWidget {
         style: const TextStyle(fontSize: 12),
       ),
       trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-        tooltip: 'Delete profile',
-        onPressed: () => _confirmDelete(context, ref),
+        icon: Icon(
+          Icons.delete_outline,
+          color: pinSet ? Colors.red : Theme.of(context).hintColor,
+          size: 20,
+        ),
+        tooltip: pinSet ? 'Delete profile' : 'Set a Teacher PIN first',
+        onPressed: pinSet ? () => _confirmDelete(context, ref) : null,
       ),
     );
   }
 
   void _confirmDelete(BuildContext context, WidgetRef ref) {
+    // Captured before the dialog opens, both so it's safe to use afterward
+    // (the .then callback below runs past that async gap) and, for the
+    // wipeAll-equivalent branch inside it, so navigating off /admin can
+    // happen before the teacher-area lock changes — see the matching note
+    // in _confirmResetAll on why that order avoids a router redirect race.
+    final router = GoRouter.of(context);
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -213,20 +332,48 @@ class _StudentRow extends ConsumerWidget {
       ),
     ).then((confirmed) async {
       if (confirmed != true) return;
-      final db = ref.read(dbProvider);
-      // Clear their saved chats first, and the recall files behind them.
-      // Nothing in this app enables `PRAGMA foreign_keys`, so the cascade
-      // declared on the table is never enforced and the rows (and their
-      // files) would otherwise outlive the student they belong to.
-      final orphaned = await db.chatSessionDao.deleteForStudent(student.id);
-      final store = ref.read(sessionRecallStoreProvider);
-      for (final id in orphaned) {
-        await store.delete(id);
-      }
-      await db.studentDao.deleteStudent(student.id);
+      final wasActive =
+          (await ref.read(activeStudentProvider.future))?.id == student.id;
+
+      // Nothing in this app enables `PRAGMA foreign_keys`, so cascades
+      // declared on these tables are never enforced — LearnerDataWiper is
+      // the one place that clears every table actually scoped to a
+      // student, so a deleted profile can't leave orphaned rows in a table
+      // this dialog's old inline version predates (session_summaries,
+      // topic_progress, learning_paths, earned_badges, student_projects,
+      // website_projects, app_builder_projects, assignments were all
+      // missed before).
+      await ref.read(learnerDataWiperProvider).wipeStudent(student.id);
+
+      // Read fresh, after the delete — _allStudentsProvider's cache still
+      // holds the pre-delete list until invalidated below, and reading
+      // that here would make a lone remaining learner look like there
+      // were none, or a just-deleted one look like it were still there.
+      final remaining = await ref.read(dbProvider).studentDao.getAllStudents();
       ref.invalidate(_allStudentsProvider);
       ref.invalidate(activeStudentProvider);
       ref.invalidate(hasProfileProvider);
+
+      if (!wasActive) return;
+      // Same privacy boundary a learner switch enforces (CLAUDE.md) — the
+      // learner whose thread/tutor-memory/KV cache this device was holding
+      // no longer exists, so none of it may reach whoever uses the device
+      // next.
+      ref.read(chatProvider.notifier).reset();
+      if (remaining.isEmpty) {
+        // Same situation wipeAll leaves the device in — the wiper already
+        // cleared the router's `student_name` onboarding flag once this
+        // was the last learner, so onboarding is the only correct landing.
+        router.go('/onboarding');
+        ref.read(teacherUnlockedProvider.notifier).state = false;
+      } else {
+        // resolveActiveStudent's fallback (most-recently-active) would
+        // otherwise silently turn the device into some other learner
+        // without going through LearnerSwitcher — no language change, no
+        // explicit choice. Send the admin to pick, the same as any other
+        // handoff.
+        router.go('/learners');
+      }
     });
   }
 }

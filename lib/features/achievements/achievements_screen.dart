@@ -67,7 +67,17 @@ List<_BadgeProgress> _progressFor({
   required List<LearningPath> paths,
   required int projectCount,
 }) {
-  final lessonsDone = paths.fold(0, (s, p) => s + p.completedLessons);
+  // LearningPaths (auto-generated) plus the curriculum browser's own
+  // lessons — two separate tracks that both count as "a lesson done".
+  var lessonsDone =
+      paths.fold(0, (s, p) => s + p.completedLessons) +
+          student.totalLessonsCompleted;
+  // A student can hold the First Step badge with both trackers reading 0 —
+  // e.g. a regenerated path resets LearningPaths.completedLessons
+  // (path_dao.dart uses insertOnConflictUpdate) without touching the badge
+  // already recorded. Completed sitting next to "0 lessons done" is exactly
+  // the contradiction that made the whole screen read as hardcoded.
+  if (earnedIds.contains('first_lesson') && lessonsDone < 1) lessonsDone = 1;
   LearningPath? bestPath;
   for (final p in paths) {
     if (p.totalLessons <= 0) continue;
@@ -83,6 +93,9 @@ List<_BadgeProgress> _progressFor({
         'path_master' =>
           (bestPath?.completedLessons ?? 0, bestPath?.totalLessons ?? 12),
         'polymath' => (paths.length, 3),
+        'practice_starter' => (student.totalPracticeAttempted, 1),
+        'sharp_mind' => (student.totalPracticeCorrect, 5),
+        'scenario_solver' => (student.totalScenariosCompleted, 5),
         'creator' => (projectCount, 1),
         'consistent_learner' => (student.streakDays, 7),
         'century' => (student.totalPoints, 100),
@@ -120,10 +133,27 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
   Widget build(BuildContext context) {
     final student = widget.student;
     final badgesAsync = ref.watch(earnedBadgesProvider(student.id));
+    // BadgeService keeps this fresh on every Practice/Apply/streak/award
+    // event without touching activeStudentProvider (which the chat, router
+    // and app shell all watch) — see studentStatsProvider's doc comment.
+    // Falls back to the (possibly one-tick-stale) student passed in while
+    // the first fetch is in flight.
+    final liveStudent =
+        ref.watch(studentStatsProvider(student.id)).valueOrNull ?? student;
     // Progress is a nicety — until these load, badges simply read as locked.
     final paths = ref.watch(studentPathsProvider).valueOrNull ?? const [];
-    final projects =
+    // A "project" is anything saved from Create mode — the guided project
+    // builder, the App Builder, or the Website Builder — so the Creator
+    // badge and the count it shows reflect all three, not just one.
+    final createProjects =
         ref.watch(studentProjectsProvider(student.id)).valueOrNull ?? const [];
+    final appProjects =
+        ref.watch(studentAppBuilderProjectsProvider(student.id)).valueOrNull ??
+            const [];
+    final websites =
+        ref.watch(studentWebsitesProvider(student.id)).valueOrNull ?? const [];
+    final projectCount =
+        createProjects.length + appProjects.length + websites.length;
 
     return badgesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -132,9 +162,9 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
         final earnedIds = earned.map((b) => b.badgeId).toSet();
         final progress = _progressFor(
           earnedIds: earnedIds,
-          student: student,
+          student: liveStudent,
           paths: paths,
-          projectCount: projects.length,
+          projectCount: projectCount,
         );
         final earnedCount = progress.where((p) => p.earned).length;
         // Earned first, then the ones under way — the preview row leads with
@@ -166,6 +196,17 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
                       // The one-row layout needs room for the ring and both
                       // stat tiles side by side; below that it stacks.
                       wide: box.maxWidth >= 1000,
+                    ),
+                    SizedBox(height: wide ? 32 : 24),
+                    _AreaProgress(
+                      student: liveStudent,
+                      paths: paths,
+                      createCount: createProjects.length,
+                      appCount: appProjects.length,
+                      websiteCount: websites.length,
+                      cols: adaptiveColumns(box.maxWidth - hPad * 2,
+                          min: 2, max: 4, itemWidth: 210),
+                      firstLessonEarned: earnedIds.contains('first_lesson'),
                     ),
                     SizedBox(height: wide ? 32 : 24),
                     _BadgesHeader(
@@ -404,6 +445,222 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
+// ── Progress by area ─────────────────────────────────────────────────────────
+//
+// The badge grid alone hides most of a learner's activity — Practice, Apply
+// and Create only show up there once a badge is close, and the grid itself
+// is often collapsed to a couple of cards. This section is what actually
+// grounds "not hardcoded": every value is read live from the same tables the
+// badges use (LearningPaths, the practice/scenario counters on Students, and
+// the three project tables), one card per connected feature.
+class _AreaProgress extends StatelessWidget {
+  const _AreaProgress({
+    required this.student,
+    required this.paths,
+    required this.createCount,
+    required this.appCount,
+    required this.websiteCount,
+    required this.cols,
+    required this.firstLessonEarned,
+  });
+
+  final Student student;
+  final List<LearningPath> paths;
+  final int createCount;
+  final int appCount;
+  final int websiteCount;
+  final int cols;
+  final bool firstLessonEarned;
+
+  @override
+  Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
+    var lessonsDone =
+        paths.fold(0, (s, p) => s + p.completedLessons) +
+            student.totalLessonsCompleted;
+    // See the matching floor in _progressFor.
+    if (firstLessonEarned && lessonsDone < 1) lessonsDone = 1;
+    LearningPath? bestPath;
+    for (final p in paths) {
+      if (p.totalLessons <= 0) continue;
+      if (bestPath == null ||
+          p.completedLessons / p.totalLessons >
+              bestPath.completedLessons / bestPath.totalLessons) {
+        bestPath = p;
+      }
+    }
+    final attempted = student.totalPracticeAttempted;
+    final correct = student.totalPracticeCorrect;
+    final accuracy = attempted > 0 ? (correct / attempted * 100).round() : 0;
+    final totalProjects = createCount + appCount + websiteCount;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Text(
+            tr(context, 'Progress by area'),
+            style: TextStyle(
+              fontFamily: 'Saira',
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              color: ac.textPrimary,
+            ),
+          ),
+        ),
+        GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            mainAxisExtent: 132,
+          ),
+          children: [
+            _AreaCard(
+              icon: Icons.school_rounded,
+              color: AppColors.learnColor,
+              title: tr(context, 'Learn'),
+              value: trFill(
+                  context,
+                  lessonsDone == 1 ? '{n} lesson done' : '{n} lessons done',
+                  {'n': '$lessonsDone'}),
+              detail: bestPath == null
+                  ? tr(context, 'Start a learning path')
+                  : trFill(context, '{title}: {done}/{total}', {
+                      'title': bestPath.topic,
+                      'done': '${bestPath.completedLessons}',
+                      'total': '${bestPath.totalLessons}',
+                    }),
+              ratio: bestPath == null || bestPath.totalLessons <= 0
+                  ? 0
+                  : bestPath.completedLessons / bestPath.totalLessons,
+              onTap: () => GoRouter.of(context).push('/learn'),
+            ),
+            _AreaCard(
+              icon: Icons.quiz_rounded,
+              color: AppColors.practiceColor,
+              title: tr(context, 'Practice'),
+              value: trFill(context, '{correct}/{attempted} correct',
+                  {'correct': '$correct', 'attempted': '$attempted'}),
+              detail: attempted == 0
+                  ? tr(context, 'Answer your first question')
+                  : trFill(
+                      context, '{pct}% accuracy', {'pct': '$accuracy'}),
+              ratio: correct / 5,
+              onTap: () => GoRouter.of(context).push('/practice'),
+            ),
+            _AreaCard(
+              icon: Icons.explore_rounded,
+              color: AppColors.createColor,
+              title: tr(context, 'Apply'),
+              value: trFill(
+                  context,
+                  student.totalScenariosCompleted == 1
+                      ? '{n} scenario completed'
+                      : '{n} scenarios completed',
+                  {'n': '${student.totalScenariosCompleted}'}),
+              detail: tr(context, 'Real-world problem solving'),
+              ratio: student.totalScenariosCompleted / 5,
+              onTap: () => GoRouter.of(context).push('/practice'),
+            ),
+            _AreaCard(
+              icon: Icons.lightbulb_rounded,
+              color: AppColors.teachColor,
+              title: tr(context, 'Create'),
+              value: trFill(
+                  context,
+                  totalProjects == 1
+                      ? '{n} project saved'
+                      : '{n} projects saved',
+                  {'n': '$totalProjects'}),
+              detail: tr(context, 'Guided, App & Website builders'),
+              ratio: totalProjects.clamp(0, 1).toDouble(),
+              onTap: () => GoRouter.of(context).push('/projects'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AreaCard extends StatelessWidget {
+  const _AreaCard({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.value,
+    required this.detail,
+    required this.ratio,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String value;
+  final String detail;
+  final double ratio;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ac = AppColors.of(context);
+    return StudioCard(
+      accent: color,
+      onTap: onTap,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              StudioIconChip(icon: icon, color: color, size: 34, radius: 11),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: ac.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: ac.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _Bar(value: ratio, height: 6),
+          const SizedBox(height: 6),
+          Text(
+            detail,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11.5, color: ac.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProgressRing extends StatelessWidget {
   const _ProgressRing({required this.ratio, required this.size});
   final double ratio;
@@ -455,7 +712,12 @@ class _ProgressRing extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                tr(context, 'Completed'),
+                // Distinct from the per-badge "Completed" pill below — this
+                // ring specifically is badges earned ÷ total badges, not a
+                // syllabus/lesson completion percentage. 'Badges' is already
+                // translated across every supported language, unlike a new
+                // English-only label would be.
+                tr(context, 'Badges'),
                 style: TextStyle(
                   fontSize: size * 0.085,
                   color: ac.textSecondary,

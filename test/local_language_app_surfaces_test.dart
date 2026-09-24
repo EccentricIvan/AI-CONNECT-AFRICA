@@ -3,6 +3,7 @@ import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
 import 'package:ai_connect_africa/ai_core/providers/ai_provider.dart';
 import 'package:ai_connect_africa/ai_core/translate/chat_languages.dart';
 import 'package:ai_connect_africa/core/app_info_provider.dart';
+import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/certificates/certificates_screen.dart';
 import 'package:ai_connect_africa/features/create/create_screen.dart';
@@ -10,11 +11,16 @@ import 'package:ai_connect_africa/features/learn/learn_screen.dart';
 import 'package:ai_connect_africa/features/learn/path/path_provider.dart';
 import 'package:ai_connect_africa/features/onboarding/onboarding_screen.dart';
 import 'package:ai_connect_africa/features/practice/practice_screen.dart';
+import 'package:ai_connect_africa/features/python_lab/python_lab_screen.dart';
 import 'package:ai_connect_africa/features/settings/settings_screen.dart';
+import 'package:ai_connect_africa/features/site_builder/site_chat_builder_screen.dart';
+import 'package:ai_connect_africa/features/web_dev_lab/web_dev_lab_screen.dart';
 import 'package:ai_connect_africa/l10n/app_locale.dart';
 import 'package:ai_connect_africa/l10n/language_provider.dart';
 import 'package:ai_connect_africa/voice/voice_provider.dart';
 import 'package:ai_connect_africa/voice/voice_service.dart';
+import 'package:drift/drift.dart' show DatabaseConnection;
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -73,7 +79,8 @@ class _SilentVoice extends VoiceService {
       false;
 }
 
-List<Override> _overrides() => [
+List<Override> _overrides({OticDatabase? db}) => [
+      if (db != null) dbProvider.overrideWithValue(db),
       activeStudentProvider.overrideWith((ref) async => null),
       studentPathsProvider.overrideWith((ref) async => []),
       voiceServiceProvider.overrideWithValue(_SilentVoice()),
@@ -103,8 +110,9 @@ Future<BuildContext> _pump(
   WidgetTester tester, {
   required String languageCode,
   required Widget child,
+  OticDatabase? db,
 }) async {
-  final container = ProviderContainer(overrides: _overrides());
+  final container = ProviderContainer(overrides: _overrides(db: db));
   addTearDown(container.dispose);
   container.read(languageOverrideProvider.notifier).adoptSaved(languageCode);
 
@@ -178,8 +186,19 @@ void main() {
       await expectChrome('Apply');
       await expectChrome('Sharpen your skills');
 
-      await _pump(tester, languageCode: code, child: const CreateScreen());
-      await expectChrome('Create');
+      final createDb =
+          OticDatabase.forTesting(DatabaseConnection(NativeDatabase.memory()));
+      addTearDown(createDb.close);
+      await _pump(
+        tester,
+        languageCode: code,
+        child: const CreateScreen(),
+        db: createDb,
+      );
+      // No standalone "Create" label any more — the top tab row's own
+      // labels are the chrome now, and the first one is what's on screen
+      // by default (see create_screen.dart's _SetupView).
+      await expectChrome('Build a Website');
 
       await _pump(tester, languageCode: code, child: const SettingsScreen());
       await expectChrome('Settings');
@@ -196,5 +215,43 @@ void main() {
       await expectChrome('Welcome to AI Connect Africa');
       await expectChrome('Start learning');
     }
+  });
+
+  testWidgets(
+      'Create tabs mount a lab only on first visit and keep it mounted '
+      'once visited', (tester) async {
+    tester.view.physicalSize = const Size(1280, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final db =
+        OticDatabase.forTesting(DatabaseConnection(NativeDatabase.memory()));
+    addTearDown(db.close);
+    await _pump(tester, languageCode: 'en', child: const CreateScreen(), db: db);
+
+    // Nothing but the default first tab (Website Builder) is built yet —
+    // IndexedStack keeps every visited child mounted (offstage, not
+    // disposed), so this only reads as "never visited" if it holds even
+    // with skipOffstage: false.
+    expect(find.byType(SiteChatBuilderScreen), findsOneWidget);
+    expect(find.byType(PythonLabScreen, skipOffstage: false), findsNothing);
+    expect(find.byType(WebDevLabScreen, skipOffstage: false), findsNothing);
+
+    await tester.tap(find.text('Python Lab'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(PythonLabScreen), findsOneWidget);
+
+    // Switch back to the first tab — its lab must still be mounted, not
+    // rebuilt from scratch, which is the whole point of tabs "on the same
+    // page" instead of push navigation.
+    await tester.tap(find.text('Build a Website'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(SiteChatBuilderScreen), findsOneWidget);
+    expect(find.byType(PythonLabScreen, skipOffstage: false), findsOneWidget,
+        reason: 'the Python Lab tab visited earlier must stay mounted '
+            '(offstage), not get torn down when switching away from it');
   });
 }

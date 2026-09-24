@@ -686,7 +686,16 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
         title: Row(children: [
           const Icon(Icons.language, size: 20, color: AppColors.primary),
           const SizedBox(width: 8),
-          Text(tr(context, 'Website Builder')),
+          // Flexible + ellipsis: a longer translation (e.g. Luganda) plus
+          // the two action buttons beside it can exceed the AppBar's title
+          // width by a couple of pixels — pre-existing, only surfaced now
+          // that this screen is actually reachable under those languages.
+          Flexible(
+            child: Text(
+              tr(context, 'Website Builder'),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ]),
         actions: [
           TextButton(

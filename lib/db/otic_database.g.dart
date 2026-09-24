@@ -156,6 +156,51 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _totalPracticeAttemptedMeta =
+      const VerificationMeta('totalPracticeAttempted');
+  @override
+  late final GeneratedColumn<int> totalPracticeAttempted = GeneratedColumn<int>(
+    'total_practice_attempted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _totalPracticeCorrectMeta =
+      const VerificationMeta('totalPracticeCorrect');
+  @override
+  late final GeneratedColumn<int> totalPracticeCorrect = GeneratedColumn<int>(
+    'total_practice_correct',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _totalScenariosCompletedMeta =
+      const VerificationMeta('totalScenariosCompleted');
+  @override
+  late final GeneratedColumn<int> totalScenariosCompleted =
+      GeneratedColumn<int>(
+        'total_scenarios_completed',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      );
+  static const VerificationMeta _totalLessonsCompletedMeta =
+      const VerificationMeta('totalLessonsCompleted');
+  @override
+  late final GeneratedColumn<int> totalLessonsCompleted = GeneratedColumn<int>(
+    'total_lessons_completed',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -206,6 +251,10 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     streakDays,
     lastStreakDate,
     totalPoints,
+    totalPracticeAttempted,
+    totalPracticeCorrect,
+    totalScenariosCompleted,
+    totalLessonsCompleted,
     createdAt,
     lastActiveAt,
     classGroupId,
@@ -317,6 +366,42 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         ),
       );
     }
+    if (data.containsKey('total_practice_attempted')) {
+      context.handle(
+        _totalPracticeAttemptedMeta,
+        totalPracticeAttempted.isAcceptableOrUnknown(
+          data['total_practice_attempted']!,
+          _totalPracticeAttemptedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('total_practice_correct')) {
+      context.handle(
+        _totalPracticeCorrectMeta,
+        totalPracticeCorrect.isAcceptableOrUnknown(
+          data['total_practice_correct']!,
+          _totalPracticeCorrectMeta,
+        ),
+      );
+    }
+    if (data.containsKey('total_scenarios_completed')) {
+      context.handle(
+        _totalScenariosCompletedMeta,
+        totalScenariosCompleted.isAcceptableOrUnknown(
+          data['total_scenarios_completed']!,
+          _totalScenariosCompletedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('total_lessons_completed')) {
+      context.handle(
+        _totalLessonsCompletedMeta,
+        totalLessonsCompleted.isAcceptableOrUnknown(
+          data['total_lessons_completed']!,
+          _totalLessonsCompletedMeta,
+        ),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -402,6 +487,22 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         DriftSqlType.int,
         data['${effectivePrefix}total_points'],
       )!,
+      totalPracticeAttempted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_practice_attempted'],
+      )!,
+      totalPracticeCorrect: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_practice_correct'],
+      )!,
+      totalScenariosCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_scenarios_completed'],
+      )!,
+      totalLessonsCompleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}total_lessons_completed'],
+      )!,
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -437,6 +538,10 @@ class Student extends DataClass implements Insertable<Student> {
   final int streakDays;
   final DateTime? lastStreakDate;
   final int totalPoints;
+  final int totalPracticeAttempted;
+  final int totalPracticeCorrect;
+  final int totalScenariosCompleted;
+  final int totalLessonsCompleted;
   final DateTime createdAt;
   final DateTime lastActiveAt;
 
@@ -459,6 +564,10 @@ class Student extends DataClass implements Insertable<Student> {
     required this.streakDays,
     this.lastStreakDate,
     required this.totalPoints,
+    required this.totalPracticeAttempted,
+    required this.totalPracticeCorrect,
+    required this.totalScenariosCompleted,
+    required this.totalLessonsCompleted,
     required this.createdAt,
     required this.lastActiveAt,
     this.classGroupId,
@@ -485,6 +594,10 @@ class Student extends DataClass implements Insertable<Student> {
       map['last_streak_date'] = Variable<DateTime>(lastStreakDate);
     }
     map['total_points'] = Variable<int>(totalPoints);
+    map['total_practice_attempted'] = Variable<int>(totalPracticeAttempted);
+    map['total_practice_correct'] = Variable<int>(totalPracticeCorrect);
+    map['total_scenarios_completed'] = Variable<int>(totalScenariosCompleted);
+    map['total_lessons_completed'] = Variable<int>(totalLessonsCompleted);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['last_active_at'] = Variable<DateTime>(lastActiveAt);
     if (!nullToAbsent || classGroupId != null) {
@@ -512,6 +625,10 @@ class Student extends DataClass implements Insertable<Student> {
           ? const Value.absent()
           : Value(lastStreakDate),
       totalPoints: Value(totalPoints),
+      totalPracticeAttempted: Value(totalPracticeAttempted),
+      totalPracticeCorrect: Value(totalPracticeCorrect),
+      totalScenariosCompleted: Value(totalScenariosCompleted),
+      totalLessonsCompleted: Value(totalLessonsCompleted),
       createdAt: Value(createdAt),
       lastActiveAt: Value(lastActiveAt),
       classGroupId: classGroupId == null && nullToAbsent
@@ -539,6 +656,18 @@ class Student extends DataClass implements Insertable<Student> {
       streakDays: serializer.fromJson<int>(json['streakDays']),
       lastStreakDate: serializer.fromJson<DateTime?>(json['lastStreakDate']),
       totalPoints: serializer.fromJson<int>(json['totalPoints']),
+      totalPracticeAttempted: serializer.fromJson<int>(
+        json['totalPracticeAttempted'],
+      ),
+      totalPracticeCorrect: serializer.fromJson<int>(
+        json['totalPracticeCorrect'],
+      ),
+      totalScenariosCompleted: serializer.fromJson<int>(
+        json['totalScenariosCompleted'],
+      ),
+      totalLessonsCompleted: serializer.fromJson<int>(
+        json['totalLessonsCompleted'],
+      ),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastActiveAt: serializer.fromJson<DateTime>(json['lastActiveAt']),
       classGroupId: serializer.fromJson<int?>(json['classGroupId']),
@@ -561,6 +690,12 @@ class Student extends DataClass implements Insertable<Student> {
       'streakDays': serializer.toJson<int>(streakDays),
       'lastStreakDate': serializer.toJson<DateTime?>(lastStreakDate),
       'totalPoints': serializer.toJson<int>(totalPoints),
+      'totalPracticeAttempted': serializer.toJson<int>(totalPracticeAttempted),
+      'totalPracticeCorrect': serializer.toJson<int>(totalPracticeCorrect),
+      'totalScenariosCompleted': serializer.toJson<int>(
+        totalScenariosCompleted,
+      ),
+      'totalLessonsCompleted': serializer.toJson<int>(totalLessonsCompleted),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastActiveAt': serializer.toJson<DateTime>(lastActiveAt),
       'classGroupId': serializer.toJson<int?>(classGroupId),
@@ -581,6 +716,10 @@ class Student extends DataClass implements Insertable<Student> {
     int? streakDays,
     Value<DateTime?> lastStreakDate = const Value.absent(),
     int? totalPoints,
+    int? totalPracticeAttempted,
+    int? totalPracticeCorrect,
+    int? totalScenariosCompleted,
+    int? totalLessonsCompleted,
     DateTime? createdAt,
     DateTime? lastActiveAt,
     Value<int?> classGroupId = const Value.absent(),
@@ -600,6 +739,12 @@ class Student extends DataClass implements Insertable<Student> {
         ? lastStreakDate.value
         : this.lastStreakDate,
     totalPoints: totalPoints ?? this.totalPoints,
+    totalPracticeAttempted:
+        totalPracticeAttempted ?? this.totalPracticeAttempted,
+    totalPracticeCorrect: totalPracticeCorrect ?? this.totalPracticeCorrect,
+    totalScenariosCompleted:
+        totalScenariosCompleted ?? this.totalScenariosCompleted,
+    totalLessonsCompleted: totalLessonsCompleted ?? this.totalLessonsCompleted,
     createdAt: createdAt ?? this.createdAt,
     lastActiveAt: lastActiveAt ?? this.lastActiveAt,
     classGroupId: classGroupId.present ? classGroupId.value : this.classGroupId,
@@ -633,6 +778,18 @@ class Student extends DataClass implements Insertable<Student> {
       totalPoints: data.totalPoints.present
           ? data.totalPoints.value
           : this.totalPoints,
+      totalPracticeAttempted: data.totalPracticeAttempted.present
+          ? data.totalPracticeAttempted.value
+          : this.totalPracticeAttempted,
+      totalPracticeCorrect: data.totalPracticeCorrect.present
+          ? data.totalPracticeCorrect.value
+          : this.totalPracticeCorrect,
+      totalScenariosCompleted: data.totalScenariosCompleted.present
+          ? data.totalScenariosCompleted.value
+          : this.totalScenariosCompleted,
+      totalLessonsCompleted: data.totalLessonsCompleted.present
+          ? data.totalLessonsCompleted.value
+          : this.totalLessonsCompleted,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       lastActiveAt: data.lastActiveAt.present
           ? data.lastActiveAt.value
@@ -659,6 +816,10 @@ class Student extends DataClass implements Insertable<Student> {
           ..write('streakDays: $streakDays, ')
           ..write('lastStreakDate: $lastStreakDate, ')
           ..write('totalPoints: $totalPoints, ')
+          ..write('totalPracticeAttempted: $totalPracticeAttempted, ')
+          ..write('totalPracticeCorrect: $totalPracticeCorrect, ')
+          ..write('totalScenariosCompleted: $totalScenariosCompleted, ')
+          ..write('totalLessonsCompleted: $totalLessonsCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastActiveAt: $lastActiveAt, ')
           ..write('classGroupId: $classGroupId')
@@ -681,6 +842,10 @@ class Student extends DataClass implements Insertable<Student> {
     streakDays,
     lastStreakDate,
     totalPoints,
+    totalPracticeAttempted,
+    totalPracticeCorrect,
+    totalScenariosCompleted,
+    totalLessonsCompleted,
     createdAt,
     lastActiveAt,
     classGroupId,
@@ -702,6 +867,10 @@ class Student extends DataClass implements Insertable<Student> {
           other.streakDays == this.streakDays &&
           other.lastStreakDate == this.lastStreakDate &&
           other.totalPoints == this.totalPoints &&
+          other.totalPracticeAttempted == this.totalPracticeAttempted &&
+          other.totalPracticeCorrect == this.totalPracticeCorrect &&
+          other.totalScenariosCompleted == this.totalScenariosCompleted &&
+          other.totalLessonsCompleted == this.totalLessonsCompleted &&
           other.createdAt == this.createdAt &&
           other.lastActiveAt == this.lastActiveAt &&
           other.classGroupId == this.classGroupId);
@@ -721,6 +890,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
   final Value<int> streakDays;
   final Value<DateTime?> lastStreakDate;
   final Value<int> totalPoints;
+  final Value<int> totalPracticeAttempted;
+  final Value<int> totalPracticeCorrect;
+  final Value<int> totalScenariosCompleted;
+  final Value<int> totalLessonsCompleted;
   final Value<DateTime> createdAt;
   final Value<DateTime> lastActiveAt;
   final Value<int?> classGroupId;
@@ -738,6 +911,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.streakDays = const Value.absent(),
     this.lastStreakDate = const Value.absent(),
     this.totalPoints = const Value.absent(),
+    this.totalPracticeAttempted = const Value.absent(),
+    this.totalPracticeCorrect = const Value.absent(),
+    this.totalScenariosCompleted = const Value.absent(),
+    this.totalLessonsCompleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
     this.classGroupId = const Value.absent(),
@@ -756,6 +933,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.streakDays = const Value.absent(),
     this.lastStreakDate = const Value.absent(),
     this.totalPoints = const Value.absent(),
+    this.totalPracticeAttempted = const Value.absent(),
+    this.totalPracticeCorrect = const Value.absent(),
+    this.totalScenariosCompleted = const Value.absent(),
+    this.totalLessonsCompleted = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
     this.classGroupId = const Value.absent(),
@@ -774,6 +955,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Expression<int>? streakDays,
     Expression<DateTime>? lastStreakDate,
     Expression<int>? totalPoints,
+    Expression<int>? totalPracticeAttempted,
+    Expression<int>? totalPracticeCorrect,
+    Expression<int>? totalScenariosCompleted,
+    Expression<int>? totalLessonsCompleted,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastActiveAt,
     Expression<int>? classGroupId,
@@ -792,6 +977,14 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       if (streakDays != null) 'streak_days': streakDays,
       if (lastStreakDate != null) 'last_streak_date': lastStreakDate,
       if (totalPoints != null) 'total_points': totalPoints,
+      if (totalPracticeAttempted != null)
+        'total_practice_attempted': totalPracticeAttempted,
+      if (totalPracticeCorrect != null)
+        'total_practice_correct': totalPracticeCorrect,
+      if (totalScenariosCompleted != null)
+        'total_scenarios_completed': totalScenariosCompleted,
+      if (totalLessonsCompleted != null)
+        'total_lessons_completed': totalLessonsCompleted,
       if (createdAt != null) 'created_at': createdAt,
       if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       if (classGroupId != null) 'class_group_id': classGroupId,
@@ -812,6 +1005,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Value<int>? streakDays,
     Value<DateTime?>? lastStreakDate,
     Value<int>? totalPoints,
+    Value<int>? totalPracticeAttempted,
+    Value<int>? totalPracticeCorrect,
+    Value<int>? totalScenariosCompleted,
+    Value<int>? totalLessonsCompleted,
     Value<DateTime>? createdAt,
     Value<DateTime>? lastActiveAt,
     Value<int?>? classGroupId,
@@ -830,6 +1027,13 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       streakDays: streakDays ?? this.streakDays,
       lastStreakDate: lastStreakDate ?? this.lastStreakDate,
       totalPoints: totalPoints ?? this.totalPoints,
+      totalPracticeAttempted:
+          totalPracticeAttempted ?? this.totalPracticeAttempted,
+      totalPracticeCorrect: totalPracticeCorrect ?? this.totalPracticeCorrect,
+      totalScenariosCompleted:
+          totalScenariosCompleted ?? this.totalScenariosCompleted,
+      totalLessonsCompleted:
+          totalLessonsCompleted ?? this.totalLessonsCompleted,
       createdAt: createdAt ?? this.createdAt,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
       classGroupId: classGroupId ?? this.classGroupId,
@@ -878,6 +1082,24 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     if (totalPoints.present) {
       map['total_points'] = Variable<int>(totalPoints.value);
     }
+    if (totalPracticeAttempted.present) {
+      map['total_practice_attempted'] = Variable<int>(
+        totalPracticeAttempted.value,
+      );
+    }
+    if (totalPracticeCorrect.present) {
+      map['total_practice_correct'] = Variable<int>(totalPracticeCorrect.value);
+    }
+    if (totalScenariosCompleted.present) {
+      map['total_scenarios_completed'] = Variable<int>(
+        totalScenariosCompleted.value,
+      );
+    }
+    if (totalLessonsCompleted.present) {
+      map['total_lessons_completed'] = Variable<int>(
+        totalLessonsCompleted.value,
+      );
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -906,6 +1128,10 @@ class StudentsCompanion extends UpdateCompanion<Student> {
           ..write('streakDays: $streakDays, ')
           ..write('lastStreakDate: $lastStreakDate, ')
           ..write('totalPoints: $totalPoints, ')
+          ..write('totalPracticeAttempted: $totalPracticeAttempted, ')
+          ..write('totalPracticeCorrect: $totalPracticeCorrect, ')
+          ..write('totalScenariosCompleted: $totalScenariosCompleted, ')
+          ..write('totalLessonsCompleted: $totalLessonsCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastActiveAt: $lastActiveAt, ')
           ..write('classGroupId: $classGroupId')
@@ -8233,6 +8459,10 @@ typedef $$StudentsTableCreateCompanionBuilder =
       Value<int> streakDays,
       Value<DateTime?> lastStreakDate,
       Value<int> totalPoints,
+      Value<int> totalPracticeAttempted,
+      Value<int> totalPracticeCorrect,
+      Value<int> totalScenariosCompleted,
+      Value<int> totalLessonsCompleted,
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
       Value<int?> classGroupId,
@@ -8252,6 +8482,10 @@ typedef $$StudentsTableUpdateCompanionBuilder =
       Value<int> streakDays,
       Value<DateTime?> lastStreakDate,
       Value<int> totalPoints,
+      Value<int> totalPracticeAttempted,
+      Value<int> totalPracticeCorrect,
+      Value<int> totalScenariosCompleted,
+      Value<int> totalLessonsCompleted,
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
       Value<int?> classGroupId,
@@ -8328,6 +8562,26 @@ class $$StudentsTableFilterComposer
 
   ColumnFilters<int> get totalPoints => $composableBuilder(
     column: $table.totalPoints,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalPracticeAttempted => $composableBuilder(
+    column: $table.totalPracticeAttempted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalPracticeCorrect => $composableBuilder(
+    column: $table.totalPracticeCorrect,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalScenariosCompleted => $composableBuilder(
+    column: $table.totalScenariosCompleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get totalLessonsCompleted => $composableBuilder(
+    column: $table.totalLessonsCompleted,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8421,6 +8675,26 @@ class $$StudentsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get totalPracticeAttempted => $composableBuilder(
+    column: $table.totalPracticeAttempted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalPracticeCorrect => $composableBuilder(
+    column: $table.totalPracticeCorrect,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalScenariosCompleted => $composableBuilder(
+    column: $table.totalScenariosCompleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get totalLessonsCompleted => $composableBuilder(
+    column: $table.totalLessonsCompleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -8499,6 +8773,26 @@ class $$StudentsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<int> get totalPracticeAttempted => $composableBuilder(
+    column: $table.totalPracticeAttempted,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get totalPracticeCorrect => $composableBuilder(
+    column: $table.totalPracticeCorrect,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get totalScenariosCompleted => $composableBuilder(
+    column: $table.totalScenariosCompleted,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get totalLessonsCompleted => $composableBuilder(
+    column: $table.totalLessonsCompleted,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
@@ -8554,6 +8848,10 @@ class $$StudentsTableTableManager
                 Value<int> streakDays = const Value.absent(),
                 Value<DateTime?> lastStreakDate = const Value.absent(),
                 Value<int> totalPoints = const Value.absent(),
+                Value<int> totalPracticeAttempted = const Value.absent(),
+                Value<int> totalPracticeCorrect = const Value.absent(),
+                Value<int> totalScenariosCompleted = const Value.absent(),
+                Value<int> totalLessonsCompleted = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
                 Value<int?> classGroupId = const Value.absent(),
@@ -8571,6 +8869,10 @@ class $$StudentsTableTableManager
                 streakDays: streakDays,
                 lastStreakDate: lastStreakDate,
                 totalPoints: totalPoints,
+                totalPracticeAttempted: totalPracticeAttempted,
+                totalPracticeCorrect: totalPracticeCorrect,
+                totalScenariosCompleted: totalScenariosCompleted,
+                totalLessonsCompleted: totalLessonsCompleted,
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
                 classGroupId: classGroupId,
@@ -8590,6 +8892,10 @@ class $$StudentsTableTableManager
                 Value<int> streakDays = const Value.absent(),
                 Value<DateTime?> lastStreakDate = const Value.absent(),
                 Value<int> totalPoints = const Value.absent(),
+                Value<int> totalPracticeAttempted = const Value.absent(),
+                Value<int> totalPracticeCorrect = const Value.absent(),
+                Value<int> totalScenariosCompleted = const Value.absent(),
+                Value<int> totalLessonsCompleted = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
                 Value<int?> classGroupId = const Value.absent(),
@@ -8607,6 +8913,10 @@ class $$StudentsTableTableManager
                 streakDays: streakDays,
                 lastStreakDate: lastStreakDate,
                 totalPoints: totalPoints,
+                totalPracticeAttempted: totalPracticeAttempted,
+                totalPracticeCorrect: totalPracticeCorrect,
+                totalScenariosCompleted: totalScenariosCompleted,
+                totalLessonsCompleted: totalLessonsCompleted,
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
                 classGroupId: classGroupId,

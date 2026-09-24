@@ -23,6 +23,20 @@ class Students extends Table {
   IntColumn get streakDays => integer().withDefault(const Constant(0))();
   DateTimeColumn get lastStreakDate => dateTime().nullable()();
   IntColumn get totalPoints => integer().withDefault(const Constant(0))();
+  // Lifetime counts behind the Practice/Apply badges' progress bars — never
+  // reset per session, unlike the in-memory scores those screens track.
+  IntColumn get totalPracticeAttempted =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get totalPracticeCorrect =>
+      integer().withDefault(const Constant(0))();
+  IntColumn get totalScenariosCompleted =>
+      integer().withDefault(const Constant(0))();
+  // Curriculum-browser lessons passed at 60%+ — a separate track from
+  // LearningPaths (auto-generated paths), counted alongside it for the
+  // First Step badge and the Achievements Learn card. Per-student, unlike
+  // the shared-key completion flags LessonProgress otherwise writes.
+  IntColumn get totalLessonsCompleted =>
+      integer().withDefault(const Constant(0))();
   DateTimeColumn get createdAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastActiveAt =>
