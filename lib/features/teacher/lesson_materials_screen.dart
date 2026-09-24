@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../../db/daos/topic_resource_dao.dart';
 import '../../db/otic_database.dart';
 import '../../l10n/app_locale.dart';
@@ -31,7 +32,7 @@ class LessonMaterialsScreen extends ConsumerWidget {
         title: tr(context, ResourceLabels.workspace),
         subtitle: tr(context, ResourceLabels.workspaceSubtitle),
         icon: Icons.folder_copy_rounded,
-        iconColor: const Color(0xFF3B8FE8),
+        iconColor: AppColors.accentBlue,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _createSubject(context, ref),

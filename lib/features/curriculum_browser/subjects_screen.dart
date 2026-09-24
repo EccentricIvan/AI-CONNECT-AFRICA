@@ -45,7 +45,7 @@ class SubjectsScreen extends ConsumerWidget {
         title: tr(context, 'Learn'),
         subtitle: tr(context, 'Explore your courses'),
         icon: Icons.auto_stories_rounded,
-        iconColor: const Color(0xFF3B8FE8),
+        iconColor: AppColors.accentBlue,
       ),
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

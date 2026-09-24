@@ -18,7 +18,7 @@ const _sidebarCollapsedKey = 'shell_sidebar_collapsed';
 /// Shared shell chrome — matches mobile + desktop mockups.
 abstract final class ShellNavStyle {
   static const fontFamily = 'Inter';
-  static const navy = Color(0xFF1B2A4A);
+  static const navy = AppColors.navy;
   static const active = AppColors.primary;
   static const tile = Color(0xFFE8F1FE);
   static const labelSize = 9.5;
@@ -254,8 +254,8 @@ class _BottomNavItem extends StatelessWidget {
                       end: Alignment.centerRight,
                       colors: [
                         Color(0xFFDCEBFE),
-                        Color(0xFFF7F0E8),
-                        Color(0x00F7F0E8),
+                        Color(0xFFEEE8FE),
+                        Color(0x00EEE8FE),
                       ],
                       stops: [0.0, 0.55, 1.0],
                     )
@@ -579,8 +579,8 @@ class _NavRow extends StatelessWidget {
                     end: Alignment.centerRight,
                     colors: [
                       Color(0xFFDCEBFE),
-                      Color(0xFFF7F0E8),
-                      Color(0x00F7F0E8),
+                      Color(0xFFEEE8FE),
+                      Color(0x00EEE8FE),
                     ],
                     stops: [0.0, 0.55, 1.0],
                   )
@@ -907,7 +907,7 @@ class _RecentChatTile extends StatelessWidget {
               icon: Icon(
                 pinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
                 size: 14,
-                color: pinned ? AppColors.accentOrange : ac.textHint,
+                color: pinned ? AppColors.primary : ac.textHint,
               ),
             ),
           ],
@@ -1118,8 +1118,8 @@ class _DrawerTile extends StatelessWidget {
                     end: Alignment.centerRight,
                     colors: [
                       Color(0xFFDCEBFE),
-                      Color(0xFFF7F0E8),
-                      Color(0x00F7F0E8),
+                      Color(0xFFEEE8FE),
+                      Color(0x00EEE8FE),
                     ],
                     stops: [0.0, 0.55, 1.0],
                   )

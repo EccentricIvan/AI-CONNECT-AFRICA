@@ -15,6 +15,14 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.light,
+        // fromSeed alone desaturates the brand into slate blue / grey /
+        // mauve; pin the logo's three stops so stock widgets stay on-brand.
+        primary: AppColors.primary,
+        onPrimary: Colors.white,
+        secondary: AppColors.brandViolet,
+        onSecondary: Colors.white,
+        tertiary: AppColors.accentCyan,
+        onTertiary: Colors.white,
         surface: AppColors.light.surface,
         onSurface: AppColors.light.textPrimary,
         onSurfaceVariant: AppColors.light.textSecondary,
@@ -222,6 +230,13 @@ class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.primary,
         brightness: Brightness.dark,
+        // Lighter tints of the same logo stops so they read on navy.
+        primary: AppColors.primaryLight,
+        onPrimary: AppColors.navy,
+        secondary: const Color(0xFF9D7BFF),
+        onSecondary: AppColors.navy,
+        tertiary: const Color(0xFF38BDF8),
+        onTertiary: AppColors.navy,
         surface: dt.surface,
         onSurface: dt.textPrimary,
         onSurfaceVariant: dt.textSecondary,

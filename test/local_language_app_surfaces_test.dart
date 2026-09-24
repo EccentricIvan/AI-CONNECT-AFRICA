@@ -178,7 +178,14 @@ void main() {
       }
 
       await _pump(tester, languageCode: code, child: const LearnScreen());
-      await expectChrome('How can I help you today?');
+      expect(
+        find.textContaining(
+          tr(tester.element(find.byKey(const ValueKey('locale-root'))),
+              'how can I help you?'),
+        ),
+        findsWidgets,
+        reason: '$code: Home greeting missing',
+      );
       await expectChrome('Ask anything...');
 
       await _pump(tester, languageCode: code, child: const PracticeScreen());

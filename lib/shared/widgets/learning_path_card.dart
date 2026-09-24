@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/theme/app_colors.dart';
 
 class LearningPathCard extends StatelessWidget {
   const LearningPathCard({
@@ -91,11 +92,11 @@ class LearningPathCard extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        const Icon(Icons.play_circle_outline, size: 13, color: Color(0xFF94A3B8)),
+                        const Icon(Icons.play_circle_outline, size: 13, color: AppColors.accentSlate),
                         const SizedBox(width: 4),
                         Text(
                           '$lessonCount lessons',
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                          style: const TextStyle(fontSize: 12, color: AppColors.accentSlate),
                         ),
                       ],
                     ),

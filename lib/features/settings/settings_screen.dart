@@ -33,7 +33,7 @@ appBar: StudioAppBar(
         title: tr(context, 'Settings'),
         subtitle: tr(context, 'Profile, AI model & preferences'),
         icon: Icons.settings_rounded,
-        iconColor: const Color(0xFF6B8499),
+        iconColor: AppColors.accentSlate,
       ),
       body: MaxWidth(
         maxWidth: 760,

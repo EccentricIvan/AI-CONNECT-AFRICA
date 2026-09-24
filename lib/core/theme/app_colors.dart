@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 
 /// AI Connect Africa brand tokens — white-first canvas, deep navy type, and
-/// the blue→violet gradient reserved for emphasis, per the 2026 brand deck.
+/// the logo's cyan→blue→violet gradient reserved for emphasis.
+///
+/// Every hue here is sampled from the app icon
+/// (`assets/branding/ai-connect-africa-logo.png`): cyan #00A8EB at the top of
+/// the ring, blue ~#0075E9 through the "AI", electric violet ~#5800E6 at the
+/// bottom. Tokens used as text are nudged just dark enough to pass WCAG AA
+/// on white; the raw logo values appear only inside gradients.
 class AppColors {
   const AppColors._({
     required this.bgTop,
@@ -77,12 +83,12 @@ class AppColors {
   static const Color primaryLight = Color(0xFF5B9BF8);
   static const Color accent = Color(0xFF1F6BE5);
   static const Color accentDeep = Color(0xFF1449B8);
-  static const Color secondary = Color(0xFF6D28D9);
+  static const Color secondary = brandViolet;
 
-  /// The deck's gradient partners: cyan-blue through to violet.
-  static const Color brandCyan = Color(0xFF12A5F0);
-  static const Color brandViolet = Color(0xFF6D28D9);
-  static const Color brandVioletDeep = Color(0xFF4C1D95);
+  /// The logo's gradient partners: cyan through blue to violet.
+  static const Color brandCyan = Color(0xFF00A8EB);
+  static const Color brandViolet = Color(0xFF5B1EE8);
+  static const Color brandVioletDeep = Color(0xFF3F12B0);
   static const Color navy = Color(0xFF0B1B4D);
 
   static Color get accentGlow => primary.withValues(alpha: 0.24);
@@ -117,19 +123,22 @@ class AppColors {
   static const Color surfaceDark = Color(0xFF131E42);
   static const Color cardOverlay = Color(0x330B1B4D);
 
-  /// The deck's category-accent set. Everything that needs to tell one card
-  /// apart from the next draws from these rather than inventing a hex.
-  static const Color accentBlue = Color(0xFF2B7CF0);
-  static const Color accentViolet = Color(0xFF6D28D9);
+  /// The category-accent set. Everything that needs to tell one card apart
+  /// from the next draws from these rather than inventing a hex. Blue, violet
+  /// and cyan are the logo's three stops; teal/green/orange are kept only for
+  /// meaning (ready/verified, success, streak fire, awards, warnings).
+  static const Color accentBlue = Color(0xFF1A66E6);
+  static const Color accentViolet = brandViolet;
+  static const Color accentCyan = Color(0xFF0A7AC0);
   static const Color accentTeal = Color(0xFF0FA37F);
   static const Color accentOrange = Color(0xFFEE7A2B);
   static const Color accentGreen = Color(0xFF12A06A);
   static const Color accentSlate = Color(0xFF8290AE);
 
-  // Learning mode accents
+  // Learning mode accents — one logo stop each.
   static const Color learnColor = accentViolet;
   static const Color practiceColor = accentBlue;
-  static const Color createColor = accentOrange;
+  static const Color createColor = accentCyan;
 
   /// Also carries "verified / ready" states across the app, so it stays green.
   static const Color teachColor = accentTeal;
@@ -137,9 +146,9 @@ class AppColors {
   // Domain category colors
   static const Color technologyColor = accentBlue;
   static const Color businessColor = accentTeal;
-  static const Color academicColor = Color(0xFF7C3AED);
+  static const Color academicColor = Color(0xFF7C4DFF);
   static const Color agricultureColor = accentGreen;
-  static const Color lifeSkillsColor = accentOrange;
+  static const Color lifeSkillsColor = accentCyan;
 
   static const Color online = accentTeal;
   static const Color offline = accentSlate;
@@ -165,22 +174,36 @@ class AppColors {
   static const LinearGradient primaryButtonGradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [Color(0xFF2B7CF0), Color(0xFF6425E0)],
+    colors: [accentBlue, Color(0xFF5A12E6)],
   );
 
   static const LinearGradient fabGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF12A5F0), Color(0xFF6425E0)],
+    colors: [brandCyan, Color(0xFF5A12E6)],
   );
 
-  /// The deck's signature emphasis gradient — headline accents, stage bars,
+  /// The logo's signature emphasis gradient — headline accents, stage bars,
   /// and anything that should read as the brand rather than as a surface.
   static const LinearGradient brandGradient = LinearGradient(
     begin: Alignment.centerLeft,
     end: Alignment.centerRight,
-    colors: [Color(0xFF12A5F0), Color(0xFF2B7CF0), Color(0xFF6425E0)],
+    colors: [brandCyan, Color(0xFF0A6CE9), Color(0xFF5A12E6)],
   );
+
+  /// The student's own chat bubble: a soft wash of the logo's blue→violet
+  /// with navy ink, rather than a solid brand fill that shouts over the reply.
+  static LinearGradient userBubbleGradient(BuildContext context) =>
+      LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: of(context).isDark
+            ? const [Color(0xFF1B2B5C), Color(0xFF22215A)]
+            : const [Color(0xFFEAF2FE), Color(0xFFF0EBFE)],
+      );
+
+  static Color userBubbleBorder(BuildContext context) =>
+      of(context).isDark ? const Color(0xFF2C3B70) : const Color(0xFFD9E4FB);
 
   List<BoxShadow> softShadow(bool isDark) => isDark
       ? const []

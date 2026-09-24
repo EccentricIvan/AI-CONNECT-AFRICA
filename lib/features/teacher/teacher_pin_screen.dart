@@ -78,7 +78,7 @@ class _TeacherUnlockScreenState extends ConsumerState<TeacherUnlockScreen> {
         title: 'Teacher area',
         subtitle: 'Enter the teacher PIN to continue',
         icon: Icons.lock_rounded,
-        iconColor: Color(0xFF3B8FE8),
+        iconColor: AppColors.accentBlue,
         showBack: true,
       ),
       body: MaxWidth(

@@ -107,7 +107,7 @@ void main() {
     for (final code in langs) {
       final ctx = await _pumpChat(tester, code);
       expect(
-        find.text(tr(ctx, 'How can I help you today?')),
+        find.textContaining(tr(ctx, 'how can I help you?')),
         findsWidgets,
         reason: '$code: Home greeting missing',
       );

@@ -246,7 +246,7 @@ class _CreateScreenState extends ConsumerState<CreateScreen> {
               title: '${state.projectType}: ${state.topic}',
               subtitle: tr(context, 'Build step by step with AI'),
               icon: Icons.lightbulb_rounded,
-              iconColor: const Color(0xFFFF8A3D),
+              iconColor: AppColors.createColor,
               actions: [
                 if (state.savedProjectId == null && !state.isGenerating)
                   StudioHeaderIconButton(
@@ -554,9 +554,14 @@ class _Bubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
-          color: isUser ? AppColors.primary : Theme.of(context).colorScheme.surface,
+          color: isUser ? null : Theme.of(context).colorScheme.surface,
+          gradient: isUser ? AppColors.userBubbleGradient(context) : null,
           borderRadius: BorderRadius.circular(14),
-          border: isUser ? null : Border.all(color: Theme.of(context).dividerColor),
+          border: Border.all(
+            color: isUser
+                ? AppColors.userBubbleBorder(context)
+                : Theme.of(context).dividerColor,
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -566,7 +571,7 @@ class _Bubble extends StatelessWidget {
               child: Text(
                 text.isEmpty ? '…' : text,
                 style: TextStyle(
-                  color: isUser ? Colors.white : Theme.of(context).colorScheme.onSurface,
+                  color: Theme.of(context).colorScheme.onSurface,
                   height: 1.5,
                 ),
               ),

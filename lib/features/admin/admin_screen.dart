@@ -33,7 +33,7 @@ class AdminScreen extends ConsumerWidget {
         title: tr(context, 'Admin dashboard'),
         subtitle: tr(context, 'Device & learner management'),
         icon: Icons.admin_panel_settings_rounded,
-        iconColor: const Color(0xFF6B8499),
+        iconColor: AppColors.accentSlate,
       ),
       body: MaxWidth(
         maxWidth: 900,

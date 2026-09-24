@@ -72,15 +72,21 @@ class _VoiceAskWidgetState extends State<VoiceAskWidget> {
               ),
               Padding(
                 padding: const EdgeInsets.all(8),
-                child: IconButton.filled(
-                  onPressed: _submit,
-                  icon: const Icon(Icons.arrow_upward, size: 18),
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(40, 40),
+                // Same logo gradient as the Home composer's send button.
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.fabGradient,
                   ),
-                  tooltip: 'Send',
+                  child: IconButton(
+                    onPressed: _submit,
+                    icon: const Icon(Icons.arrow_upward, size: 18),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(40, 40),
+                    ),
+                    tooltip: 'Send',
+                  ),
                 ),
               ),
             ],

@@ -7,6 +7,7 @@ import '../../ai_core/tutor/school_math.dart';
 import '../../ai_core/tutor/tutor_response.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_models.dart';
+import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../l10n/language_provider.dart';
 import '../../l10n/ui_registry.dart';
@@ -23,6 +24,7 @@ import '../../memory/session_recall.dart';
 import '../../voice/voice_locales.dart';
 import '../../voice/voice_provider.dart';
 import '../../voice/voice_service.dart';
+import 'home_greeting.dart';
 
 class _ChatEntry {
   const _ChatEntry({
@@ -588,6 +590,7 @@ class _UserBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = AppColors.of(context).textPrimary;
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
@@ -596,9 +599,10 @@ class _UserBubble extends StatelessWidget {
         ),
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: const BoxDecoration(
-          color: AppColors.primary,
-          borderRadius: BorderRadius.only(
+        decoration: BoxDecoration(
+          gradient: AppColors.userBubbleGradient(context),
+          border: Border.all(color: AppColors.userBubbleBorder(context)),
+          borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(18),
             topRight: Radius.circular(4),
             bottomLeft: Radius.circular(18),
@@ -607,8 +611,8 @@ class _UserBubble extends StatelessWidget {
         ),
         child: ScienceRichText(
           text: text,
-          color: Colors.white,
-          style: const TextStyle(color: Colors.white, height: 1.5),
+          color: ink,
+          style: TextStyle(color: ink, height: 1.5),
         ),
       ),
     );
@@ -897,7 +901,7 @@ class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
                     AppShell.mobileScaffoldKey.currentState?.openDrawer(),
                 icon: const Icon(
                   Icons.menu_rounded,
-                  color: Color(0xFF0B1220),
+                  color: AppColors.navy,
                   size: 26,
                 ),
               ),
@@ -917,7 +921,7 @@ class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 0.2,
-                  color: Color(0xFF0B1220),
+                  color: AppColors.navy,
                 ),
               ),
             ],
@@ -961,7 +965,7 @@ class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
                       child: const Icon(
                         Icons.person_outline_rounded,
                         size: 20,
-                        color: Color(0xFF0B1220),
+                        color: AppColors.navy,
                       ),
                     ),
                     if (isWide) ...[
@@ -1036,7 +1040,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 3.2,
-                color: const Color(0xFF9AA6BE),
+                color: AppColors.accentSlate,
               ),
             )
           else
@@ -1053,7 +1057,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                       fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 1.4,
-                      color: Color(0xFF9AA6BE),
+                      color: AppColors.accentSlate,
                     ),
                   ),
                   Padding(
@@ -1064,7 +1068,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                         fontFamily: 'Inter',
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF9AA6BE),
+                        color: AppColors.accentSlate,
                       ),
                     ),
                   ),
@@ -1075,7 +1079,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                       fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 1.4,
-                      color: Color(0xFF9AA6BE),
+                      color: AppColors.accentSlate,
                     ),
                   ),
                   Padding(
@@ -1086,7 +1090,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                         fontFamily: 'Inter',
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
-                        color: Color(0xFF9AA6BE),
+                        color: AppColors.accentSlate,
                       ),
                     ),
                   ),
@@ -1097,21 +1101,26 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                       fontSize: 10.5,
                       fontWeight: FontWeight.w500,
                       letterSpacing: 1.4,
-                      color: Color(0xFF9AA6BE),
+                      color: AppColors.accentSlate,
                     ),
                   ),
                 ],
               ),
             ),
           SizedBox(height: isWide ? 14 : 10),
-          Builder(
-            builder: (context) {
-              final full = tr(context, 'How can I help you today?');
-              // Mobile mockup always breaks the English line; other locales
-              // keep the translated string and wrap naturally.
-              final text = !isWide && full == 'How can I help you today?'
-                  ? 'How can I help\nyou today?'
-                  : full;
+          Consumer(
+            builder: (context, ref, _) {
+              // "Good afternoon Emmanuel, how can I help you?" — salutation
+              // follows the clock, name is the active learner's given name.
+              final name = givenName(
+                ref.watch(activeStudentProvider).valueOrNull?.name,
+              );
+              final salutation = tr(context, timeOfDaySalutation(DateTime.now()));
+              final head = name == null ? salutation : '$salutation $name';
+              final ask = tr(context, 'how can I help you?');
+              // Narrow screens break after the comma so the name line
+              // doesn't wrap mid-question.
+              final text = isWide ? '$head, $ask' : '$head,\n$ask';
               return Text(
                 text,
                 textAlign: TextAlign.center,
@@ -1121,7 +1130,7 @@ class _HomeEmptyWorkspace extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                   height: 1.2,
                   letterSpacing: -0.4,
-                  color: const Color(0xFF0B1220),
+                  color: AppColors.navy,
                 ),
               );
             },
@@ -1196,7 +1205,7 @@ class _ComposerBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE6ECF7)),
+        border: Border.all(color: AppColors.light.border),
         boxShadow: const [
           BoxShadow(
             color: Color(0x160B1B4D),
@@ -1225,7 +1234,7 @@ class _ComposerBar extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Icon(
                 Icons.attach_file_rounded,
-                color: Color(0xFF9AA6BE),
+                color: AppColors.accentSlate,
                 size: 22,
               ),
             ),
@@ -1249,7 +1258,7 @@ class _ComposerBar extends StatelessWidget {
                         ),
                   hintStyle: const TextStyle(
                     fontFamily: 'Inter',
-                    color: Color(0xFF9AA6BE),
+                    color: AppColors.accentSlate,
                     fontSize: 15,
                     fontWeight: FontWeight.w400,
                   ),
@@ -1264,12 +1273,12 @@ class _ComposerBar extends StatelessWidget {
                     vertical: 12,
                   ),
                 ),
-                cursorColor: const Color(0xFF2F7BF0),
+                cursorColor: AppColors.primary,
                 style: const TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 15,
                   fontWeight: FontWeight.w400,
-                  color: Color(0xFF0B1220),
+                  color: AppColors.navy,
                 ),
                 maxLines: compact ? 2 : 4,
                 minLines: 1,
@@ -1284,7 +1293,7 @@ class _ComposerBar extends StatelessWidget {
                 splashColor: Colors.transparent,
                 icon: Icon(isListening ? Icons.mic : Icons.mic_none_outlined),
                 color:
-                    isListening ? AppColors.primary : const Color(0xFF9AA6BE),
+                    isListening ? AppColors.primary : AppColors.accentSlate,
                 tooltip: isListening
                     ? tr(context, 'Stop dictation')
                     : tr(context, 'Speak your question'),
@@ -1316,9 +1325,9 @@ class _ComposerBar extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              Color(0xFF3B82F6),
-                              Color(0xFF6366F1),
-                              Color(0xFF7C3AED),
+                              AppColors.brandCyan,
+                              AppColors.accentBlue,
+                              AppColors.brandViolet,
                             ],
                           ),
                         ),

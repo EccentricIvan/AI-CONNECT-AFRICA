@@ -87,7 +87,7 @@ class _TeacherDashboardScreenState
         title: 'Teacher',
         subtitle: 'Classes, learners and progress',
         icon: Icons.groups_rounded,
-        iconColor: const Color(0xFF3B8FE8),
+        iconColor: AppColors.accentBlue,
         actions: [
           StudioHeaderIconButton(
             tooltip: 'Subjects & lesson materials',
