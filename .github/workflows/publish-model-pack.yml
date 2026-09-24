@@ -1,13 +1,15 @@
-# Publishes the two model files as standalone assets on the `model-pack`
-# release, which is the URL the app downloads from at runtime.
+# Publishes the two model files the app runs as standalone assets on the
+# `model-pack` release — a mirror for USB / school-server installs.
 #
-# Run this from CI rather than uploading by hand: the files total ~1.2 GB and
-# come from Hugging Face, so a datacenter-to-datacenter transfer takes minutes
-# where a home upstream can take hours.
+# The in-app installer does NOT read this release: it downloads from the
+# Hugging Face repo in MODELS_BASE (see ModelFetchFiles in
+# lib/services/model_fetch_service.dart). Filenames and SHA-256 pins here must
+# match that file, so a model copied from this release drops straight into
+# `models/` and passes the same checks.
 #
-# `model-pack` is a permanent tag. App builds already in the field point at it,
-# so replacing an asset changes what those installs download — bump the SHA
-# pins in lock step and treat it as a release, not an edit.
+# Run this from CI rather than uploading by hand: the files total ~1.8 GB, so
+# a datacenter-to-datacenter transfer takes minutes where a home upstream can
+# take hours.
 name: Publish model pack
 
 on:
@@ -17,9 +19,10 @@ permissions:
   contents: write
 
 env:
-  CHAT_URL: https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm
-  CHAT_SHA: 555579ff2f4fd13379abe69c1c3ab5200f7338bc92471557f1d6614a6e5ab0b4
-  TRANSLATE_URL: https://huggingface.co/qvac/TranslatePsy-AfriSLM-0.8B-Q4-GGUF/resolve/main/TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf
+  MODELS_BASE: https://huggingface.co/Oticgroup/ai-connect-africa-packages/resolve/main
+  BRAIN_FILE: qwen2.5-coder-1.5b-instruct.gguf
+  BRAIN_SHA: cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+  TRANSLATE_FILE: afrislm-0.8b-q4_k_m.gguf
   TRANSLATE_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
 
 jobs:
@@ -32,13 +35,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p pack
-          curl -fL --retry 3 --retry-all-errors -o pack/chat-model.litertlm "$CHAT_URL"
-          curl -fL --retry 3 --retry-all-errors -o pack/translate-afrislm.gguf "$TRANSLATE_URL"
+          curl -fL --retry 3 --retry-all-errors -o "pack/$BRAIN_FILE" "$MODELS_BASE/$BRAIN_FILE"
+          curl -fL --retry 3 --retry-all-errors -o "pack/$TRANSLATE_FILE" "$MODELS_BASE/$TRANSLATE_FILE"
           # Verify before publishing: these hashes are compiled into the app
-          # and checked again on-device, so a mismatch here would ship a
-          # release every client rejects.
-          echo "$CHAT_SHA  pack/chat-model.litertlm" | sha256sum -c -
-          echo "$TRANSLATE_SHA  pack/translate-afrislm.gguf" | sha256sum -c -
+          # and checked again on-device, so a mismatch here would ship files
+          # every client rejects.
+          echo "$BRAIN_SHA  pack/$BRAIN_FILE" | sha256sum -c -
+          echo "$TRANSLATE_SHA  pack/$TRANSLATE_FILE" | sha256sum -c -
           ls -lh pack
 
       - name: Publish the model-pack release
@@ -46,20 +49,33 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ! gh release view model-pack --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create model-pack \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "Model pack (chat + translation)" \
-              --notes "Standalone model files downloaded by the app on first run.
+          notes="Standalone model files for USB / school-server installs. Copy both into the app's \`models/\` folder.
 
-          | File | SHA-256 |
-          |------|---------|
-          | \`chat-model.litertlm\` | \`$CHAT_SHA\` |
-          | \`translate-afrislm.gguf\` | \`$TRANSLATE_SHA\` |
+          | Role | File | SHA-256 |
+          |------|------|---------|
+          | Brain (tutor + code), Qwen2.5-Coder-1.5B-Instruct | \`$BRAIN_FILE\` | \`$BRAIN_SHA\` |
+          | Translation, TranslatePsy-AfriSLM 0.8B Q4 | \`$TRANSLATE_FILE\` | \`$TRANSLATE_SHA\` |
 
-          Both are Apache-2.0. The app verifies these hashes after download."
+          Both are Apache-2.0. The app verifies these hashes."
+          if gh release view model-pack --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit model-pack --repo "$GITHUB_REPOSITORY" \
+              --title "Model pack (brain + translation)" --notes "$notes"
+          else
+            gh release create model-pack --repo "$GITHUB_REPOSITORY" \
+              --title "Model pack (brain + translation)" --notes "$notes"
           fi
           gh release upload model-pack \
-            pack/chat-model.litertlm \
-            pack/translate-afrislm.gguf \
+            "pack/$BRAIN_FILE" \
+            "pack/$TRANSLATE_FILE" \
             --repo "$GITHUB_REPOSITORY" --clobber
+          # Only the two required models stay on the release; anything else
+          # (e.g. the retired Qwen3-0.6B chat-model.litertlm) is removed.
+          gh release view model-pack --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name' |
+            while read -r asset; do
+              if [ "$asset" != "$BRAIN_FILE" ] && [ "$asset" != "$TRANSLATE_FILE" ]; then
+                echo "Removing obsolete asset: $asset"
+                gh release delete-asset model-pack "$asset" \
+                  --repo "$GITHUB_REPOSITORY" --yes
+              fi
+            done

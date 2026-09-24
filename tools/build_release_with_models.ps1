@@ -41,7 +41,13 @@ if (-not $OutDir) { $OutDir = Join-Path $repoRoot 'dist' }
 
 # The one brain: reasoning, tutoring and code.
 $chatName = 'qwen2.5-coder-1.5b-instruct.gguf'
-$translateName = 'translate-afrislm.gguf'
+# Same name the in-app installer and the model-pack release use; the older
+# 'translate-afrislm.gguf' is still accepted if that's what's on hand.
+$translateName = 'afrislm-0.8b-q4_k_m.gguf'
+if (-not (Test-Path (Join-Path $ModelPackDir $translateName)) -and
+    (Test-Path (Join-Path $ModelPackDir 'translate-afrislm.gguf'))) {
+  $translateName = 'translate-afrislm.gguf'
+}
 $chatSrc = Join-Path $ModelPackDir $chatName
 $translateSrc = Join-Path $ModelPackDir $translateName
 

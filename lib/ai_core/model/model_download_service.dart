@@ -63,11 +63,12 @@ class CancellationToken {
   void cancel() => _cancelled = true;
 }
 
-/// Fetches a [ModelPackage] from the `model-pack` release to local storage.
+/// Fetches a [ModelPackage] (the brain or the translator, from the Hugging
+/// Face repo in `kModelFetchHfBaseUrl`) to local storage.
 ///
 /// Three things make this different from a plain GET, and all three exist
 /// because the target device is a low-end phone on an expensive, unreliable
-/// connection pulling up to 642 MB:
+/// connection pulling up to ~1.1 GB:
 ///
 /// 1. **Resume.** A dropped connection continues from the byte it reached
 ///    using an HTTP Range request instead of restarting. GitHub redirects

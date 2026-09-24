@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       bundle_models:
-        description: 'Embed chat + translation models into the Android APK (requires model-pack release)'
+        description: 'Embed the brain + translation models into the Android APK (requires model-pack release)'
         type: boolean
         default: false
 
@@ -76,7 +76,7 @@ jobs:
           gh release download model-pack \
             --repo "$GITHUB_REPOSITORY" \
             --dir android/app/src/main/assets/models \
-            --pattern 'chat-model.litertlm'
+            --pattern 'qwen2.5-coder-1.5b-instruct.gguf'             --pattern 'afrislm-0.8b-q4_k_m.gguf'
           ls -lh android/app/src/main/assets/models
 
       - name: Build APK

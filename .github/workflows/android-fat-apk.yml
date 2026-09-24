@@ -17,11 +17,14 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Both files are byte-identical (sha256-verified) to these public,
-  # ungated, Apache-2.0 Hugging Face downloads.
-  CHAT_URL: https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm
-  CHAT_SHA: 555579ff2f4fd13379abe69c1c3ab5200f7338bc92471557f1d6614a6e5ab0b4
-  TRANSLATE_URL: https://huggingface.co/qvac/TranslatePsy-AfriSLM-0.8B-Q4-GGUF/resolve/main/TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf
+  # Only the two models the app runs: the Qwen2.5-Coder brain and the AfriSLM
+  # translator. Same repo, filenames and SHA-256 pins as the in-app installer
+  # (ModelFetchFiles in lib/services/model_fetch_service.dart) — keep them in
+  # lock step. Both are Apache-2.0.
+  MODELS_BASE: https://huggingface.co/Oticgroup/ai-connect-africa-packages/resolve/main
+  BRAIN_FILE: qwen2.5-coder-1.5b-instruct.gguf
+  BRAIN_SHA: cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
+  TRANSLATE_FILE: afrislm-0.8b-q4_k_m.gguf
   TRANSLATE_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
   RELEASE_TAG: android-test
 
@@ -59,10 +62,11 @@ jobs:
           set -euo pipefail
           dest=android/app/src/main/assets/models
           mkdir -p "$dest"
-          curl -fL --retry 3 --retry-all-errors -o "$dest/chat-model.litertlm" "$CHAT_URL"
-          curl -fL --retry 3 --retry-all-errors -o "$dest/translate-afrislm.gguf" "$TRANSLATE_URL"
-          echo "$CHAT_SHA  $dest/chat-model.litertlm" | sha256sum -c -
-          echo "$TRANSLATE_SHA  $dest/translate-afrislm.gguf" | sha256sum -c -
+          # BundledModelBootstrap looks for models/<file> under these names.
+          curl -fL --retry 3 --retry-all-errors -o "$dest/$BRAIN_FILE" "$MODELS_BASE/$BRAIN_FILE"
+          curl -fL --retry 3 --retry-all-errors -o "$dest/$TRANSLATE_FILE" "$MODELS_BASE/$TRANSLATE_FILE"
+          echo "$BRAIN_SHA  $dest/$BRAIN_FILE" | sha256sum -c -
+          echo "$TRANSLATE_SHA  $dest/$TRANSLATE_FILE" | sha256sum -c -
           ls -lh "$dest"
 
       - name: Get dependencies
@@ -94,7 +98,7 @@ jobs:
               --target "$GITHUB_SHA" \
               --prerelease \
               --title "Android test build (models included)" \
-              --notes "Unsigned-for-store test APK built from a build/** branch. arm64-v8a only. Chat + translation models are embedded; first launch copies ~1.2 GB into app storage, so keep ~2.5 GB free. Not a stable release."
+              --notes "Unsigned-for-store test APK built from a build/** branch. arm64-v8a only. Brain (Qwen2.5-Coder-1.5B) + translation (AfriSLM) models are embedded; first launch copies ~1.8 GB into app storage, so keep ~4 GB free. Not a stable release."
           fi
           gh release upload "$RELEASE_TAG" "${{ steps.apk.outputs.name }}" \
             --repo "$GITHUB_REPOSITORY" --clobber
@@ -138,9 +142,11 @@ jobs:
         run: |
           $dest = 'build/windows/x64/runner/Release/models'
           New-Item -ItemType Directory -Force $dest | Out-Null
-          Invoke-WebRequest -Uri $env:CHAT_URL -OutFile "$dest/chat-model.litertlm" -UseBasicParsing
-          Invoke-WebRequest -Uri $env:TRANSLATE_URL -OutFile "$dest/translate-afrislm.gguf" -UseBasicParsing
-          foreach ($p in @(@("$dest/chat-model.litertlm", $env:CHAT_SHA), @("$dest/translate-afrislm.gguf", $env:TRANSLATE_SHA))) {
+          # Invoke-WebRequest's progress bar slows large downloads badly.
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "$env:MODELS_BASE/$env:BRAIN_FILE" -OutFile "$dest/$env:BRAIN_FILE" -UseBasicParsing
+          Invoke-WebRequest -Uri "$env:MODELS_BASE/$env:TRANSLATE_FILE" -OutFile "$dest/$env:TRANSLATE_FILE" -UseBasicParsing
+          foreach ($p in @(@("$dest/$env:BRAIN_FILE", $env:BRAIN_SHA), @("$dest/$env:TRANSLATE_FILE", $env:TRANSLATE_SHA))) {
             $actual = (Get-FileHash $p[0] -Algorithm SHA256).Hash.ToLower()
             if ($actual -ne $p[1]) { throw "Checksum mismatch for $($p[0]): $actual" }
           }
