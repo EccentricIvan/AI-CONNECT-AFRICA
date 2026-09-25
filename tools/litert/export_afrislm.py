@@ -12,7 +12,7 @@ are the same positions; transformers' own Qwen3.5 text model expands them
 exactly this way. So 2-D ids are expanded to 3-D before the call: same
 math, no change for inputs that are already 3-D.
 
-usage: python export_afrislm.py <model_dir> <output_dir>
+usage: python export_afrislm.py <model_dir> <output_dir> [quantization_recipe]
 """
 import sys
 
@@ -58,7 +58,10 @@ def main():
     export_lib.export(
         model=model_dir,
         output_dir=output_dir,
-        quantization_recipe="dynamic_wi8_afp32",
+        # int8 by default; int4 (dynamic_wi4_afp32) for 4 GB phones, where
+        # CPU decode is memory-bandwidth bound and half the bytes per token
+        # is close to twice the speed.
+        quantization_recipe=sys.argv[3] if len(sys.argv) > 3 else "dynamic_wi8_afp32",
         cache_length=1024,
         prefill_lengths=[32, 64, 128, 256, 512],
         use_jinja_template=True,
