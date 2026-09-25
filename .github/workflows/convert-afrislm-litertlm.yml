@@ -68,15 +68,9 @@ jobs:
       - name: Convert to .litertlm (int8, text only)
         run: |
           set -euo pipefail
-          python -m litert_torch.generative.export_hf \
-            --model=./afrislm \
-            --output_dir=./out \
-            --quantization_recipe=dynamic_wi8_afp32 \
-            --cache_length=1024 \
-            --prefill_lengths='[32,64,128,256,512]' \
-            --use_jinja_template=True \
-            --bundle_litert_lm=True \
-            --export_vision_encoder=False
+          # litert-torch's exporter plus one rotary-embedding shape patch
+          # for current transformers (see the script's docstring).
+          python tools/litert/export_afrislm.py ./afrislm ./out
           find out -type f -printf '%s %p\n' | sort -n | tail -20
           f=$(find out -name '*.litertlm' | head -n1)
           test -n "$f"
