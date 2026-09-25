@@ -32,8 +32,29 @@ qwen3_5.Qwen3_5TextRotaryEmbedding.forward = _forward
 from litert_torch.generative.export_hf import export as export_lib  # noqa: E402
 
 
+def _declare_turn_end_as_stop(model_dir):
+    """Qwen3.5 ends a chat turn with <|im_end|>, but generation_config only
+    lists <|endoftext|>. Google's own Qwen3.5 bundle had to add it too;
+    without it the runtime never sees the turn end."""
+    import json, os
+    from transformers import AutoTokenizer
+    tok = AutoTokenizer.from_pretrained(model_dir)
+    im_end = tok.convert_tokens_to_ids("<|im_end|>")
+    path = os.path.join(model_dir, "generation_config.json")
+    cfg = json.load(open(path)) if os.path.exists(path) else {}
+    eos = cfg.get("eos_token_id", [])
+    eos = eos if isinstance(eos, list) else [eos]
+    if im_end not in eos:
+        eos.append(im_end)
+    cfg["eos_token_id"] = eos
+    json.dump(cfg, open(path, "w"), indent=2)
+    print("stop tokens:", eos)
+
+
 def main():
     model_dir, output_dir = sys.argv[1], sys.argv[2]
+    _declare_turn_end_as_stop(model_dir)
+    here = __import__("os").path.dirname(__file__)
     export_lib.export(
         model=model_dir,
         output_dir=output_dir,
@@ -41,6 +62,11 @@ def main():
         cache_length=1024,
         prefill_lengths=[32, 64, 128, 256, 512],
         use_jinja_template=True,
+        # The stock Qwen3.5 template does not survive the bundle's parser
+        # ("No user query found in messages") and the model answered with
+        # nothing. A plain ChatML template, thinking off, like Google's own
+        # Qwen3.5 bundle.
+        jinja_chat_template_override=__import__("os").path.join(here, "afrislm_chatml.jinja"),
         bundle_litert_lm=True,
         export_vision_encoder=False,
     )
