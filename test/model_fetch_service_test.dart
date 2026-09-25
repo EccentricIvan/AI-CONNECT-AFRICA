@@ -111,8 +111,8 @@ void main() {
     expect(ModelFetchFiles.translateFallback, isNull);
     DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
     expect(ModelFetchService.coreTranslatePackage.url,
-        '$kModelFetchHfBaseUrl/afrislm-0.8b_int4.litertlm');
-    expect(ModelFetchFiles.translateFallback, 'afrislm-0.8b_int8.litertlm');
+        '$kModelFetchHfBaseUrl/afrislm-0.8b_int8.litertlm');
+    expect(ModelFetchService.coreTranslatePackage.sha256, hasLength(64));
     DeviceTier.overrideForTesting(null);
     expect(ModelFetchService.coreChatPackage.sha256, hasLength(64));
     // While the Oticgroup repo is being filled, the same files come from the

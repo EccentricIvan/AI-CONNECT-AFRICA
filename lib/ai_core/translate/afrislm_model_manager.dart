@@ -8,7 +8,6 @@ import 'package:path_provider/path_provider.dart';
 import '../model/gguf_file.dart';
 import '../model/model_locations.dart';
 import '../model/model_manager.dart' show ModelInfo, ModelStatus;
-import '../model/device_tier.dart';
 import '../model/model_runtime_policy.dart';
 
 /// Locates and installs the TranslatePsy-AfriSLM translation model.
@@ -22,15 +21,13 @@ class AfriSlmModelManager {
   /// (`ModelFetchFiles.translate`) and `assets/models/` tooling.
   static const ggufFileName = 'afrislm-0.8b-q4_k_m.gguf';
 
-  /// Android int8 build (phones with more than ~5 GB).
+  /// Android build — int8 on every phone. An int4 build was tried for 4 GB
+  /// phones and failed the conversion quality gate (round-trip chrF 12–27
+  /// vs 72–90 for the GGUF, and no faster), so there is only one.
   static const liteRtFileName = 'afrislm-0.8b_int8.litertlm';
 
-  /// Android int4 build for 4 GB phones — see [DeviceTier].
-  static const liteRtInt4FileName = 'afrislm-0.8b_int4.litertlm';
-
   /// The Android file this phone downloads.
-  static String get liteRtPreferredFileName =>
-      DeviceTier.current.isLowMemory ? liteRtInt4FileName : liteRtFileName;
+  static String get liteRtPreferredFileName => liteRtFileName;
 
   /// This platform's canonical file.
   static String get modelFileName =>
@@ -51,12 +48,8 @@ class AfriSlmModelManager {
   static const _minSizeBytes = 300 * 1024 * 1024; // 300 MB
 
   /// Canonical name first, then this platform's accepted aliases.
-  /// On Android both builds are accepted, this phone's preferred one first,
-  /// so an int8 already on disk keeps working on a 4 GB phone.
   static List<String> get allFileNames => androidUsesLiteRt
-      ? (DeviceTier.current.isLowMemory
-          ? const [liteRtInt4FileName, liteRtFileName]
-          : const [liteRtFileName, liteRtInt4FileName])
+      ? const [liteRtFileName]
       : const [ggufFileName, ...alternateGgufFileNames];
 
   /// Canonical install target — where [installFromFile] and

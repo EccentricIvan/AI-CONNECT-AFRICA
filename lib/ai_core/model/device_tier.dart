@@ -14,8 +14,6 @@ import 'package:flutter/foundation.dart';
 ///   own Pixel 8a note), wastes seconds, and can take the app down before
 ///   the "remember what worked" step ever saves — a crash loop on every
 ///   launch. The student can still ask for the GPU in Settings.
-/// * The translator is the int4 build (half the bytes per token of int8 —
-///   CPU decode there is memory-bandwidth bound — and ~450 MB less RAM).
 class DeviceTier {
   DeviceTier._(this.totalBytes);
 

@@ -52,18 +52,14 @@ class ModelFetchFiles {
   /// AfriSLM converted by .github/workflows/convert-afrislm-litertlm.yml.
   /// Empty until that job publishes it — the download then skips the hash
   /// check but still rejects truncated files by size.
-  /// int4 on 4 GB phones, int8 above (see DeviceTier).
-  static String get translateLiteRt => AfriSlmModelManager.liteRtPreferredFileName;
-  static const translateLiteRtSha256 = '';
-  static int get translateLiteRtApproxBytes =>
-      translateLiteRt == AfriSlmModelManager.liteRtInt4FileName ? 520000000 : 898256944;
+  /// int8 on every phone (see AfriSlmModelManager.liteRtFileName).
+  static String get translateLiteRt => AfriSlmModelManager.liteRtFileName;
+  static const translateLiteRtSha256 =
+      'f5a356714430f7174f970411148601118e38dc5a7b524ff920d3d0bef122579a';
+  static const translateLiteRtApproxBytes = 898256944;
 
-  /// On a 4 GB phone whose int4 translator is not published yet, the int8
-  /// build is the next best thing — bigger and slower, but translating.
-  static String? get translateFallback =>
-      androidUsesLiteRt && translateLiteRt == AfriSlmModelManager.liteRtInt4FileName
-          ? AfriSlmModelManager.liteRtFileName
-          : null;
+  /// No alternative translator build is published.
+  static String? get translateFallback => null;
 
   /// GitHub release the conversion workflow publishes both .litertlm files
   /// to — a mirror while the Hugging Face repo is being filled.

@@ -25,13 +25,7 @@ void main() {
     expect(isAllowedModelPath('/models/afrislm-0.8b-q4_k_m.gguf'), isFalse);
     expect(ModelManager.brainFileName, ModelManager.brainLiteRtFileName);
     expect(ModelManager.brainFileNamesForPlatform().every(isLiteRtModelPath), isTrue);
-    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
     expect(AfriSlmModelManager.modelFileName, 'afrislm-0.8b_int8.litertlm');
-    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
-    expect(AfriSlmModelManager.modelFileName, 'afrislm-0.8b_int4.litertlm');
-    // A 4 GB phone still accepts an int8 already on disk.
-    expect(AfriSlmModelManager.allFileNames,
-        ['afrislm-0.8b_int4.litertlm', 'afrislm-0.8b_int8.litertlm']);
     expect(AfriSlmModelManager.allFileNames.every(isLiteRtModelPath), isTrue);
   });
 
@@ -58,12 +52,12 @@ void main() {
       expect(DeviceTier.fromMeminfo('garbage').isLowMemory, isTrue);
     });
 
-    test('4 GB phones download the int4 translator, with int8 as fallback', () {
+    test('every phone downloads the int8 translator (int4 failed its quality gate)', () {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
-      DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
-      expect(AfriSlmModelManager.liteRtPreferredFileName, 'afrislm-0.8b_int4.litertlm');
-      DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
-      expect(AfriSlmModelManager.liteRtPreferredFileName, 'afrislm-0.8b_int8.litertlm');
+      for (final mem in ['MemTotal: 3812344 kB', 'MemTotal: 7812344 kB']) {
+        DeviceTier.overrideForTesting(DeviceTier.fromMeminfo(mem));
+        expect(AfriSlmModelManager.liteRtPreferredFileName, 'afrislm-0.8b_int8.litertlm');
+      }
     });
   });
 }
