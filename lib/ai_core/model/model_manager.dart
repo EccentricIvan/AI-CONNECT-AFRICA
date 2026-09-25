@@ -188,14 +188,14 @@ class ModelManager {
 
     if (!isAllowedModelPath(sourcePath)) {
       throw ModelInstallException(
-        'Wrong file type. On this device the tutor model is $brainFileName.',
+        'That is not the tutor package for this device.',
       );
     }
 
     final size = await source.length();
     if (size < _minSizeBytes) {
       throw const ModelInstallException(
-        'That file is too small to be the tutor model — it should be about '
+        'That file is too small to be the tutor package — it should be about '
         '1 GB. The download or copy may be incomplete.',
       );
     }
@@ -224,7 +224,7 @@ class ModelManager {
       if (await partial.exists()) await partial.delete();
       if (e is FileSystemException) {
         throw const ModelInstallException(
-          'Could not copy the model — the device may not have enough '
+          'Could not copy the package — the device may not have enough '
           'free storage (about 1.2 GB is needed).',
         );
       }
@@ -235,11 +235,8 @@ class ModelManager {
 
   /// Where to tell the user to put the model files.
   Future<String> installInstructions() async {
-    return 'Transfer the model files to this device, then choose them with '
-        'Install from file.\n\n'
-        'Tutor (all answers and code):\n'
-        '  models/$brainFileName\n\n'
-        'Translator: AfriSLM\n'
-        '  models/${androidUsesLiteRt ? 'afrislm-0.8b_int8.litertlm' : 'afrislm-0.8b-q4_k_m.gguf'}';
+    return 'Copy the learning packages to this device (from USB or the school '
+        'server), then choose them with Install from file.';
   }
+
 }

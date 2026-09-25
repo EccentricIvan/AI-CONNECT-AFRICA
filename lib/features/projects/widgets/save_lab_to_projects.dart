@@ -66,7 +66,7 @@ Future<({String id, String title})?> saveLabToProjects(
       return null;
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(trFill(context, 'Saved to {path}', {'path': saved.breadcrumb})),
+      content: Text(trFill(context, 'Saved “{name}” to Projects', {'name': saved.breadcrumb})),
       action: SnackBarAction(
         label: tr(context, 'Open'),
         onPressed: () => context.push('/projects'),

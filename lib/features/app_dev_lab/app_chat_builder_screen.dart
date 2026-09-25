@@ -515,7 +515,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     final recorded = tr(
       context,
       'Features recorded: ${_selectedFeatures.join(', ')}. ✅ '
-      'Coding model is building your app…',
+      'Building your app…',
     );
     setState(() => _messages.add(_ChatMsg(recorded, true)));
     _scrollDown();
@@ -626,7 +626,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
       });
       if (!quiet) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(trFill(context, 'Saved to {path}', {'path': saved.breadcrumb})),
+          content: Text(trFill(context, 'Saved “{name}” to Projects', {'name': saved.breadcrumb})),
           action: SnackBarAction(
             label: tr(context, 'Open'),
             onPressed: () => context.push('/projects'),
@@ -859,7 +859,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                   child: Row(children: [
                     const Icon(Icons.dns_outlined, size: 18),
                     const SizedBox(width: 10),
-                    Text(tr(context, 'View backend files')),
+                    Text(tr(context, 'View project files')),
                   ]),
                 ),
                 PopupMenuItem(
@@ -897,8 +897,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                 context,
                 _showStudio
                     ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
-                    : 'Answer the prompts to record features. Build runs the coding '
-                        'model, then opens Preview Layout | View Source Code.',
+                    : 'Answer the prompts to record features. Build makes your app, '
+                        'then opens Preview Layout | View Source Code.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),

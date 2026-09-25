@@ -622,7 +622,7 @@ class AiStatus {
     return AiStatus(
       isDemo: false,
       title: 'AI ready',
-      detail: 'Using ${engine.backendLabel}',
+      detail: 'Answers are made on this device.',
       backendLabel: engine.backendLabel,
     );
   }
@@ -1241,12 +1241,12 @@ String _chromeFollowUp(String followUp, String lang) {
 String _friendlyAiError(Object e) {
   final raw = e.toString();
   if (raw.contains('ModelLoadException') || raw.contains('failed to load')) {
-    return 'The AI model failed to load. Open Settings to check the model, then try again.';
+    return 'The classroom assistant could not start. Open Settings → Install Packages, then try again.';
   }
   if (raw.contains('SocketException') || raw.contains('Connection')) {
-    return 'Couldn’t connect to the local AI. Check the model in Settings, then try again.';
+    return 'Couldn’t reach the classroom assistant. Open Settings, then try again.';
   }
-  return 'Couldn’t get an answer just now. Check your AI model in Settings, then try again.';
+  return 'Couldn’t get an answer just now. Please try again.';
 }
 
 final chatProvider = AsyncNotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);

@@ -20,7 +20,7 @@ class ProjectToolsBar extends StatelessWidget {
     required this.onOpenProjects,
   });
 
-  /// "Projects › Websites › my-bakery", or null before the first save.
+  /// The saved project's name, or null before the first save.
   final String? savedLabel;
   final bool saving;
   final VoidCallback onSave;

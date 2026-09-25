@@ -578,12 +578,7 @@ class _FolderCard extends ConsumerWidget {
                       style: TextStyle(fontSize: 12, color: ac.textSecondary),
                     ),
                     const SizedBox(height: 6),
-                    Wrap(spacing: 6, runSpacing: 4, children: [
-                      Text('📁 ${folder.kind.folderName}/${folder.folderName}',
-                          style: TextStyle(fontSize: 11, color: ac.textSecondary, fontFamily: 'monospace')),
-                      if (m.hasBackend) _Pill(tr(context, 'Frontend + backend'), AppColors.technologyColor),
-                      if (m.exportedAt != null) _Pill(tr(context, 'Exported'), AppColors.teachColor),
-                    ]),
+                    if (m.exportedAt != null) _Pill(tr(context, 'Exported'), AppColors.teachColor),
                   ],
                 ),
               ),
@@ -664,7 +659,7 @@ class _EmptyProjects extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               tr(context,
-                  'Build a website or an app in Create — each one is saved here as a folder with its frontend, backend and instructions to put it online.'),
+                  'Build a website or an app in Create — each one is saved here, ready to open, share or put online.'),
               textAlign: TextAlign.center,
               style: TextStyle(color: ac.textSecondary, height: 1.5),
             ),

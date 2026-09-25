@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../teacher/teacher_pin_screen.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/translate/chat_languages.dart';
 import '../../ai_core/translate/supported_languages.dart';
@@ -32,7 +31,7 @@ class SettingsScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
 appBar: StudioAppBar(
         title: tr(context, 'Settings'),
-        subtitle: tr(context, 'Profile, AI model & preferences'),
+        subtitle: tr(context, 'Profile, learning packages & preferences'),
         icon: Icons.settings_rounded,
         iconColor: AppColors.accentSlate,
       ),
@@ -331,21 +330,6 @@ appBar: StudioAppBar(
             _Section('Administration', [
               ListTile(
                 leading: Icon(
-                  Icons.lock_outline,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                title: const Text('Teacher PIN'),
-                subtitle: const Text(
-                  'Keep learners out of the Teacher and Admin areas',
-                ),
-                onTap: () => showTeacherPinSettings(context, ref),
-                trailing: Icon(
-                  Icons.chevron_right,
-                  color: Theme.of(context).hintColor,
-                ),
-              ),
-              ListTile(
-                leading: Icon(
                   Icons.groups_outlined,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -366,7 +350,7 @@ appBar: StudioAppBar(
                 ),
                 title: const Text('Admin dashboard'),
                 subtitle: const Text(
-                  'Device info, model status, profiles, reset student data',
+                  'Device info, learning packages, profiles, reset student data',
                 ),
                 onTap: () => context.go('/admin'),
                 trailing: Icon(

@@ -161,14 +161,14 @@ class AfriSlmModelManager {
 
     if (!isAllowedModelPath(sourcePath)) {
       throw AfriSlmInstallException(
-        'Wrong file type. On this device the translation model is $modelFileName.',
+        'That is not the language pack for this device.',
       );
     }
 
     final size = await source.length();
     if (size < _minSizeBytes) {
       throw const AfriSlmInstallException(
-        'That file is too small to be the AfriSLM translation model — it '
+        'That file is too small to be the language pack — it '
         'should be at least a few hundred MB. The download or copy may be '
         'incomplete.',
       );
@@ -199,7 +199,7 @@ class AfriSlmModelManager {
       if (await partial.exists()) await partial.delete();
       if (e is FileSystemException) {
         throw const AfriSlmInstallException(
-          'Could not copy the model — the device may not have enough '
+          'Could not copy the language pack — the device may not have enough '
           'free storage (about 1 GB is needed).',
         );
       }
@@ -216,11 +216,11 @@ class AfriSlmModelManager {
   }) async {
     final uri = Uri.tryParse(url.trim());
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      throw const AfriSlmInstallException('Enter a valid model URL.');
+      throw const AfriSlmInstallException('Enter a valid package link.');
     }
     if (uri.scheme != 'https' && uri.scheme != 'http') {
       throw const AfriSlmInstallException(
-        'The model URL must start with http:// or https://.',
+        'The link must start with http:// or https://.',
       );
     }
 
@@ -264,8 +264,8 @@ class AfriSlmModelManager {
       final size = await partial.length();
       if (size < _minSizeBytes) {
         throw const AfriSlmInstallException(
-          'The downloaded file is too small for the AfriSLM model. '
-          'Check that the URL points directly to the model file.',
+          'The downloaded file is too small for the language pack. '
+          'Check that the link points directly to the package file.',
         );
       }
 
@@ -277,7 +277,7 @@ class AfriSlmModelManager {
       rethrow;
     } on FileSystemException {
       throw const AfriSlmInstallException(
-        'Could not save the model. The device may not have enough free storage.',
+        'Could not save the language pack. The device may not have enough free storage.',
       );
     } on SocketException catch (e) {
       throw AfriSlmInstallException('Network error: ${e.message}');

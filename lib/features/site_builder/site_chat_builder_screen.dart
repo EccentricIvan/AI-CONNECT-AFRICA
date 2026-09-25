@@ -775,7 +775,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
       });
       if (!quiet) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(trFill(context, 'Saved to {path}', {'path': saved.breadcrumb})),
+          content: Text(trFill(context, 'Saved “{name}” to Projects', {'name': saved.breadcrumb})),
           action: SnackBarAction(
             label: tr(context, 'Open'),
             onPressed: () => context.push('/projects'),
@@ -882,7 +882,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
                     ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
                     : 'Pick a site type and features — your site builds instantly '
                         'from a professional template, then opens Preview Layout | '
-                        'View Source Code. Want the coding model to refine the code? '
+                        'View Source Code. Want the code tidied up? '
                         'Use Autocorrect from the code view.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),

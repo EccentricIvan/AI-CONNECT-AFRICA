@@ -10,6 +10,7 @@ import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learners/add_learner_dialog.dart';
 import 'class_providers.dart';
+import 'teacher_pin_screen.dart';
 
 String _shortWhen(DateTime dt) {
   final local = dt.toLocal();
@@ -106,6 +107,12 @@ class _TeacherDashboardScreenState
             icon: Icons.switch_account_rounded,
             onTap: () => context.push('/learners'),
           ),
+          const SizedBox(width: 8),
+          StudioHeaderIconButton(
+            tooltip: 'Teacher PIN',
+            icon: Icons.lock_rounded,
+            onTap: () => showTeacherPinSettings(context, ref),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -128,6 +135,8 @@ class _TeacherDashboardScreenState
             return ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
               children: [
+                const _TeacherPinCard(),
+                const SizedBox(height: 12),
                 _ClassChips(
                   classes: classes,
                   selected: filter,
@@ -819,6 +828,32 @@ class _DetailHeader extends StatelessWidget {
             style: TextStyle(color: colors.textSecondary, height: 1.35),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Teacher PIN, kept with the rest of the teacher tools (it used to live in
+/// Settings → Administration).
+class _TeacherPinCard extends ConsumerWidget {
+  const _TeacherPinCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ac = AppColors.of(context);
+    return Material(
+      color: ac.surface,
+      borderRadius: BorderRadius.circular(14),
+      child: ListTile(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: ac.border),
+        ),
+        leading: const Icon(Icons.lock_outline_rounded, color: AppColors.accentBlue),
+        title: const Text('Teacher PIN'),
+        subtitle: const Text('Keep learners out of the Teacher and Admin areas'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => showTeacherPinSettings(context, ref),
       ),
     );
   }

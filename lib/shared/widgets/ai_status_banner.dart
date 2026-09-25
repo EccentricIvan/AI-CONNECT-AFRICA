@@ -22,7 +22,7 @@ class AiStatusBanner extends ConsumerWidget {
         icon: Icons.hourglass_top_rounded,
         iconColor: AppColors.primary,
         title: 'Starting AI…',
-        detail: compact ? null : 'Checking for a local model',
+        detail: compact ? null : 'Getting the classroom assistant ready',
       ),
       error: (e, _) => _BannerShell(
         color: const Color(0xFFFFF1F0),
@@ -30,7 +30,7 @@ class AiStatusBanner extends ConsumerWidget {
         icon: Icons.error_outline_rounded,
         iconColor: const Color(0xFFC62828),
         title: 'AI unavailable',
-        detail: compact ? null : 'Open Settings to fix the model connection',
+        detail: compact ? null : 'Open Settings to finish setup',
         actionLabel: 'Settings',
         onAction: () => context.push('/settings'),
       ),

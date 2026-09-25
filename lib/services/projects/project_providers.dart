@@ -30,9 +30,8 @@ class SavedCreation {
   final ProjectFolder folder;
   final bool isNew;
 
-  /// "Projects › Websites › my-bakery"
-  String get breadcrumb =>
-      'Projects › ${folder.kind.folderName} › ${folder.folderName}';
+  /// What the student sees: just the project's name.
+  String get breadcrumb => folder.title;
 }
 
 /// The one save path every builder uses: writes the folder for the active

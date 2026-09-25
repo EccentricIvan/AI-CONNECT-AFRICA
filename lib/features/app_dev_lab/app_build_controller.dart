@@ -86,7 +86,7 @@ class AppBuildController extends Notifier<AppBuildStudioState> {
     state = state.copyWith(
       phase: AppBuildPhase.building,
       intent: intent,
-      buildNote: 'Loading coding model…',
+      buildNote: 'Getting ready…',
       clearError: true,
     );
 
@@ -98,10 +98,10 @@ class AppBuildController extends Notifier<AppBuildStudioState> {
       final info = await ref.read(programmingModelInfoProvider.future);
       if (info.status != ModelStatus.ready) {
         state = state.copyWith(
-          buildNote: 'Coding model not found — using offline app shell.',
+          buildNote: 'Using the ready-made app screen.',
         );
       } else {
-        state = state.copyWith(buildNote: 'Coding model writing your app…');
+        state = state.copyWith(buildNote: 'Writing your app…');
         final coder = await ref.read(aiCoderServiceProvider.future);
 
         var lastUi = DateTime.fromMillisecondsSinceEpoch(0);
@@ -113,7 +113,7 @@ class AppBuildController extends Notifier<AppBuildStudioState> {
             lastUi = now;
             state = state.copyWith(
               buildNote:
-                  'Coding model writing your app… (${cumulative.length} chars)',
+                  'Writing your app… (${cumulative.length} characters)',
             );
           },
         ).timeout(
