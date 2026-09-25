@@ -6,6 +6,7 @@ import 'package:ai_connect_africa/services/model_fetch_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:ai_connect_africa/ai_core/model/device_tier.dart';
 
 class _NoNetworkDownloader extends ModelDownloadService {
   int calls = 0;
@@ -102,8 +103,17 @@ void main() {
     expect(ModelFetchFiles.chat, 'qwen2.5-coder-1.5b-instruct_int4.litertlm');
     expect(ModelFetchService.coreChatPackage.url,
         '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct_int4.litertlm');
+    // Translator build follows the memory tier: int8 above ~5 GB, int4 on
+    // 4 GB phones (with int8 as the fallback download).
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
     expect(ModelFetchService.coreTranslatePackage.url,
         '$kModelFetchHfBaseUrl/afrislm-0.8b_int8.litertlm');
+    expect(ModelFetchFiles.translateFallback, isNull);
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
+    expect(ModelFetchService.coreTranslatePackage.url,
+        '$kModelFetchHfBaseUrl/afrislm-0.8b_int4.litertlm');
+    expect(ModelFetchFiles.translateFallback, 'afrislm-0.8b_int8.litertlm');
+    DeviceTier.overrideForTesting(null);
     expect(ModelFetchService.coreChatPackage.sha256, hasLength(64));
     // While the Oticgroup repo is being filled, the same files come from the
     // conversion workflow's GitHub release (and litert-community for the

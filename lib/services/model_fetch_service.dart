@@ -52,9 +52,18 @@ class ModelFetchFiles {
   /// AfriSLM converted by .github/workflows/convert-afrislm-litertlm.yml.
   /// Empty until that job publishes it — the download then skips the hash
   /// check but still rejects truncated files by size.
-  static const translateLiteRt = AfriSlmModelManager.liteRtFileName;
+  /// int4 on 4 GB phones, int8 above (see DeviceTier).
+  static String get translateLiteRt => AfriSlmModelManager.liteRtPreferredFileName;
   static const translateLiteRtSha256 = '';
-  static const translateLiteRtApproxBytes = 960000000;
+  static int get translateLiteRtApproxBytes =>
+      translateLiteRt == AfriSlmModelManager.liteRtInt4FileName ? 520000000 : 898256944;
+
+  /// On a 4 GB phone whose int4 translator is not published yet, the int8
+  /// build is the next best thing — bigger and slower, but translating.
+  static String? get translateFallback =>
+      androidUsesLiteRt && translateLiteRt == AfriSlmModelManager.liteRtInt4FileName
+          ? AfriSlmModelManager.liteRtFileName
+          : null;
 
   /// GitHub release the conversion workflow publishes both .litertlm files
   /// to — a mirror while the Hugging Face repo is being filled.
@@ -84,7 +93,7 @@ class ModelFetchFiles {
       ? const ['$liteRtReleaseBase/$chatLiteRt', chatLiteRtUpstream]
       : const [];
   static List<String> get translateMirrors => androidUsesLiteRt
-      ? const ['$liteRtReleaseBase/$translateLiteRt']
+      ? ['$liteRtReleaseBase/$translateLiteRt']
       : const [];
 
   /// Coding runs on the brain; there is no separate coder file.
@@ -386,7 +395,30 @@ class ModelFetchService {
           // later Install Packages picks it up.
           final notPublished = e.message.contains('HTTP 404');
           if (pkg.id != coreTranslatePackage.id || !notPublished) rethrow;
-          translatorPending = true;
+          final fallback = ModelFetchFiles.translateFallback;
+          var gotFallback = false;
+          if (fallback != null) {
+            try {
+              await _downloader.download(
+                ModelPackage(
+                  id: pkg.id,
+                  label: pkg.label,
+                  fileName: fallback,
+                  url: '$hfBaseUrl/$fallback',
+                  sha256: '',
+                  approxBytes: 898256944,
+                  essential: false,
+                  mirrors: ['${ModelFetchFiles.liteRtReleaseBase}/$fallback'],
+                ),
+                targetPath: await pathFor(fallback),
+                cancelToken: token,
+              );
+              gotFallback = true;
+            } on ModelDownloadException catch (e2) {
+              if (!e2.message.contains('HTTP 404')) rethrow;
+            }
+          }
+          if (!gotFallback) translatorPending = true;
           debugPrint(
             'Translator package not published yet — continuing English-only.',
           );

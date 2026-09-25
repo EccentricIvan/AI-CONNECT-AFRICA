@@ -6,6 +6,7 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../model/device_tier.dart';
 import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'pinned_prompt_cache.dart';
@@ -84,6 +85,12 @@ class LiteRtLmEngineImpl extends InferenceEngine {
 
   static const _prefsPrefix = 'litert_backend_';
 
+  /// Set by "Try GPU anyway": a low-memory phone probes NPU/GPU too.
+  static const _forceAccelKey = 'litert_force_accel';
+
+  /// Written before an NPU/GPU load, removed after it returns.
+  static const _loadingKey = 'litert_loading_';
+
   /// The hardware LiteRT-LM actually runs this model on (null until loaded).
   PreferredBackend? get activeBackend => _activeBackend;
   Duration? get loadTime => _loadTime;
@@ -106,23 +113,63 @@ class LiteRtLmEngineImpl extends InferenceEngine {
       };
 
   /// Forget the remembered backends so the next load tries NPU/GPU again.
-  static Future<void> clearRememberedBackends() async {
+  /// With [forceAcceleration], a low-memory phone probes them too.
+  static Future<void> clearRememberedBackends({bool forceAcceleration = false}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      for (final k in prefs.getKeys().where((k) => k.startsWith(_prefsPrefix)).toList()) {
+        await prefs.remove(k);
+      }
+      if (forceAcceleration) await prefs.setBool(_forceAccelKey, true);
+    } catch (_) {}
+  }
+
+  /// Back to the tier default (CPU on low-memory phones).
+  static Future<void> useTierDefault() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_forceAccelKey);
       for (final k in prefs.getKeys().where((k) => k.startsWith(_prefsPrefix)).toList()) {
         await prefs.remove(k);
       }
     } catch (_) {}
   }
 
+  static Future<bool> accelerationForced() async {
+    try {
+      return (await SharedPreferences.getInstance()).getBool(_forceAccelKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Where the backend chain starts:
+  /// 1. the backend that worked last time for this role;
+  /// 2. on a low-memory phone, LiteRT's CPU backend — unless the student
+  ///    asked for the GPU (see [DeviceTier] for why);
+  /// 3. otherwise NPU (→ GPU → CPU).
   Future<PreferredBackend> _startingBackend() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // A previous accelerated load that never finished means the app died
+      // inside the GPU/NPU init (a native crash cannot be caught). Go back to
+      // CPU instead of crashing again on every launch.
+      if (prefs.getString('$_loadingKey$roleKey') != null) {
+        await prefs.remove('$_loadingKey$roleKey');
+        await prefs.remove(_forceAccelKey);
+        await prefs.setString('$_prefsPrefix$roleKey', PreferredBackend.cpu.name);
+        debugPrint('LiteRT-LM $roleKey: last accelerated load crashed - using CPU.');
+        return PreferredBackend.cpu;
+      }
       final saved = prefs.getString('$_prefsPrefix$roleKey');
       for (final b in PreferredBackend.values) {
         if (b.name == saved) return b;
       }
-    } catch (_) {}
+      final forced = prefs.getBool(_forceAccelKey) ?? false;
+      if (DeviceTier.current.isLowMemory && !forced) return PreferredBackend.cpu;
+    } catch (_) {
+      if (DeviceTier.current.isLowMemory) return PreferredBackend.cpu;
+    }
     return PreferredBackend.npu;
   }
 
@@ -139,6 +186,13 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     final watch = Stopwatch()..start();
     final start = await _startingBackend();
     final name = modelPath.split(RegExp(r'[\\/]')).last;
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      if (start != PreferredBackend.cpu) {
+        await prefs.setString('$_loadingKey$roleKey', start.name);
+      }
+    } catch (_) {}
     try {
       final model = await const LiteRtLmEngine().createModel(
         InferenceModelSpec(
@@ -157,12 +211,14 @@ class LiteRtLmEngineImpl extends InferenceEngine {
       _activeBackend = model.activeBackend ?? start;
       _loadedPath = modelPath;
       _loadTime = watch.elapsed;
+      await prefs?.remove('$_loadingKey$roleKey');
       await _remember(_activeBackend!);
       debugPrint(
         'LiteRT-LM $roleKey loaded on ${backendName(_activeBackend)} '
         '(asked from ${backendName(start)}) in ${_loadTime!.inMilliseconds} ms: $modelPath',
       );
     } catch (e) {
+      await prefs?.remove('$_loadingKey$roleKey');
       throw ModelLoadException('LiteRT-LM failed to load "$modelPath": $e');
     }
   }

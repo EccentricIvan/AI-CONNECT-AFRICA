@@ -11,13 +11,14 @@ name: Convert AfriSLM to LiteRT-LM
 on:
   workflow_dispatch:
   push:
-    branches: ['convert/**']
+    branches: ['convert/**', 'convert-int4/**']
 
 permissions:
   contents: write
 
 concurrency:
-  group: convert-afrislm
+  # One group per branch: the int8 and int4 conversions run side by side.
+  group: convert-afrislm-${{ github.ref_name }}
   cancel-in-progress: true
 
 env:
@@ -25,7 +26,9 @@ env:
   MODELS_BASE: https://huggingface.co/Oticgroup/ai-connect-africa-packages/resolve/main
   GGUF_FILE: afrislm-0.8b-q4_k_m.gguf
   GGUF_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
-  OUT_FILE: afrislm-0.8b_int8.litertlm
+  # int8 on convert/** branches, int4 (for 4 GB phones) on convert-int4/**.
+  OUT_FILE: ${{ startsWith(github.ref_name, 'convert-int4/') && 'afrislm-0.8b_int4.litertlm' || 'afrislm-0.8b_int8.litertlm' }}
+  RECIPE: ${{ startsWith(github.ref_name, 'convert-int4/') && 'dynamic_wi4_afp32' || 'dynamic_wi8_afp32' }}
   # The tutor's LiteRT build is already published; mirrored alongside.
   BRAIN_SOURCE: https://huggingface.co/litert-community/Qwen2.5-Coder-1.5B-Instruct/resolve/main/Qwen2.5-Coder-1.5B-Instruct_int4.litertlm
   BRAIN_FILE: qwen2.5-coder-1.5b-instruct_int4.litertlm
@@ -65,12 +68,12 @@ jobs:
           python -c "from huggingface_hub import snapshot_download; snapshot_download('$SOURCE_REPO', local_dir='afrislm')"
           ls -la afrislm
 
-      - name: Convert to .litertlm (int8, text only)
+      - name: Convert to .litertlm (text only)
         run: |
           set -euo pipefail
           # litert-torch's exporter plus one rotary-embedding shape patch
           # for current transformers (see the script's docstring).
-          python tools/litert/export_afrislm.py ./afrislm ./out
+          python tools/litert/export_afrislm.py ./afrislm ./out "$RECIPE"
           find out -type f -printf '%s %p\n' | sort -n | tail -20
           f=$(find out -name '*.litertlm' | head -n1)
           test -n "$f"

@@ -43,7 +43,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     expect(
       BundledModelBootstrap.translateAssetCandidates,
-      ['models/afrislm-0.8b_int8.litertlm'],
+      containsAll(['models/afrislm-0.8b_int8.litertlm', 'models/afrislm-0.8b_int4.litertlm']),
     );
   });
 

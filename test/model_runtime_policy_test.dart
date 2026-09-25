@@ -1,3 +1,4 @@
+import 'package:ai_connect_africa/ai_core/model/device_tier.dart';
 import 'package:ai_connect_africa/ai_core/model/model_manager.dart';
 import 'package:ai_connect_africa/ai_core/model/model_runtime_policy.dart';
 import 'package:ai_connect_africa/ai_core/translate/afrislm_model_manager.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
+    DeviceTier.overrideForTesting(null);
   });
 
   test('Android: LiteRT-LM only — a GGUF is not a usable model', () {
@@ -23,7 +25,13 @@ void main() {
     expect(isAllowedModelPath('/models/afrislm-0.8b-q4_k_m.gguf'), isFalse);
     expect(ModelManager.brainFileName, ModelManager.brainLiteRtFileName);
     expect(ModelManager.brainFileNamesForPlatform().every(isLiteRtModelPath), isTrue);
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
     expect(AfriSlmModelManager.modelFileName, 'afrislm-0.8b_int8.litertlm');
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
+    expect(AfriSlmModelManager.modelFileName, 'afrislm-0.8b_int4.litertlm');
+    // A 4 GB phone still accepts an int8 already on disk.
+    expect(AfriSlmModelManager.allFileNames,
+        ['afrislm-0.8b_int4.litertlm', 'afrislm-0.8b_int8.litertlm']);
     expect(AfriSlmModelManager.allFileNames.every(isLiteRtModelPath), isTrue);
   });
 
@@ -38,5 +46,24 @@ void main() {
     expect(ModelManager.brainFileName, ModelManager.brainGgufFileName);
     expect(ModelManager.brainFileNamesForPlatform().every(isGgufModelPath), isTrue);
     expect(AfriSlmModelManager.allFileNames.every(isGgufModelPath), isTrue);
+  });
+
+  group('DeviceTier', () {
+    test('a 4 GB phone is low-memory, an 8 GB one is not', () {
+      expect(DeviceTier.fromMeminfo('MemTotal:        3812344 kB\nMemFree: 1 kB').isLowMemory, isTrue);
+      expect(DeviceTier.fromMeminfo('MemTotal:        7812344 kB').isLowMemory, isFalse);
+    });
+
+    test('unknown memory is treated as low (a little slower beats a crash)', () {
+      expect(DeviceTier.fromMeminfo('garbage').isLowMemory, isTrue);
+    });
+
+    test('4 GB phones download the int4 translator, with int8 as fallback', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
+      expect(AfriSlmModelManager.liteRtPreferredFileName, 'afrislm-0.8b_int4.litertlm');
+      DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
+      expect(AfriSlmModelManager.liteRtPreferredFileName, 'afrislm-0.8b_int8.litertlm');
+    });
   });
 }
