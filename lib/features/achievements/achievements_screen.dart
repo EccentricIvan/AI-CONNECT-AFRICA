@@ -10,6 +10,7 @@ import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learn/path/path_provider.dart';
+import '../../services/projects/project_providers.dart';
 
 class AchievementsScreen extends ConsumerWidget {
   const AchievementsScreen({super.key});
@@ -66,6 +67,8 @@ List<_BadgeProgress> _progressFor({
   required Student student,
   required List<LearningPath> paths,
   required int projectCount,
+  required int fullStackCount,
+  required int exportedCount,
 }) {
   // LearningPaths (auto-generated) plus the curriculum browser's own
   // lessons — two separate tracks that both count as "a lesson done".
@@ -97,6 +100,8 @@ List<_BadgeProgress> _progressFor({
         'sharp_mind' => (student.totalPracticeCorrect, 5),
         'scenario_solver' => (student.totalScenariosCompleted, 5),
         'creator' => (projectCount, 1),
+        'full_stack_builder' => (fullStackCount, 1),
+        'shipped_it' => (exportedCount, 1),
         'consistent_learner' => (student.streakDays, 7),
         'century' => (student.totalPoints, 100),
         _ => (0, null),
@@ -142,18 +147,16 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
         ref.watch(studentStatsProvider(student.id)).valueOrNull ?? student;
     // Progress is a nicety — until these load, badges simply read as locked.
     final paths = ref.watch(studentPathsProvider).valueOrNull ?? const [];
-    // A "project" is anything saved from Create mode — the guided project
-    // builder, the App Builder, or the Website Builder — so the Creator
-    // badge and the count it shows reflect all three, not just one.
-    final createProjects =
-        ref.watch(studentProjectsProvider(student.id)).valueOrNull ?? const [];
-    final appProjects =
-        ref.watch(studentAppBuilderProjectsProvider(student.id)).valueOrNull ??
-            const [];
-    final websites =
-        ref.watch(studentWebsitesProvider(student.id)).valueOrNull ?? const [];
-    final projectCount =
-        createProjects.length + appProjects.length + websites.length;
+    // A "project" is any folder under Projects — every Create builder saves
+    // one (older database-only saves are synced into folders), and a folder
+    // deleted or pasted in Explorer counts the moment the list refreshes.
+    final folders =
+        ref.watch(studentProjectFoldersProvider(student.id)).valueOrNull ??
+            const <ProjectFolder>[];
+    final projectCount = folders.length;
+    final fullStackCount = folders.where((f) => f.manifest.hasBackend).length;
+    final exportedCount =
+        folders.where((f) => f.manifest.exportedAt != null).length;
 
     return badgesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -165,6 +168,8 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
           student: liveStudent,
           paths: paths,
           projectCount: projectCount,
+          fullStackCount: fullStackCount,
+          exportedCount: exportedCount,
         );
         final earnedCount = progress.where((p) => p.earned).length;
         // Earned first, then the ones under way — the preview row leads with
@@ -201,9 +206,7 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
                     _AreaProgress(
                       student: liveStudent,
                       paths: paths,
-                      createCount: createProjects.length,
-                      appCount: appProjects.length,
-                      websiteCount: websites.length,
+                      folders: folders,
                       cols: adaptiveColumns(box.maxWidth - hPad * 2,
                           min: 2, max: 4, itemWidth: 210),
                       firstLessonEarned: earnedIds.contains('first_lesson'),
@@ -457,18 +460,14 @@ class _AreaProgress extends StatelessWidget {
   const _AreaProgress({
     required this.student,
     required this.paths,
-    required this.createCount,
-    required this.appCount,
-    required this.websiteCount,
+    required this.folders,
     required this.cols,
     required this.firstLessonEarned,
   });
 
   final Student student;
   final List<LearningPath> paths;
-  final int createCount;
-  final int appCount;
-  final int websiteCount;
+  final List<ProjectFolder> folders;
   final int cols;
   final bool firstLessonEarned;
 
@@ -492,7 +491,15 @@ class _AreaProgress extends StatelessWidget {
     final attempted = student.totalPracticeAttempted;
     final correct = student.totalPracticeCorrect;
     final accuracy = attempted > 0 ? (correct / attempted * 100).round() : 0;
-    final totalProjects = createCount + appCount + websiteCount;
+    final totalProjects = folders.length;
+    int ofKind(ProjectKind k) => folders.where((f) => f.kind == k).length;
+    final fullStack = folders.where((f) => f.manifest.hasBackend).length;
+    final exported = folders.where((f) => f.manifest.exportedAt != null).length;
+    // Three steps: make something, give it a backend, take it beyond the app.
+    final createRatio = ((totalProjects > 0 ? 1 : 0) +
+            (fullStack > 0 ? 1 : 0) +
+            (exported > 0 ? 1 : 0)) /
+        3;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -576,8 +583,14 @@ class _AreaProgress extends StatelessWidget {
                       ? '{n} project saved'
                       : '{n} projects saved',
                   {'n': '$totalProjects'}),
-              detail: tr(context, 'Guided, App & Website builders'),
-              ratio: totalProjects.clamp(0, 1).toDouble(),
+              detail: trFill(
+                  context, '{w} websites · {a} apps · {s} full-stack · {e} exported', {
+                'w': '${ofKind(ProjectKind.website)}',
+                'a': '${ofKind(ProjectKind.application)}',
+                's': '$fullStack',
+                'e': '$exported',
+              }),
+              ratio: createRatio,
               onTap: () => GoRouter.of(context).push('/projects'),
             ),
           ],

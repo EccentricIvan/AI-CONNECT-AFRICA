@@ -69,6 +69,22 @@ const allBadges = <BadgeDef>[
     points: 80,
   ),
   BadgeDef(
+    id: 'full_stack_builder',
+    name: 'Full-stack Builder',
+    description: 'Built a project with its own frontend and backend',
+    icon: Icons.dns_rounded,
+    color: AppColors.technologyColor,
+    points: 100,
+  ),
+  BadgeDef(
+    id: 'shipped_it',
+    name: 'Shipped It',
+    description: 'Exported a project to take it beyond the app',
+    icon: Icons.rocket_launch_rounded,
+    color: AppColors.createColor,
+    points: 60,
+  ),
+  BadgeDef(
     id: 'consistent_learner',
     name: 'Consistent Learner',
     description: 'Learned for 7 days in a row',

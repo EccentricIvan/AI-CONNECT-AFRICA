@@ -9,6 +9,9 @@ import '../../shared/coding/python_tutor.dart';
 import '../../shared/widgets/code_autocorrect_button.dart';
 import '../../shared/widgets/code_instruction_bar.dart';
 import '../settings/coder_package_prompt.dart';
+import '../../services/projects/project_manifest.dart';
+import '../projects/scaffold/project_scaffold.dart';
+import '../projects/widgets/save_lab_to_projects.dart';
 
 class _PyLesson {
   const _PyLesson({required this.title, required this.instruction, required this.starterCode, required this.expectedOutput, this.hint, this.challenge});
@@ -231,6 +234,31 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
   bool _hasRun = false;
   bool _autocorrectBusy = false;
   bool _askBusy = false;
+
+  /// Folder this program was saved into (Projects › Python), once saved.
+  String? _projectId;
+  String? _projectTitle;
+
+  Future<void> _saveToProjects() async {
+    final code = _codeController.text;
+    if (code.trim().isEmpty) return;
+    final saved = await saveLabToProjects(
+      context,
+      ref,
+      kind: ProjectKind.python,
+      suggestedTitle: _lessons[_currentLesson].title.replaceFirst(RegExp(r'^Lesson \d+:\s*'), ''),
+      source: 'python_lab',
+      projectId: _projectId,
+      currentTitle: _projectTitle,
+      buildFiles: (title, _) => buildPythonProject(title: title, source: code),
+    );
+    if (saved != null && mounted) {
+      setState(() {
+        _projectId = saved.id;
+        _projectTitle = saved.title;
+      });
+    }
+  }
 
   /// The tutor's last answer, shown under the output. Never written into the
   /// editor - see [explainPythonCode].
@@ -496,6 +524,11 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
           Text(tr(context, 'Python Lab')),
         ]),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.create_new_folder_outlined),
+            tooltip: tr(context, 'Save to Projects'),
+            onPressed: _saveToProjects,
+          ),
           CodeAutocorrectButton(
             busy: _autocorrectBusy,
             onPressed: _autocorrect,

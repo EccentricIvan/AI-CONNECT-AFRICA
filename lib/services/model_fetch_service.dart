@@ -9,6 +9,7 @@ import '../ai_core/model/model_download_service.dart';
 import '../ai_core/model/model_locations.dart';
 import '../ai_core/model/model_manager.dart';
 import '../ai_core/model/model_package.dart';
+import '../ai_core/model/model_runtime_policy.dart';
 import '../ai_core/providers/ai_provider.dart';
 import '../ai_core/translate/afrislm_model_manager.dart';
 
@@ -25,31 +26,72 @@ const kModelFetchHfBaseUrl = String.fromEnvironment(
 
 /// On-disk names under `<app documents>/models/` (never shown in UI).
 ///
-/// Filenames match the HF package repo so Install Packages can resolve
-/// without rewriting. Discovery managers also accept legacy aliases.
+/// One format per platform (model_runtime_policy.dart): Android downloads
+/// the two LiteRT-LM `.litertlm` builds, desktop the two GGUFs. Filenames
+/// match the HF package repo so Install Packages can resolve without
+/// rewriting; SHA-256 pins match what CI publishes.
 class ModelFetchFiles {
-  /// The brain: Qwen2.5-Coder-1.5B-Instruct GGUF. It answers everything —
-  /// tutoring and code — on every platform.
-  static const chat = ModelManager.brainGgufFileName;
-  static const chatSha256 =
+  // ── Desktop (llama.cpp) ────────────────────────────────────────────────
+  static const chatGguf = ModelManager.brainGgufFileName;
+  static const chatGgufSha256 =
       'cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046';
-  static const chatApproxBytes = 1117320768;
+  static const chatGgufApproxBytes = 1117320768;
 
-  static const translate = 'afrislm-0.8b-q4_k_m.gguf';
-  static const translateSha256 =
+  static const translateGguf = AfriSlmModelManager.ggufFileName;
+  static const translateGgufSha256 =
       '4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc';
-  static const translateApproxBytes = 672329792;
+  static const translateGgufApproxBytes = 672329792;
+
+  // ── Android (LiteRT-LM) ────────────────────────────────────────────────
+  /// litert-community's int4 build of the same brain, mirrored.
+  static const chatLiteRt = ModelManager.brainLiteRtFileName;
+  static const chatLiteRtSha256 =
+      '273ecc7771ba2dd5fe1bb6d4d4726ad0353102f04ad094082ccf59bca9f21213';
+  static const chatLiteRtApproxBytes = 1117385648;
+
+  /// AfriSLM converted by .github/workflows/convert-afrislm-litertlm.yml.
+  /// Empty until that job publishes it — the download then skips the hash
+  /// check but still rejects truncated files by size.
+  static const translateLiteRt = AfriSlmModelManager.liteRtFileName;
+  static const translateLiteRtSha256 = '';
+  static const translateLiteRtApproxBytes = 960000000;
+
+  /// GitHub release the conversion workflow publishes both .litertlm files
+  /// to — a mirror while the Hugging Face repo is being filled.
+  static const liteRtReleaseBase =
+      'https://github.com/EccentricIvan/AI-CONNECT-AFRICA/releases/download/litert-models';
+
+  /// litert-community, pinned to the revision whose hash is above.
+  static const chatLiteRtUpstream =
+      'https://huggingface.co/litert-community/Qwen2.5-Coder-1.5B-Instruct/resolve/'
+      'ddb8ab66e162dd89328da9bc144d1d626d3f2c9f/Qwen2.5-Coder-1.5B-Instruct_int4.litertlm';
+
+  // ── This platform ──────────────────────────────────────────────────────
+  static String get chat => androidUsesLiteRt ? chatLiteRt : chatGguf;
+  static String get chatSha256 =>
+      androidUsesLiteRt ? chatLiteRtSha256 : chatGgufSha256;
+  static int get chatApproxBytes =>
+      androidUsesLiteRt ? chatLiteRtApproxBytes : chatGgufApproxBytes;
+
+  static String get translate =>
+      androidUsesLiteRt ? translateLiteRt : translateGguf;
+  static String get translateSha256 =>
+      androidUsesLiteRt ? translateLiteRtSha256 : translateGgufSha256;
+  static int get translateApproxBytes =>
+      androidUsesLiteRt ? translateLiteRtApproxBytes : translateGgufApproxBytes;
+
+  static List<String> get chatMirrors => androidUsesLiteRt
+      ? const ['$liteRtReleaseBase/$chatLiteRt', chatLiteRtUpstream]
+      : const [];
+  static List<String> get translateMirrors => androidUsesLiteRt
+      ? const ['$liteRtReleaseBase/$translateLiteRt']
+      : const [];
 
   /// Coding runs on the brain; there is no separate coder file.
-  static const coder = chat;
+  static String get coder => chat;
 }
 
-enum ModelFetchPhase {
-  idle,
-  ready,
-  fetching,
-  failed,
-}
+enum ModelFetchPhase { idle, ready, fetching, failed }
 
 /// White-label combined progress for the classroom package queue.
 @immutable
@@ -118,33 +160,35 @@ class ModelFetchService {
 
   CancellationToken? _token;
 
-  static ModelPackage get coreChatPackage => const ModelPackage(
-        id: 'core_chat',
-        label: 'Classroom package',
-        fileName: ModelFetchFiles.chat,
-        url: '$kModelFetchHfBaseUrl/${ModelFetchFiles.chat}',
-        sha256: ModelFetchFiles.chatSha256,
-        approxBytes: ModelFetchFiles.chatApproxBytes,
-        essential: true,
-      );
+  static ModelPackage get coreChatPackage => ModelPackage(
+    id: 'core_chat',
+    label: 'Classroom package',
+    fileName: ModelFetchFiles.chat,
+    url: '$kModelFetchHfBaseUrl/${ModelFetchFiles.chat}',
+    sha256: ModelFetchFiles.chatSha256,
+    approxBytes: ModelFetchFiles.chatApproxBytes,
+    essential: true,
+    mirrors: ModelFetchFiles.chatMirrors,
+  );
 
-  static ModelPackage get coreTranslatePackage => const ModelPackage(
-        id: 'core_translate',
-        label: 'Classroom package',
-        fileName: ModelFetchFiles.translate,
-        url: '$kModelFetchHfBaseUrl/${ModelFetchFiles.translate}',
-        sha256: ModelFetchFiles.translateSha256,
-        approxBytes: ModelFetchFiles.translateApproxBytes,
-        essential: true,
-      );
+  static ModelPackage get coreTranslatePackage => ModelPackage(
+    id: 'core_translate',
+    label: 'Classroom package',
+    fileName: ModelFetchFiles.translate,
+    url: '$kModelFetchHfBaseUrl/${ModelFetchFiles.translate}',
+    sha256: ModelFetchFiles.translateSha256,
+    approxBytes: ModelFetchFiles.translateApproxBytes,
+    essential: true,
+    mirrors: ModelFetchFiles.translateMirrors,
+  );
 
   /// Coding runs on the brain, so "the coder package" is the brain package.
   static ModelPackage get coderPackage => coreChatPackage;
 
   static List<ModelPackage> get corePackages => [
-        coreChatPackage,
-        coreTranslatePackage,
-      ];
+    coreChatPackage,
+    coreTranslatePackage,
+  ];
 
   /// Every package Install Packages pulls: the brain and the translator.
   static List<ModelPackage> get allPackages => corePackages;
@@ -154,10 +198,7 @@ class ModelFetchService {
   /// Android → `<app documents>/models/`
   /// Desktop → `<Documents>/OTIC/`
   Future<Directory> modelsDirectory({bool ensure = true}) async {
-    final probe = await canonicalModelInstallPath(
-      '_',
-      ensureDirectory: ensure,
-    );
+    final probe = await canonicalModelInstallPath('_', ensureDirectory: ensure);
     return Directory(p.dirname(probe));
   }
 
@@ -221,13 +262,14 @@ class ModelFetchService {
   /// only [ModelFetchUiState] with [fraction] + [statusLabel].
   Stream<ModelFetchUiState> fetchMissingPackages() async* {
     final queue = StreamController<ModelFetchUiState>();
-    final done = fetchAllPackages(
-      onState: (s) {
-        if (!queue.isClosed) queue.add(s);
-      },
-    ).whenComplete(() {
-      if (!queue.isClosed) queue.close();
-    });
+    final done =
+        fetchAllPackages(
+          onState: (s) {
+            if (!queue.isClosed) queue.add(s);
+          },
+        ).whenComplete(() {
+          if (!queue.isClosed) queue.close();
+        });
     yield* queue.stream;
     await done;
   }
@@ -292,14 +334,17 @@ class ModelFetchService {
     var received = alreadyBytes;
     void emit(ModelFetchUiState s) => onState?.call(s);
 
-    emit(ModelFetchUiState(
-      phase: ModelFetchPhase.fetching,
-      receivedBytes: received,
-      totalBytes: totalBytes,
-      statusLabel: whiteLabelStatus(0, connecting: true),
-      coderReady: await isCoderReady(),
-    ));
+    emit(
+      ModelFetchUiState(
+        phase: ModelFetchPhase.fetching,
+        receivedBytes: received,
+        totalBytes: totalBytes,
+        statusLabel: whiteLabelStatus(0, connecting: true),
+        coderReady: await isCoderReady(),
+      ),
+    );
 
+    var translatorPending = false;
     try {
       for (final pkg in planned) {
         // One-time rule: re-check immediately before each network pull.
@@ -311,32 +356,50 @@ class ModelFetchService {
         final target = await pathFor(pkg.fileName);
         final pkgBase = received;
         final remote = pkg.copyWith(url: '$hfBaseUrl/${pkg.fileName}');
-        await _downloader.download(
-          remote,
-          targetPath: target,
-          cancelToken: token,
-          onState: (s) {
-            final local = s.receivedBytes;
-            final combined = pkgBase + local;
-            final frac = totalBytes <= 0 ? 0.0 : combined / totalBytes;
-            emit(ModelFetchUiState(
-              phase: ModelFetchPhase.fetching,
-              receivedBytes: combined,
-              totalBytes: totalBytes,
-              statusLabel: whiteLabelStatus(
-                frac,
-                connecting: s.phase == DownloadPhase.connecting,
-              ),
-              coderReady: false,
-            ));
-          },
-        );
+        try {
+          await _downloader.download(
+            remote,
+            targetPath: target,
+            cancelToken: token,
+            onState: (s) {
+              final local = s.receivedBytes;
+              final combined = pkgBase + local;
+              final frac = totalBytes <= 0 ? 0.0 : combined / totalBytes;
+              emit(
+                ModelFetchUiState(
+                  phase: ModelFetchPhase.fetching,
+                  receivedBytes: combined,
+                  totalBytes: totalBytes,
+                  statusLabel: whiteLabelStatus(
+                    frac,
+                    connecting: s.phase == DownloadPhase.connecting,
+                  ),
+                  coderReady: false,
+                ),
+              );
+            },
+          );
+        } on ModelDownloadException catch (e) {
+          // The translator is not yet published everywhere (the Android
+          // .litertlm comes from a conversion job). A missing translator must
+          // not block the tutor: skip it, finish setup English-only, and a
+          // later Install Packages picks it up.
+          final notPublished = e.message.contains('HTTP 404');
+          if (pkg.id != coreTranslatePackage.id || !notPublished) rethrow;
+          translatorPending = true;
+          debugPrint(
+            'Translator package not published yet — continuing English-only.',
+          );
+        }
         received = pkgBase + pkg.approxBytes;
       }
 
+      await removeStaleOtherFormatModels();
+
       // End-to-end gate: files must be discoverable by the same managers the
       // Windows/Android runtimes use — not merely written to disk.
-      if (!await areAllPackagesReady()) {
+      final brainReady = await isPackagePresent(coreChatPackage);
+      if (!brainReady || (!translatorPending && !await areAllPackagesReady())) {
         throw const ModelDownloadException(
           'Packages downloaded but could not be verified on this device. '
           'Please try Install Packages again.',
@@ -347,7 +410,9 @@ class ModelFetchService {
         phase: ModelFetchPhase.ready,
         receivedBytes: totalBytes,
         totalBytes: totalBytes,
-        statusLabel: 'Ready',
+        statusLabel: translatorPending
+            ? 'Ready (English). Local-language pack not published yet - tap Install again later.'
+            : 'Ready',
         coderReady: true,
       );
       emit(ready);
@@ -368,11 +433,33 @@ class ModelFetchService {
     }
   }
 
+  /// Android runs LiteRT only, so GGUFs an older Android build downloaded
+  /// (~1.8 GB) can never load again. Once this platform's own models are in
+  /// place they are deleted to give the space back. Desktop keeps
+  /// everything — nothing here touches a folder a student manages.
+  Future<void> removeStaleOtherFormatModels() async {
+    if (!androidUsesLiteRt) return;
+    if (!await areAllPackagesReady()) return;
+    try {
+      final dir = await modelsDirectory(ensure: false);
+      if (!await dir.exists()) return;
+      await for (final e in dir.list()) {
+        final name = e.path.toLowerCase();
+        if (e is File &&
+            (name.endsWith('.gguf') || name.endsWith('.gguf.part'))) {
+          debugPrint('Removing unused Android GGUF: ${e.path}');
+          await e.delete();
+        }
+      }
+    } catch (e) {
+      debugPrint('stale GGUF cleanup skipped: $e');
+    }
+  }
+
   /// Alias kept for call sites / tests — Install Packages fetches everything.
   Future<ModelFetchUiState> fetchCorePackages({
     void Function(ModelFetchUiState state)? onState,
-  }) =>
-      fetchAllPackages(onState: onState);
+  }) => fetchAllPackages(onState: onState);
 
   /// Labs ask for "the coder"; that is the brain, fetched with everything else.
   Future<ModelFetchUiState> fetchCoderPackage({
@@ -397,14 +484,15 @@ class ModelFetchService {
 
 extension _ModelPackageCopy on ModelPackage {
   ModelPackage copyWith({String? url}) => ModelPackage(
-        id: id,
-        label: label,
-        fileName: fileName,
-        url: url ?? this.url,
-        sha256: sha256,
-        approxBytes: approxBytes,
-        essential: essential,
-      );
+    id: id,
+    label: label,
+    fileName: fileName,
+    url: url ?? this.url,
+    sha256: sha256,
+    approxBytes: approxBytes,
+    essential: essential,
+    mirrors: mirrors,
+  );
 }
 
 final modelFetchServiceProvider = Provider<ModelFetchService>(
@@ -418,8 +506,8 @@ final classroomPackagesReadyProvider = FutureProvider<bool>((ref) async {
 
 final modelFetchControllerProvider =
     StateNotifierProvider<ModelFetchController, ModelFetchUiState>(
-  (ref) => ModelFetchController(ref),
-);
+      (ref) => ModelFetchController(ref),
+    );
 
 class ModelFetchController extends StateNotifier<ModelFetchUiState> {
   ModelFetchController(this._ref) : super(const ModelFetchUiState()) {

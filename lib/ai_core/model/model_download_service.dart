@@ -107,6 +107,39 @@ class ModelDownloadService {
     void Function(ModelDownloadState state)? onState,
     CancellationToken? cancelToken,
   }) async {
+    // Main URL first, then each mirror when a URL is missing or refused
+    // (404/401/403). The .part file carries over between mirrors: the
+    // SHA-256 check at the end proves the bytes are the same file.
+    final urls = [pkg.url, ...pkg.mirrors];
+    ModelDownloadException? lastHardFailure;
+    for (final url in urls) {
+      try {
+        return await _downloadFrom(
+          pkg.copyWithUrl(url),
+          targetPath: targetPath,
+          onState: onState,
+          cancelToken: cancelToken,
+        );
+      } on ModelDownloadException catch (e) {
+        final msg = e.message.toLowerCase();
+        final tryNext = msg.contains('http 404') ||
+            msg.contains('http 401') ||
+            msg.contains('http 403');
+        if (!tryNext || url == urls.last) rethrow;
+        lastHardFailure = e;
+        debugPrint('ModelDownloadService: $url refused (${e.message}); trying next mirror');
+      }
+    }
+    throw lastHardFailure ??
+        const ModelDownloadException('No download location for this package.');
+  }
+
+  Future<String> _downloadFrom(
+    ModelPackage pkg, {
+    required String targetPath,
+    void Function(ModelDownloadState state)? onState,
+    CancellationToken? cancelToken,
+  }) async {
     Object? lastError;
     for (var attempt = 1; attempt <= _maxAttempts; attempt++) {
       if (cancelToken?.isCancelled ?? false) {
@@ -310,6 +343,9 @@ class ModelDownloadService {
       return 'The classroom package is not published yet (HTTP 404). '
           'Check the Hugging Face package catalog and try again.';
     }
+    if (status == HttpStatus.unauthorized || status == HttpStatus.forbidden) {
+      return 'The package location refused the download (HTTP $status).';
+    }
     return 'Download failed with HTTP $status.';
   }
 
@@ -384,4 +420,18 @@ class _DigestCatcher implements Sink<Digest> {
 
   @override
   void close() {}
+}
+
+extension on ModelPackage {
+  ModelPackage copyWithUrl(String url) => ModelPackage(
+        id: id,
+        label: label,
+        fileName: fileName,
+        url: url,
+        // `this.` — a bare `sha256` here is package:crypto's hash function.
+        sha256: this.sha256,
+        approxBytes: approxBytes,
+        essential: essential,
+        mirrors: mirrors,
+      );
 }

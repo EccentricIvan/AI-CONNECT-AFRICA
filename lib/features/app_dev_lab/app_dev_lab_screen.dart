@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/coding/code_lab.dart';
 import '../../shared/coding/code_lab_session.dart';
+import '../../services/projects/project_manifest.dart';
 
 /// App Dev Lab: guided lessons → edit the code → RUN → the real page.
 ///
@@ -27,6 +28,7 @@ class _AppDevLabScreenState extends ConsumerState<AppDevLabScreen> {
       lessons: appLabLessons,
       sessionId: CodeLabSections.app,
       editorHint: 'Build your app screen here — HTML, CSS and JavaScript...',
+      projectKind: ProjectKind.application,
     );
   }
 }

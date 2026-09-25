@@ -8,10 +8,14 @@ import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
+import '../../shared/coding/html_images.dart' show maskEmbeddedImages;
 import '../../shared/coding/interactive_html.dart' show escapeHtml;
 import '../../shared/widgets/code_instruction_bar.dart';
 import '../../shared/widgets/html_preview.dart';
+import '../../services/projects/project_providers.dart';
 import '../create/dev_l10n.dart';
+import '../projects/scaffold/project_scaffold.dart';
+import '../projects/widgets/project_tools_bar.dart';
 import '../settings/coder_package_prompt.dart';
 import 'site_build_coder.dart';
 
@@ -347,6 +351,12 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
   String? _undoSnapshot;
   bool _autocorrectBusy = false;
 
+  /// This build's folder under Projects › Websites, once saved. A rebuild or
+  /// edit re-saves into the same folder instead of making a new one.
+  String? _projectId;
+  String? _savedLabel;
+  bool _savingProject = false;
+
   static const _colorThemes = {
     '1': {'name': 'Default', 'primary': null, 'bg': null},
     '2': {'name': 'Ocean Blue', 'primary': '#2563eb', 'bg': '#eff6ff'},
@@ -590,6 +600,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
   void _applyCodeEdits() {
     // LiveHtmlStudio already mirrors the controller; this keeps a hard refresh hook.
     setState(() {});
+    if (_projectId != null) _saveToProjects(quiet: true);
   }
 
   Future<void> _undoLastInstruction() async {
@@ -598,6 +609,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     _undoSnapshot = null;
     _codeController.text = previous;
     _studioKey.currentState?.applyNow();
+    if (_projectId != null) await _saveToProjects(quiet: true);
   }
 
   /// Runs a free-form instruction ("center the text", "change color to
@@ -607,17 +619,28 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
+    // Colour / font / size requests apply instantly, with no model call.
+    final styled = tryQuickStyleInstruction(before, instruction);
+    if (styled != null) {
+      _replaceCode(styled, undo: before);
+      showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+      return;
+    }
     final coderOk = await promptAndFetchCoderPackage(context, ref);
     if (!coderOk || !mounted) return;
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
-      final fixed = await applyCodeInstruction(
-        source: before,
+      // Pictures go to the model as short placeholders, not megabytes of
+      // base64 that would crowd out the page itself.
+      final masked = maskEmbeddedImages(before);
+      final edited = await applyCodeInstruction(
+        source: masked.text,
         instruction: instruction,
         kind: CodeAutocorrectKind.html,
         engine: engine,
       );
+      final fixed = edited == null ? null : masked.restore(edited);
       if (!mounted) return;
       if (fixed == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -629,9 +652,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
         );
         return;
       }
-      _undoSnapshot = before;
-      _codeController.text = fixed;
-      _studioKey.currentState?.applyNow();
+      _replaceCode(fixed, undo: before);
       if (!mounted) return;
       showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
     } catch (_) {
@@ -641,6 +662,134 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
       );
     } finally {
       if (mounted) setState(() => _autocorrectBusy = false);
+    }
+  }
+
+  /// Swaps the page for [html] (keeping [undo] for the Undo snackbar),
+  /// repaints the preview and re-saves the project if it was saved already.
+  void _replaceCode(String html, {required String undo}) {
+    _undoSnapshot = undo;
+    _codeController.text = html;
+    _studioKey.currentState?.applyNow();
+    if (_projectId != null) _saveToProjects(quiet: true);
+  }
+
+  Future<void> _addPictures() async {
+    final before = _codeController.text;
+    final updated = await showAddPicturesFlow(context, before);
+    if (updated == null || !mounted) return;
+    _replaceCode(updated, undo: before);
+    showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+  }
+
+  Future<void> _openStyle() async {
+    final before = _codeController.text;
+    final updated = await showStyleSheet(context, before);
+    if (updated == null || !mounted) return;
+    _replaceCode(updated, undo: before);
+    showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+  }
+
+  String get _siteTitle {
+    for (final key in const [
+      'business_name', 'company_name', 'school_name', 'salon_name', 'org_name', 'name', 'title',
+    ]) {
+      final v = _answers[key]?.trim();
+      if (v != null && v.isNotEmpty) return v;
+    }
+    return _template?.name ?? 'My website';
+  }
+
+  /// Writes the site as a full project (frontend + backend + docs) under
+  /// Projects › Websites. [quiet] skips the snackbar for auto-saves after
+  /// small edits.
+
+  // Saves run one at a time. A save asked for while one is running is not
+  // dropped: it marks [_saveAgain] and the running loop saves once more with
+  // the latest code, so a quick style change right after Build still lands.
+  Future<ProjectFolder?>? _saveInFlight;
+  bool _saveAgain = false;
+  bool _saveLoud = false;
+
+  /// Saves the project (or queues one more save). The returned future
+  /// completes after the newest code is on disk.
+  Future<ProjectFolder?> _saveToProjects({bool quiet = false}) {
+    _saveAgain = true;
+    if (!quiet) _saveLoud = true;
+    return _saveInFlight ??= _drainSaves().whenComplete(() => _saveInFlight = null);
+  }
+
+  Future<ProjectFolder?> _drainSaves() async {
+    ProjectFolder? last;
+    if (mounted) setState(() => _savingProject = true);
+    try {
+      while (_saveAgain && mounted) {
+        _saveAgain = false;
+        final loud = _saveLoud;
+        _saveLoud = false;
+        last = await _saveOnce(quiet: !loud) ?? last;
+      }
+    } finally {
+      if (mounted) setState(() => _savingProject = false);
+    }
+    return last;
+  }
+
+  Future<ProjectFolder?> _saveOnce({required bool quiet}) async {
+    if (_template == null) return null;
+    final html = _codeController.text;
+    if (html.trim().isEmpty) return null;
+    try {
+      final intent = _currentIntent();
+      final images = <String, Uint8List>{};
+      final files = buildWebsiteProject(
+        title: _siteTitle,
+        html: html,
+        templateName: intent.templateName,
+        siteContent: {...intent.content, ...intent.answers},
+        images: images,
+      );
+      final saved = await saveCreation(
+        ref,
+        kind: ProjectKind.website,
+        title: _siteTitle,
+        files: files,
+        binaryFiles: images,
+        projectId: _projectId,
+        source: 'site_builder',
+        template: intent.templateId,
+        templateName: intent.templateName,
+        answers: intent.answers,
+      );
+      if (!mounted) return saved?.folder;
+      if (saved == null) {
+        if (!quiet) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(tr(context, 'Create a learner profile to save projects.'))));
+        }
+        return null;
+      }
+      setState(() {
+        _projectId = saved.folder.manifest.id;
+        _savedLabel = saved.breadcrumb;
+      });
+      if (!quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(trFill(context, 'Saved to {path}', {'path': saved.breadcrumb})),
+          action: SnackBarAction(
+            label: tr(context, 'Open'),
+            onPressed: () => context.push('/projects'),
+          ),
+        ));
+      }
+      return saved.folder;
+    } catch (e) {
+      debugPrint('site project save failed: $e');
+      if (mounted && !quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(tr(context, "Couldn't save your project. Try again."))));
+      }
+      return null;
     }
   }
 
@@ -656,6 +805,10 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     setState(() {
       _building = true;
       _buildNote = tr(context, 'Building your site…');
+      // A new build is a new site — it gets its own folder, never
+      // overwriting the one built before it.
+      _projectId = null;
+      _savedLabel = null;
     });
 
     final intent = _currentIntent();
@@ -676,6 +829,8 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
       _buildNote = '';
     });
     _scrollDown();
+    // Every build is a project: saved straight away into Projects › Websites.
+    await _saveToProjects();
   }
 
   @override
@@ -735,6 +890,14 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
           ),
 
           if (_showStudio) ...[
+            ProjectToolsBar(
+              savedLabel: _savedLabel,
+              saving: _savingProject,
+              onSave: _saveToProjects,
+              onPictures: _addPictures,
+              onStyle: _openStyle,
+              onOpenProjects: () => context.push('/projects'),
+            ),
             Expanded(
               child: LiveHtmlStudio(
                 key: _studioKey,

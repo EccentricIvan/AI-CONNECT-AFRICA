@@ -11,6 +11,9 @@ import '../widgets/html_preview.dart';
 import 'code_autocorrect.dart';
 import 'code_instruction_edit.dart';
 import 'code_lab_session.dart';
+import '../../features/projects/scaffold/project_scaffold.dart';
+import '../../features/projects/widgets/save_lab_to_projects.dart';
+import '../../services/projects/project_manifest.dart';
 
 /// One step of a guided lab: what to read, what to type, what to try next.
 class CodeLabLesson {
@@ -50,6 +53,7 @@ class CodeLabScaffold extends ConsumerStatefulWidget {
     required this.lessons,
     required this.sessionId,
     this.editorHint,
+    this.projectKind = ProjectKind.website,
   });
 
   final String title;
@@ -60,6 +64,9 @@ class CodeLabScaffold extends ConsumerStatefulWidget {
   final String sessionId;
 
   final String? editorHint;
+
+  /// Projects folder "Save to Projects" writes this lab's page into.
+  final ProjectKind projectKind;
 
   @override
   ConsumerState<CodeLabScaffold> createState() => _CodeLabScaffoldState();
@@ -254,6 +261,32 @@ class _CodeLabScaffoldState extends ConsumerState<CodeLabScaffold>
     if (_currentLesson > 0) _loadLesson(_currentLesson - 1);
   }
 
+  /// Folder this lab's work was saved into (Projects), once saved.
+  String? _projectId;
+  String? _projectTitle;
+
+  Future<void> _saveToProjects() async {
+    final html = _codeController.text;
+    if (html.trim().isEmpty) return;
+    final saved = await saveLabToProjects(
+      context,
+      ref,
+      kind: widget.projectKind,
+      suggestedTitle: widget.lessons[_currentLesson].title.replaceFirst(RegExp(r'^Lesson \d+:\s*'), ''),
+      source: widget.sessionId,
+      projectId: _projectId,
+      currentTitle: _projectTitle,
+      buildFiles: (title, images) =>
+          buildStaticWebProject(title: title, html: html, images: images),
+    );
+    if (saved != null && mounted) {
+      setState(() {
+        _projectId = saved.id;
+        _projectTitle = saved.title;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final lesson = widget.lessons[_currentLesson];
@@ -269,6 +302,11 @@ class _CodeLabScaffoldState extends ConsumerState<CodeLabScaffold>
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.create_new_folder_outlined),
+            tooltip: tr(context, 'Save to Projects'),
+            onPressed: _saveToProjects,
+          ),
           CodeAutocorrectButton(
             busy: _autocorrectBusy,
             onPressed: _autocorrect,

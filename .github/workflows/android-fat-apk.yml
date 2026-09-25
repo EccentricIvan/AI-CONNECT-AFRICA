@@ -17,15 +17,21 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Only the two models the app runs: the Qwen2.5-Coder brain and the AfriSLM
-  # translator. Same repo, filenames and SHA-256 pins as the in-app installer
-  # (ModelFetchFiles in lib/services/model_fetch_service.dart) — keep them in
-  # lock step. Both are Apache-2.0.
+  # Android runs LiteRT-LM only (lib/ai_core/model/model_runtime_policy.dart):
+  # the APK embeds the two .litertlm builds, the Windows zip the two GGUFs.
+  # Same repo, filenames and SHA-256 pins as the in-app installer
+  # (ModelFetchFiles in lib/services/model_fetch_service.dart). Both
+  # Apache-2.0. The LiteRT files also live on the `litert-models` release
+  # made by convert-afrislm-litertlm.yml, used while HF is being filled.
   MODELS_BASE: https://huggingface.co/Oticgroup/ai-connect-africa-packages/resolve/main
+  LITERT_RELEASE: https://github.com/EccentricIvan/AI-CONNECT-AFRICA/releases/download/litert-models
   BRAIN_FILE: qwen2.5-coder-1.5b-instruct.gguf
   BRAIN_SHA: cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046
   TRANSLATE_FILE: afrislm-0.8b-q4_k_m.gguf
   TRANSLATE_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
+  BRAIN_LITERT_FILE: qwen2.5-coder-1.5b-instruct_int4.litertlm
+  BRAIN_LITERT_SHA: 273ecc7771ba2dd5fe1bb6d4d4726ad0353102f04ad094082ccf59bca9f21213
+  TRANSLATE_LITERT_FILE: afrislm-0.8b_int8.litertlm
   RELEASE_TAG: android-test
 
 jobs:
@@ -57,16 +63,20 @@ jobs:
           flutter-version: '3.44.x'
           cache: true
 
-      - name: Fetch models into APK assets
+      - name: Fetch LiteRT models into APK assets
         run: |
           set -euo pipefail
           dest=android/app/src/main/assets/models
           mkdir -p "$dest"
-          # BundledModelBootstrap looks for models/<file> under these names.
-          curl -fL --retry 3 --retry-all-errors -o "$dest/$BRAIN_FILE" "$MODELS_BASE/$BRAIN_FILE"
-          curl -fL --retry 3 --retry-all-errors -o "$dest/$TRANSLATE_FILE" "$MODELS_BASE/$TRANSLATE_FILE"
-          echo "$BRAIN_SHA  $dest/$BRAIN_FILE" | sha256sum -c -
-          echo "$TRANSLATE_SHA  $dest/$TRANSLATE_FILE" | sha256sum -c -
+          fetch() {  # file  -> Oticgroup HF first, then the litert-models release
+            curl -fL --retry 3 --retry-all-errors -o "$dest/$1" "$MODELS_BASE/$1" ||
+              curl -fL --retry 3 --retry-all-errors -o "$dest/$1" "$LITERT_RELEASE/$1"
+          }
+          fetch "$BRAIN_LITERT_FILE"
+          fetch "$TRANSLATE_LITERT_FILE"
+          echo "$BRAIN_LITERT_SHA  $dest/$BRAIN_LITERT_FILE" | sha256sum -c -
+          # The translator's hash is published next to it by the conversion job.
+          curl -fL "$LITERT_RELEASE/$TRANSLATE_LITERT_FILE.sha256" | sed "s#  .*#  $dest/$TRANSLATE_LITERT_FILE#" | sha256sum -c -
           ls -lh "$dest"
 
       - name: Get dependencies
@@ -98,7 +108,7 @@ jobs:
               --target "$GITHUB_SHA" \
               --prerelease \
               --title "Android test build (models included)" \
-              --notes "Unsigned-for-store test APK built from a build/** branch. arm64-v8a only. Brain (Qwen2.5-Coder-1.5B) + translation (AfriSLM) models are embedded; first launch copies ~1.8 GB into app storage, so keep ~4 GB free. Not a stable release."
+              --notes "Unsigned-for-store test APK built from a build/** branch. arm64-v8a only. LiteRT-LM builds of the brain (Qwen2.5-Coder-1.5B int4) and translator (AfriSLM int8) are embedded; first launch copies ~2 GB into app storage, so keep ~5 GB free. Not a stable release."
           fi
           gh release upload "$RELEASE_TAG" "${{ steps.apk.outputs.name }}" \
             --repo "$GITHUB_REPOSITORY" --clobber

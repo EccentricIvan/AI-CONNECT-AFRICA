@@ -4,10 +4,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-AI Connect Africa is a **fully offline AI-powered Learning Operating System**. It runs entirely on-device — no internet, no cloud, no external APIs, ever. Two on-device models are bundled and run locally:
+AI Connect Africa is a **fully offline AI-powered Learning Operating System**. It runs entirely on-device — no internet, no cloud, no external APIs, ever. Two on-device models are bundled and run locally.
 
-- **Brain — Qwen2.5-Coder-1.5B-Instruct (GGUF)** → the one reasoning model. It does **all** reasoning and answer generation: tutoring, practice, learning paths, *and* code for the labs and builders (programming subjects just get the programming contract, `kProgrammingTutorContract`, on the same engine). Runs in-process via llama.cpp (`llm_llamacpp`), CPU-only, on every platform — see `lib/ai_core/model/model_manager.dart` and `dualModelRuntimeProvider` in `lib/ai_core/providers/ai_provider.dart`. Android also accepts a LiteRT-LM `.litertlm` export if one is installed (none is published yet). Apache-2.0. **There is no Qwen3-0.6B any more** — it was removed on 2026-09-23 so one model does both jobs; don't reintroduce a separate chat or coder model.
-- **Translation — TranslatePsy-AfriSLM (GGUF)** → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. Runs in-process via llama.cpp (`llm_llamacpp`) on **every platform** (Android, Windows, Linux) — one engine, no Ollama server, no separate runtime install. `/no_think` is sent to AfriSLM (a Qwen3.5 fine-tune) but not to the Qwen2.5 brain (`LlamaCppEngineImpl.appendNoThink`). See `lib/ai_core/translate/afrislm_model_manager.dart` and `lib/ai_core/inference/llama_cpp_engine.dart`.
+**One runtime per platform, never mixed** (`lib/ai_core/model/model_runtime_policy.dart`):
+
+- **Android → LiteRT-LM only.** Both models are `.litertlm` files.
+  - Each role gets its own engine (`LiteRtLmEngineImpl`, built with
+    `LiteRtLmEngine().createModel`, not flutter_gemma's single active slot).
+  - Hardware order is NPU (Qualcomm QNN / MediaTek / Tensor) → GPU → LiteRT
+    CPU. The backend that worked is remembered per role.
+  - LiteRT-LM has **no NNAPI**; Google deprecated it in Android 15, and the
+    vendor NPU dispatch replaces it.
+  - llama.cpp's native libraries are excluded from the APK
+    (`android/app/build.gradle.kts`).
+  - On 4 GB phones the GPU often can't fit the model, so LiteRT lands on its
+    CPU backend. Settings → AI engine shows the backend actually in use.
+- **Windows / Linux → llama.cpp GGUF only.** LiteRT is never started.
+- **A model file in the other platform's format is not "installed".**
+  Every engine is built by `createBrainEngine` / `createTranslatorEngine`
+  in `ai_provider.dart`.
+
+- **Brain — Qwen2.5-Coder-1.5B-Instruct** (int4 `.litertlm` on Android, GGUF on desktop) → the one reasoning model. It does **all** reasoning and answer generation: tutoring, practice, learning paths, *and* code for the labs and builders (programming subjects just get the programming contract, `kProgrammingTutorContract`, on the same engine). See `lib/ai_core/model/model_manager.dart` and `dualModelRuntimeProvider` in `lib/ai_core/providers/ai_provider.dart`. Apache-2.0. **There is no Qwen3-0.6B any more** — it was removed on 2026-09-23 so one model does both jobs; don't reintroduce a separate chat or coder model.
+- **Translation — TranslatePsy-AfriSLM** (int8 `.litertlm` on Android, converted by `.github/workflows/convert-afrislm-litertlm.yml` behind a round-trip quality gate — see `tools/litert/`; Q4 GGUF on desktop) → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. In-process on both runtimes, no server. `/no_think` is sent to AfriSLM (a Qwen3.5 fine-tune) but not to the Qwen2.5 brain (`appendNoThink` on both engine classes). On Android every translation is a fresh conversation (`isolatedTurns`), never a pinned chat. See `lib/ai_core/translate/afrislm_model_manager.dart`.
 
 Both models expose the same Dart inference interface from `lib/ai_core/inference/inference_engine.dart`. Chat and translation are both wired up and shipping. On Windows, llama.cpp's `ggml.dll` carries a load-time import on `ggml-vulkan.dll` → `vulkan-1.dll` even though inference runs CPU-only (`nGpuLayers: 0`); the build ships a bundled Vulkan loader (`tools/fetch_vulkan_loader.ps1`, `windows/CMakeLists.txt`) so machines without a Vulkan-capable display driver can still load llama.cpp at all.
 
@@ -142,12 +160,14 @@ Bundling a model into a public release requires its license to permit redistribu
 
 | Role | Platform | Format | Model | Size |
 |------|----------|--------|-------|------|
-| Brain (tutor + code) | Android, Windows, Linux | GGUF 4-bit (llama.cpp) | Qwen2.5-Coder-1.5B-Instruct | ~1.1 GB |
-| Translation | Android, Windows, Linux | GGUF 4-bit (llama.cpp) | AfriSLM 0.8B Q4 | ~0.5–1 GB |
+| Brain (tutor + code) | Android | `.litertlm` int4 (LiteRT-LM) | Qwen2.5-Coder-1.5B-Instruct | ~1.1 GB |
+| Translation | Android | `.litertlm` int8 (LiteRT-LM) | AfriSLM 0.8B (converted) | ~0.9 GB |
+| Brain (tutor + code) | Windows, Linux | GGUF 4-bit (llama.cpp) | Qwen2.5-Coder-1.5B-Instruct | ~1.1 GB |
+| Translation | Windows, Linux | GGUF 4-bit (llama.cpp) | AfriSLM 0.8B Q4 | ~0.6 GB |
 
 The app must detect whether the model file is present at startup (checking the bundled path before falling back to the USB-installed path) and show a clear "Model not installed — transfer via USB" screen rather than failing silently when neither is found.
 
-Translation needs no external server — `llm_llamacpp` loads the AfriSLM GGUF in-process on every platform, the same way the desktop chat brain loads Qwen. There is no separate runtime to install.
+Translation needs no external server. On desktop `llm_llamacpp` loads the AfriSLM GGUF in-process; on Android LiteRT-LM loads its `.litertlm`. There is no separate runtime to install.
 
 ## Local History (Student Memory)
 
@@ -184,6 +204,46 @@ the database's own table list in `test/learner_data_wiper_test.dart`, so a
 newly added student-scoped table fails that test until it's classified as
 wiped or kept (kept = shared resources: `topic_resources`, `custom_subjects`,
 `class_groups`, the translation cache, `sync_state`).
+
+## Create → Projects (full-stack project folders)
+
+Every creation is a **real folder**, and the disk is the source of truth. There
+is no index table. `ProjectStore` (`lib/services/projects/project_store.dart`)
+writes `<root>/<learner>-<id>/<Websites|Applications|Python|Guided>/<slug>/`,
+each folder with an `otic-project.json` manifest. `root` depends on the
+platform:
+
+- **Windows / Linux:** `Documents/OTIC/Projects`, which opens in Explorer or
+  VS Code.
+- **Android:** `<app docs>/projects`, which is private, so Projects exports
+  zips or shares them instead.
+
+Folders cut, deleted or pasted in Explorer show up on the next list.
+
+- **Generation is template-first, never model-written.** The code lives in
+  `lib/features/projects/scaffold/`.
+  - It turns the builder's page into `frontend/` (split CSS/JS, embedded
+    pictures extracted to `frontend/images/`).
+  - It adds a FastAPI + SQLAlchemy + SQLite `backend/` with CRUD routes per
+    app type (`resource_spec.dart`), plus a pytest suite.
+  - It adds README / DEPLOY.md (free hosts), a Dockerfile, `render.yaml`
+    and `.vscode/`.
+  - The 1.5B model only edits the page. After changing any scaffold, run
+    `tools/verify_scaffolds.ps1`: it installs and runs every generated
+    backend's tests.
+- **One save path.** Every builder saves through `saveCreation`
+  (`project_providers.dart`), which awards badges and refreshes
+  `studentProjectFoldersProvider`. Achievements counts from that provider.
+- **Legacy rows are synced into folders.** Older DB-row saves are
+  `app_builder_projects`, the Block canvas's `website_projects` and the
+  guided chat's `student_projects`. `LegacyProjectSync` gives each one a
+  folder once, and a ledger stops deleted ones from coming back.
+- **Style and pictures need no model.** Style requests ("make the text
+  red") are applied through `quick_style_edit.dart` in a
+  `<style id="otic-style">` block. Pictures are embedded as data URIs while
+  editing (`html_images.dart`) and become real files on save.
+- **Deleting a learner.** `LearnerDataWiper` also deletes the learner's
+  project folder.
 
 ## Update Mechanism
 

@@ -40,7 +40,8 @@ void main() {
     for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
       debugDefaultTargetPlatformOverride = platform;
       final names = ModelManager.brainFileNamesForPlatform();
-      expect(names, contains(ModelManager.brainGgufFileName));
+      expect(names.first, ModelManager.brainFileName);
+      expect(names.first.toLowerCase(), contains('coder-1.5b'));
       expect(names.where((n) => n.contains('0.6b') || n.contains('0.6B')),
           isEmpty);
       expect(names.where((n) => n == 'chat-model.litertlm'), isEmpty);

@@ -65,6 +65,10 @@ dependencies:
   #   xml     → read word/document.xml out of a .docx
   archive: ^4.0.9
   xml: ^7.0.1
+  # Pictures students add to a website/app are downscaled on the device so
+  # a phone photo does not make the page slow. Pure Dart, already in the
+  # tree transitively, fully offline.
+  image: ^4.9.1
   share_plus: ^12.0.2
   package_info_plus: ^9.0.1
   html: ^0.15.4

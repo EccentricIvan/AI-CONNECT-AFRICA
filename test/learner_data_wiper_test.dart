@@ -11,6 +11,7 @@ import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/memory/session_recall_store.dart';
 import 'package:ai_connect_africa/services/learner_data_wiper.dart';
+import 'package:ai_connect_africa/services/projects/project_store.dart';
 
 /// A wiper that deletes the wrong things — too much or too little — fails
 /// silently: nothing throws, the app just quietly leaks another learner's
@@ -20,17 +21,21 @@ void main() {
   late OticDatabase db;
   late LearnerDataWiper wiper;
   late Directory certsDir;
+  late ProjectStore projects;
 
   setUp(() async {
     db = OticDatabase.forTesting(DatabaseConnection(NativeDatabase.memory()));
     SharedPreferences.setMockInitialValues({});
     certsDir = await Directory.systemTemp.createTemp('wiper_test_certs');
+    final projectsDir = await Directory.systemTemp.createTemp('wiper_test_projects');
+    projects = ProjectStore(root: () async => projectsDir);
     wiper = LearnerDataWiper(
       db,
       recallStore: SessionRecallStore(
         directory: await Directory.systemTemp.createTemp('wiper_test'),
       ),
       certificatesDir: () async => certsDir,
+      projectStore: projects,
     );
   });
 
@@ -224,6 +229,27 @@ void main() {
             "surviving learner, but must not keep naming the deleted one — "
             "that would itself be the deleted learner's data surviving "
             'their own wipe');
+  });
+
+  test('wipeStudent deletes only that learner\'s project folders', () async {
+    final amina = await db.studentDao
+        .createStudent(StudentsCompanion.insert(name: 'Amina'));
+    final brian = await db.studentDao
+        .createStudent(StudentsCompanion.insert(name: 'Brian'));
+    for (final (id, name) in [(amina, 'Amina'), (brian, 'Brian')]) {
+      await projects.save(
+        studentId: id,
+        studentName: name,
+        kind: ProjectKind.website,
+        title: '$name site',
+        files: {'frontend/index.html': '<h1>$name</h1>'},
+      );
+    }
+
+    await wiper.wipeStudent(amina);
+
+    expect(await projects.list(amina), isEmpty);
+    expect((await projects.list(brian)).single.title, 'Brian site');
   });
 
   test('a stale active_student_id (e.g. from a learner deleted before this '

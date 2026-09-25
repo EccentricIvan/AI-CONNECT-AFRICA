@@ -8,6 +8,7 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/translate/chat_languages.dart';
 import '../../ai_core/translate/supported_languages.dart';
 import '../../core/app_info_provider.dart';
+import 'ai_engine_tile.dart';
 import 'fetch_packages_tile.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/theme_provider.dart';
@@ -42,6 +43,7 @@ appBar: StudioAppBar(
             // ── System Core Configuration ────────────────────────────────────
             _Section('System Core Configuration', [
               const FetchPackagesTile(),
+              const AiEngineTile(),
               ref.watch(aiStatusProvider).when(
                 loading: () => ListTile(
                   leading: const Icon(Icons.auto_awesome, color: AppColors.primary),
