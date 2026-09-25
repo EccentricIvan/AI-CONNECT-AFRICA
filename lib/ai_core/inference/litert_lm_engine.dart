@@ -1,37 +1,73 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_gemma/core/registry/runtime_config.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
-import '../model/model_manager.dart';
+import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../model/device_tier.dart';
+import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'pinned_prompt_cache.dart';
 import 'runtime_config.dart';
 import 'sanitize_llm_response.dart';
 
-/// Chat engine for every desktop/mobile platform — Google LiteRT-LM runtime
-/// via flutter_gemma_litertlm, registered in main.dart. Runs a `.litertlm`
-/// export of the brain (Qwen2.5-Coder-1.5B) on Android when one is installed;
-/// otherwise the brain runs as a GGUF on llama.cpp.
+/// A model on Google's LiteRT-LM runtime — the Android runtime for both the
+/// brain (Qwen2.5-Coder-1.5B int4) and the AfriSLM translator (int8).
 ///
-/// On Windows/Linux this always requests the CPU backend. On-device testing
-/// on a real (weak/older) Windows GPU found the native WebGPU backend
-/// doesn't fail fast on unsupported hardware — it silently falls back to a
-/// software adapter and hangs for ~11 minutes in `WaitForCompletion` before
-/// erroring. That's inside the compiled Google binary; a Dart-side
-/// `Future.timeout()` around the call does not help — it only stops *this*
-/// isolate from waiting, it does not interrupt the blocking native call
-/// underneath, which keeps running for its own full internal timeout
-/// regardless (confirmed: the native call still took ~11 minutes even with
-/// a 45s Dart timeout wrapped around it). Since there's no way to safely
-/// detect a bad GPU ahead of time without risking that same hang during the
-/// probe, desktop skips the GPU path entirely. Android keeps the platform
-/// default (GPU/NPU delegate when available), since it's the primary target
-/// and this machine's finding doesn't generalize to it.
+/// **Hardware.** Every load asks for [PreferredBackend.npu]. LiteRT-LM then
+/// tries NPU (Qualcomm QNN / MediaTek / Tensor vendor dispatch) → GPU
+/// (OpenCL/WebGPU) → its own CPU backend, and reports which one it got as
+/// [activeBackend]. There is no NNAPI in LiteRT-LM (NNAPI is deprecated in
+/// Android 15); the NPU dispatch is its successor. llama.cpp is never a
+/// fallback on Android.
+///
+/// **One engine per role.** Each instance builds its own LiteRT-LM engine
+/// with `LiteRtLmEngine().createModel`, not flutter_gemma's single "active
+/// model" slot — so the tutor and the translator stay loaded side by side
+/// instead of swapping ~1 GB in and out on every local-language turn.
+///
+/// **Remembering what works.** A GPU/NPU that fails to initialize fails
+/// again next launch, and some drivers take a long time to fail. The
+/// backend that actually came up is saved per role, and later launches start
+/// from it instead of re-trying the accelerator every time. "Reset hardware
+/// choice" in Settings clears it ([clearRememberedBackends]).
 class LiteRtLmEngineImpl extends InferenceEngine {
-  LiteRtLmEngineImpl({this.roleLabel = 'Qwen2.5-Coder 1.5B'});
+  LiteRtLmEngineImpl({
+    this.roleLabel = 'Qwen2.5-Coder 1.5B',
+    this.roleKey = 'brain',
+    this.schedulerLane = EngineLane.reason,
+    this.modelType = ModelType.qwen,
+    this.contextTokens = 1024,
+    this.appendNoThink = false,
+    this.isolatedTurns = false,
+  });
 
-  /// Distinguishes chat vs coder in logs when both share FlutterGemma.
+  /// Shown in Settings / logs.
   final String roleLabel;
+
+  /// Stable id for the remembered backend (`brain`, `translate`).
+  final String roleKey;
+
+  /// Lane passed to [EngineScheduler] so brain and translator requests are
+  /// serialised exactly as the llama.cpp engines were.
+  final String schedulerLane;
+
+  /// flutter_gemma template family. LiteRT-LM applies the bundle's own chat
+  /// template on Android; this only matters for its fallbacks.
+  final ModelType modelType;
+
+  final int contextTokens;
+
+  /// Qwen3's `/no_think` switch on the user turn — the AfriSLM prompts the
+  /// app was tuned with (and the conversion gate) include it.
+  final bool appendNoThink;
+
+  /// Translator mode: every call is a fresh conversation with its own
+  /// system prompt, never a pinned multi-turn chat. A translation must
+  /// never see the previous sentence.
+  final bool isolatedTurns;
 
   InferenceModel? _model;
   InferenceChat? _pinnedChat;
@@ -40,75 +76,154 @@ class LiteRtLmEngineImpl extends InferenceEngine {
   int _pinnedTurns = 0;
   Future<void> _gate = Future.value();
 
-  /// Recreate the pinned session before KV + THREAD overflow the 1024 window.
+  PreferredBackend? _activeBackend;
+  Duration? _loadTime;
+  double? _lastTokensPerSecond;
+
+  /// Recreate the pinned session before KV + THREAD overflow the window.
   static const _maxPinnedTurns = 4;
 
-  static bool get _cpuOnly =>
-      defaultTargetPlatform == TargetPlatform.windows ||
-      defaultTargetPlatform == TargetPlatform.linux;
+  static const _prefsPrefix = 'litert_backend_';
+
+  /// Set by "Try GPU anyway": a low-memory phone probes NPU/GPU too.
+  static const _forceAccelKey = 'litert_force_accel';
+
+  /// Written before an NPU/GPU load, removed after it returns.
+  static const _loadingKey = 'litert_loading_';
+
+  /// The hardware LiteRT-LM actually runs this model on (null until loaded).
+  PreferredBackend? get activeBackend => _activeBackend;
+  Duration? get loadTime => _loadTime;
+  double? get lastTokensPerSecond => _lastTokensPerSecond;
 
   @override
   bool get isReady => _model != null;
 
   @override
   String get backendLabel =>
-      'LiteRT-LM · $roleLabel${_cpuOnly ? ' (CPU)' : ' (NNAPI/GPU)'}';
+      'LiteRT-LM · $roleLabel · ${backendName(_activeBackend)}';
 
   String? get loadedPath => _loadedPath;
 
+  static String backendName(PreferredBackend? b) => switch (b) {
+        PreferredBackend.npu => 'NPU',
+        PreferredBackend.gpu => 'GPU',
+        PreferredBackend.cpu => 'CPU',
+        null => 'not loaded',
+      };
+
+  /// Forget the remembered backends so the next load tries NPU/GPU again.
+  /// With [forceAcceleration], a low-memory phone probes them too.
+  static Future<void> clearRememberedBackends({bool forceAcceleration = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final k in prefs.getKeys().where((k) => k.startsWith(_prefsPrefix)).toList()) {
+        await prefs.remove(k);
+      }
+      if (forceAcceleration) await prefs.setBool(_forceAccelKey, true);
+    } catch (_) {}
+  }
+
+  /// Back to the tier default (CPU on low-memory phones).
+  static Future<void> useTierDefault() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_forceAccelKey);
+      for (final k in prefs.getKeys().where((k) => k.startsWith(_prefsPrefix)).toList()) {
+        await prefs.remove(k);
+      }
+    } catch (_) {}
+  }
+
+  static Future<bool> accelerationForced() async {
+    try {
+      return (await SharedPreferences.getInstance()).getBool(_forceAccelKey) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Where the backend chain starts:
+  /// 1. the backend that worked last time for this role;
+  /// 2. on a low-memory phone, LiteRT's CPU backend — unless the student
+  ///    asked for the GPU (see [DeviceTier] for why);
+  /// 3. otherwise NPU (→ GPU → CPU).
+  Future<PreferredBackend> _startingBackend() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // A previous accelerated load that never finished means the app died
+      // inside the GPU/NPU init (a native crash cannot be caught). Go back to
+      // CPU instead of crashing again on every launch.
+      if (prefs.getString('$_loadingKey$roleKey') != null) {
+        await prefs.remove('$_loadingKey$roleKey');
+        await prefs.remove(_forceAccelKey);
+        await prefs.setString('$_prefsPrefix$roleKey', PreferredBackend.cpu.name);
+        debugPrint('LiteRT-LM $roleKey: last accelerated load crashed - using CPU.');
+        return PreferredBackend.cpu;
+      }
+      final saved = prefs.getString('$_prefsPrefix$roleKey');
+      for (final b in PreferredBackend.values) {
+        if (b.name == saved) return b;
+      }
+      final forced = prefs.getBool(_forceAccelKey) ?? false;
+      if (DeviceTier.current.isLowMemory && !forced) return PreferredBackend.cpu;
+    } catch (_) {
+      if (DeviceTier.current.isLowMemory) return PreferredBackend.cpu;
+    }
+    return PreferredBackend.npu;
+  }
+
+  Future<void> _remember(PreferredBackend backend) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('$_prefsPrefix$roleKey', backend.name);
+    } catch (_) {}
+  }
+
   @override
   Future<void> loadModel(String modelPath) async {
-    // A "bundled:" path means the model is still inside the APK's own
-    // assets/models/ folder. flutter_gemma's BundledSourceHandler records
-    // metadata only ("no copying required — uses native path directly"), so
-    // LiteRT-LM mmaps the asset in place and the fat APK never grows a
-    // second copy of the same ~600 MB in app storage. This relies on the
-    // `noCompress` rule for .litertlm in build.gradle.kts — a deflated
-    // asset has no mappable file descriptor.
-    final bundledName = modelPath.startsWith(ModelManager.bundledAssetPrefix)
-        ? modelPath.substring(ModelManager.bundledAssetPrefix.length)
-        : null;
-
-    final installName = bundledName ??
-        modelPath.split(RegExp(r'[\\/]')).last;
-
-    Future<void> install() {
-      final builder = FlutterGemma.installModel(
-        modelType: ModelType.qwen3,
-        fileType: ModelFileType.litertlm,
-      );
-      return (bundledName == null
-              ? builder.fromFile(modelPath)
-              : builder.fromBundled(bundledName))
-          .install();
-    }
-
+    await dispose();
+    final watch = Stopwatch()..start();
+    final start = await _startingBackend();
+    final name = modelPath.split(RegExp(r'[\\/]')).last;
+    SharedPreferences? prefs;
     try {
-      final installed = await FlutterGemma.isModelInstalled(installName);
-      if (!installed) {
-        await install();
+      prefs = await SharedPreferences.getInstance();
+      if (start != PreferredBackend.cpu) {
+        await prefs.setString('$_loadingKey$roleKey', start.name);
       }
-      try {
-        _model = await FlutterGemma.getActiveModel(
-          maxTokens: 1024,
-          preferredBackend: _cpuOnly ? PreferredBackend.cpu : null,
-        );
-      } catch (_) {
-        await install();
-        _model = await FlutterGemma.getActiveModel(
-          maxTokens: 1024,
-          preferredBackend: _cpuOnly ? PreferredBackend.cpu : null,
-        );
-      }
+    } catch (_) {}
+    try {
+      final model = await const LiteRtLmEngine().createModel(
+        InferenceModelSpec(
+          name: name,
+          modelSource: ModelSource.file(modelPath),
+          modelType: modelType,
+          fileType: ModelFileType.litertlm,
+        ),
+        RuntimeConfig(
+          maxTokens: contextTokens,
+          modelPath: modelPath,
+          preferredBackend: start,
+        ),
+      );
+      _model = model;
+      _activeBackend = model.activeBackend ?? start;
       _loadedPath = modelPath;
-      // Drop any prior pin — weights changed / active model swapped.
-      await resetSession();
+      _loadTime = watch.elapsed;
+      await prefs?.remove('$_loadingKey$roleKey');
+      await _remember(_activeBackend!);
+      debugPrint(
+        'LiteRT-LM $roleKey loaded on ${backendName(_activeBackend)} '
+        '(asked from ${backendName(start)}) in ${_loadTime!.inMilliseconds} ms: $modelPath',
+      );
     } catch (e) {
+      await prefs?.remove('$_loadingKey$roleKey');
       throw ModelLoadException('LiteRT-LM failed to load "$modelPath": $e');
     }
   }
 
-  /// Re-bind if FlutterGemma's single active slot was stolen by the coder.
+  /// Re-bind after a dispose (kept for callers that used the old slot API).
   Future<void> ensureLoaded(String modelPath) async {
     if (_model != null && _loadedPath == modelPath) return;
     await loadModel(modelPath);
@@ -120,6 +235,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     if (_model == null) {
       throw StateError('Model not loaded. Call loadModel() first.');
     }
+    if (isolatedTurns) return;
     final sys = PinnedPromptCache.intern(systemPrompt.trim());
     if (_pinnedChat != null && _pinnedSystem == sys) return;
     await _pinnedChat?.close();
@@ -130,7 +246,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
       topP: kTopP,
       systemInstruction: sys,
       maxOutputTokens: kMaxNewTokens,
-      modelType: ModelType.qwen3,
+      modelType: modelType,
       isThinking: false,
     );
     _pinnedSystem = sys;
@@ -152,16 +268,31 @@ class LiteRtLmEngineImpl extends InferenceEngine {
       try {
         await previous;
       } catch (_) {}
-      return await _generateNow(
-        prompt: prompt,
-        maxTokens: maxTokens,
-        temperature: temperature,
-        onToken: onToken,
-        systemPrompt: systemPrompt,
+      return await EngineScheduler.instance.exclusive(
+        () => _generateNow(
+          prompt: prompt,
+          maxTokens: maxTokens,
+          temperature: temperature,
+          onToken: onToken,
+          systemPrompt: systemPrompt,
+        ),
+        lane: schedulerLane,
       );
+    } catch (e) {
+      debugPrint('LiteRT-LM $roleKey generate failed: $e');
+      const fallback =
+          'I hit a brief snag finishing that answer. Please ask again in one short sentence.';
+      await emitToken(onToken, fallback);
+      return fallback;
     } finally {
       if (!done.isCompleted) done.complete();
     }
+  }
+
+  String _withNoThink(String user) {
+    if (!appendNoThink) return user;
+    final t = user.trimRight();
+    return RegExp(r'/no_think\s*$').hasMatch(t) ? user : '$t\n/no_think';
   }
 
   Future<String> _generateNow({
@@ -181,8 +312,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     // Tutor prompts clip tightly; coder briefs (with systemPrompt) must keep
     // the locked feature list — truncating mid-brief + appending "Tutor:"
     // produced broken / empty site and app builds on Android.
-    final maxChars =
-        sys.isEmpty ? kTutorMaxPromptChars : kCoderMaxPromptChars;
+    final maxChars = sys.isEmpty ? kTutorMaxPromptChars : kCoderMaxPromptChars;
     final clipped = prompt.length > maxChars
         ? (sys.isEmpty
             ? '${prompt.substring(0, maxChars)}\nTutor:'
@@ -192,11 +322,17 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     if (sys.isNotEmpty && user.startsWith(sys)) {
       user = user.substring(sys.length).trim();
     }
+    user = _withNoThink(user);
 
-    // Session analysis / website prompts must not append onto the pinned
-    // tutor chat — that would pollute the KV the student is learning from.
-    if (sys.isEmpty) {
-      return _oneShot(user: user, maxTokens: maxTokens, onToken: onToken);
+    // One-shot: session analysis / website prompts must not append onto the
+    // pinned tutor chat, and a translation never sees an earlier sentence.
+    if (sys.isEmpty || isolatedTurns) {
+      return _oneShot(
+        user: user,
+        system: sys.isEmpty ? null : sys,
+        maxTokens: maxTokens,
+        onToken: onToken,
+      );
     }
 
     // Pin the tutor contract once. Later turns only add the user turn, so
@@ -212,62 +348,65 @@ class LiteRtLmEngineImpl extends InferenceEngine {
         topP: kTopP,
         systemInstruction: sys,
         maxOutputTokens: maxTokens,
-        modelType: ModelType.qwen3,
+        modelType: modelType,
         isThinking: false,
       );
       _pinnedSystem = sys;
       _pinnedTurns = 0;
     }
 
-    await _pinnedChat!.addQueryChunk(Message.text(text: user, isUser: true));
+    final text = await _stream(_pinnedChat!, user, onToken);
+    _pinnedTurns++;
+    if (text.trim().isEmpty) {
+      // The known empty follow-up turn on a reused chat (see memory
+      // flutter-gemma-325-blank-followup): drop the pin and answer once more
+      // on a fresh conversation rather than show the student nothing.
+      await resetSession();
+      return _oneShot(user: user, system: sys, maxTokens: maxTokens, onToken: onToken);
+    }
+    return text;
+  }
 
+  Future<String> _stream(InferenceChat chat, String user, TokenCallback? onToken) async {
+    await chat.addQueryChunk(Message.text(text: user, isUser: true));
     final cleaner = SanitizedTokenStream();
-    await for (final response in _pinnedChat!.generateChatResponseAsync()) {
+    final watch = Stopwatch()..start();
+    var chunks = 0;
+    await for (final response in chat.generateChatResponseAsync()) {
       if (response is TextResponse) {
         final token = response.token;
-        if (token.isNotEmpty) {
-          final visible = cleaner.add(token);
-          if (visible.isEmpty) continue;
-          await emitToken(onToken, visible);
-        }
+        if (token.isEmpty) continue;
+        chunks++;
+        final visible = cleaner.add(token);
+        if (visible.isEmpty) continue;
+        await emitToken(onToken, visible);
       }
     }
     final tail = cleaner.flush();
     if (tail.isNotEmpty) await emitToken(onToken, tail);
-    _pinnedTurns++;
+    final secs = watch.elapsedMilliseconds / 1000;
+    if (secs > 0 && chunks > 0) _lastTokensPerSecond = chunks / secs;
     return cleaner.text;
   }
 
   Future<String> _oneShot({
     required String user,
+    required String? system,
     required int maxTokens,
     TokenCallback? onToken,
   }) async {
     final chat = await _model!.createChat(
-      temperature: kCoderTemperature,
+      temperature: isolatedTurns ? kTranslateTemperature : kCoderTemperature,
       randomSeed: kRandomSeed,
       topK: kTopK,
       topP: kTopP,
+      systemInstruction: system,
       maxOutputTokens: maxTokens,
-      modelType: ModelType.qwen3,
+      modelType: modelType,
       isThinking: false,
     );
     try {
-      await chat.addQueryChunk(Message.text(text: user, isUser: true));
-      final cleaner = SanitizedTokenStream();
-      await for (final response in chat.generateChatResponseAsync()) {
-        if (response is TextResponse) {
-          final token = response.token;
-          if (token.isNotEmpty) {
-            final visible = cleaner.add(token);
-            if (visible.isEmpty) continue;
-            await emitToken(onToken, visible);
-          }
-        }
-      }
-      final tail = cleaner.flush();
-      if (tail.isNotEmpty) await emitToken(onToken, tail);
-      return cleaner.text;
+      return await _stream(chat, user, onToken);
     } finally {
       await chat.close();
     }
@@ -284,8 +423,9 @@ class LiteRtLmEngineImpl extends InferenceEngine {
   @override
   Future<void> dispose() async {
     await resetSession();
-    _model?.close();
+    await _model?.close();
     _model = null;
     _loadedPath = null;
+    _activeBackend = null;
   }
 }

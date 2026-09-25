@@ -9,10 +9,11 @@ import 'app.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Hybrid stack:
-  // - Chat brain: llama.cpp GGUF on Android + Windows
-  // - Coder: LiteRT on Android (needs FlutterGemma), GGUF CPU on Windows
-  // - Translator: isolated via AiEngineService (AfriSLM today)
+  // One runtime per platform (model_runtime_policy.dart):
+  // - Android: LiteRT-LM for the brain and the AfriSLM translator
+  //   (NPU → GPU → LiteRT CPU). Each engine is created per role; the
+  //   plugin init below only registers the LiteRT-LM engine.
+  // - Windows / Linux: llama.cpp GGUF for both. LiteRT is never started.
   if (shouldInitializeLiteRt) {
     try {
       await FlutterGemma.initialize(
@@ -24,9 +25,9 @@ void main() async {
   }
 
   debugPrint(
-    'Low-latency hybrid: '
-    '${shouldInitializeLiteRt ? 'Android · Qwen2.5-Coder brain + AfriSLM' : 'Desktop GGUF · Qwen2.5-Coder brain + AfriSLM (CPU)'} · '
-    'isolated translator · pinned KV',
+    shouldInitializeLiteRt
+        ? 'Runtime: LiteRT-LM (Android) · Qwen2.5-Coder int4 + AfriSLM int8 · NPU/GPU first'
+        : 'Runtime: llama.cpp GGUF (desktop) · Qwen2.5-Coder + AfriSLM',
   );
   runApp(const ProviderScope(child: OticApp()));
 }

@@ -8,19 +8,34 @@ import 'package:path_provider/path_provider.dart';
 import '../model/gguf_file.dart';
 import '../model/model_locations.dart';
 import '../model/model_manager.dart' show ModelInfo, ModelStatus;
+import '../model/model_runtime_policy.dart';
 
-/// Locates and installs the TranslatePsy-AfriSLM translation model (GGUF).
+/// Locates and installs the TranslatePsy-AfriSLM translation model.
 ///
-/// [LlamaCppEngineImpl] loads this file in-process via llama.cpp on every
-/// supported platform. One on-disk name regardless of platform or quant.
+/// One format per platform (model_runtime_policy.dart):
+/// - Android → `afrislm-0.8b_int8.litertlm` on LiteRT-LM (converted by
+///   `.github/workflows/convert-afrislm-litertlm.yml`).
+/// - Windows / Linux → the Q4 GGUF on llama.cpp.
 class AfriSlmModelManager {
-  /// Canonical on-disk name — matches Hugging Face Install Packages
+  /// Canonical desktop file — matches Hugging Face Install Packages
   /// (`ModelFetchFiles.translate`) and `assets/models/` tooling.
-  static const modelFileName = 'afrislm-0.8b-q4_k_m.gguf';
+  static const ggufFileName = 'afrislm-0.8b-q4_k_m.gguf';
 
-  /// USB / release / older quants still accepted so a fat APK or
+  /// Android build — int8 on every phone. An int4 build was tried for 4 GB
+  /// phones and failed the conversion quality gate (round-trip chrF 12–27
+  /// vs 72–90 for the GGUF, and no faster), so there is only one.
+  static const liteRtFileName = 'afrislm-0.8b_int8.litertlm';
+
+  /// The Android file this phone downloads.
+  static String get liteRtPreferredFileName => liteRtFileName;
+
+  /// This platform's canonical file.
+  static String get modelFileName =>
+      androidUsesLiteRt ? liteRtPreferredFileName : ggufFileName;
+
+  /// USB / release / older quants still accepted on desktop so a
   /// `translate-afrislm.gguf` next to the exe keeps working.
-  static const alternateFileNames = [
+  static const alternateGgufFileNames = [
     'translate-afrislm.gguf',
     'afrislm-0.8b-q8_0.gguf',
     'afrislm-0.8b-q5_k_m.gguf',
@@ -29,11 +44,13 @@ class AfriSlmModelManager {
     'TranslatePsy-AfriSLM-0.8B-Q4_K_M-imat.gguf',
   ];
   static const _markerFileName = 'translate-afrislm.install.json';
-  // AfriSLM 0.8B Q4 is roughly 500MB-1GB; reject obvious truncations.
+  // Q4 GGUF ~640 MB, int8 .litertlm ~0.9 GB; reject obvious truncations.
   static const _minSizeBytes = 300 * 1024 * 1024; // 300 MB
 
-  /// Canonical name first, then every USB / fat-APK / Windows-zip alias.
-  static List<String> get allFileNames => [modelFileName, ...alternateFileNames];
+  /// Canonical name first, then this platform's accepted aliases.
+  static List<String> get allFileNames => androidUsesLiteRt
+      ? const [liteRtFileName]
+      : const [ggufFileName, ...alternateGgufFileNames];
 
   /// Canonical install target — where [installFromFile] and
   /// [downloadModel] write the file.
@@ -110,7 +127,7 @@ class AfriSlmModelManager {
         );
         continue;
       }
-      if (!await fileLooksLikeGguf(file)) {
+      if (!androidUsesLiteRt && !await fileLooksLikeGguf(file)) {
         debugPrint('TRANSLATE MODEL skipped (not GGUF): $path');
         truncated ??= ModelInfo(
           status: ModelStatus.corrupted,
@@ -135,17 +152,16 @@ class AfriSlmModelManager {
       throw const AfriSlmInstallException('The selected file no longer exists.');
     }
 
-    final ext = p.extension(sourcePath).toLowerCase();
-    if (ext != '.gguf') {
-      throw const AfriSlmInstallException(
-        'Wrong file type. The translation model needs a .gguf file.',
+    if (!isAllowedModelPath(sourcePath)) {
+      throw AfriSlmInstallException(
+        'That is not the language pack for this device.',
       );
     }
 
     final size = await source.length();
     if (size < _minSizeBytes) {
       throw const AfriSlmInstallException(
-        'That file is too small to be the AfriSLM translation model — it '
+        'That file is too small to be the language pack — it '
         'should be at least a few hundred MB. The download or copy may be '
         'incomplete.',
       );
@@ -176,7 +192,7 @@ class AfriSlmModelManager {
       if (await partial.exists()) await partial.delete();
       if (e is FileSystemException) {
         throw const AfriSlmInstallException(
-          'Could not copy the model — the device may not have enough '
+          'Could not copy the language pack — the device may not have enough '
           'free storage (about 1 GB is needed).',
         );
       }
@@ -193,11 +209,11 @@ class AfriSlmModelManager {
   }) async {
     final uri = Uri.tryParse(url.trim());
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
-      throw const AfriSlmInstallException('Enter a valid model URL.');
+      throw const AfriSlmInstallException('Enter a valid package link.');
     }
     if (uri.scheme != 'https' && uri.scheme != 'http') {
       throw const AfriSlmInstallException(
-        'The model URL must start with http:// or https://.',
+        'The link must start with http:// or https://.',
       );
     }
 
@@ -241,8 +257,8 @@ class AfriSlmModelManager {
       final size = await partial.length();
       if (size < _minSizeBytes) {
         throw const AfriSlmInstallException(
-          'The downloaded file is too small for the AfriSLM model. '
-          'Check that the URL points directly to a GGUF file.',
+          'The downloaded file is too small for the language pack. '
+          'Check that the link points directly to the package file.',
         );
       }
 
@@ -254,7 +270,7 @@ class AfriSlmModelManager {
       rethrow;
     } on FileSystemException {
       throw const AfriSlmInstallException(
-        'Could not save the model. The device may not have enough free storage.',
+        'Could not save the language pack. The device may not have enough free storage.',
       );
     } on SocketException catch (e) {
       throw AfriSlmInstallException('Network error: ${e.message}');

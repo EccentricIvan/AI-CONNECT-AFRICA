@@ -12,6 +12,7 @@ import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import 'block_models.dart';
 import 'html_generator.dart';
+import '../../services/projects/project_providers.dart' show studentProjectFoldersProvider;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,7 @@ class WebsiteBuilderNotifier extends AutoDisposeNotifier<BuilderState> {
       state = state.copyWith(dirty: false);
     }
     ref.invalidate(studentWebsitesProvider(student.id));
+    ref.invalidate(studentProjectFoldersProvider(student.id));
     return true;
   }
 

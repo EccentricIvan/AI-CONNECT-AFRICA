@@ -18,6 +18,7 @@ import '../app_dev_lab/app_dev_lab_screen.dart';
 import '../python_lab/python_lab_screen.dart';
 import '../site_builder/site_chat_builder_screen.dart';
 import '../web_dev_lab/web_dev_lab_screen.dart';
+import '../../services/projects/project_providers.dart' show studentProjectFoldersProvider;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -177,6 +178,7 @@ Tutor:''';
         .read(badgeServiceProvider)
         .onProjectSaved(student.id);
     ref.invalidate(studentProjectsProvider(student.id));
+    ref.invalidate(studentProjectFoldersProvider(student.id));
 
     if (context.mounted) {
       final badgeMsg = badges.isNotEmpty

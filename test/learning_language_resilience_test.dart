@@ -2,6 +2,7 @@ import 'package:ai_connect_africa/ai_core/model/bundled_model_bootstrap.dart';
 import 'package:ai_connect_africa/ai_core/translate/afrislm_model_manager.dart';
 import 'package:ai_connect_africa/ai_core/translate/chat_languages.dart';
 import 'package:ai_connect_africa/ai_core/translate/supported_languages.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -28,7 +29,9 @@ void main() {
     expect(coerceChatLanguage('fr'), 'en');
   });
 
-  test('fat APK bootstrap looks for Q4 and translate-afrislm.gguf', () {
+  test("fat APK bootstrap looks for this platform's translator files", () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     expect(
       BundledModelBootstrap.translateAssetCandidates,
       contains('models/${AfriSlmModelManager.modelFileName}'),
@@ -36,6 +39,11 @@ void main() {
     expect(
       BundledModelBootstrap.translateAssetCandidates,
       contains('models/translate-afrislm.gguf'),
+    );
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(
+      BundledModelBootstrap.translateAssetCandidates,
+      ['models/afrislm-0.8b_int8.litertlm'],
     );
   });
 

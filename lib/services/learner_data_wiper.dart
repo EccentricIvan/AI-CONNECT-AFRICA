@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/otic_database.dart';
 import '../memory/session_recall_store.dart';
+import 'projects/project_store.dart';
 
 /// Deletes a learner's own data — never the shared "application resources"
 /// a device's students learn from. Those live in `topic_resources`,
@@ -41,11 +42,17 @@ class LearnerDataWiper {
     this._db, {
     SessionRecallStore? recallStore,
     Future<Directory> Function()? certificatesDir,
+    ProjectStore? projectStore,
   })  : _recallStore = recallStore ?? SessionRecallStore(),
-        _certificatesDir = certificatesDir ?? _defaultCertificatesDir;
+        _certificatesDir = certificatesDir ?? _defaultCertificatesDir,
+        _projects = projectStore ?? ProjectStore();
 
   final OticDatabase _db;
   final SessionRecallStore _recallStore;
+
+  /// Project folders (Create → Projects) are per-learner files on disk, not
+  /// rows — removed after the rows commit, like the recall files.
+  final ProjectStore _projects;
   final Future<Directory> Function() _certificatesDir;
 
   static Future<Directory> _defaultCertificatesDir() async {
@@ -93,6 +100,7 @@ class LearnerDataWiper {
     if (studentName != null) {
       await _deleteCertificatesFor(studentName, allNames);
     }
+    await _deleteProjectsFor(studentId);
 
     final prefs = await SharedPreferences.getInstance();
     for (final key in prefs.getKeys()) {
@@ -158,6 +166,7 @@ class LearnerDataWiper {
       for (final id in sessionIds) {
         await _recallStore.delete(id);
       }
+      await _deleteProjectsFor(student.id);
     }
     // Every learner is gone at this point, so unlike wipeStudent there is
     // no name-collision risk to resolve — every certificate PDF in the
@@ -205,6 +214,15 @@ class LearnerDataWiper {
         .go();
     await _db.studentDao.deleteStudent(studentId);
     return sessionIds;
+  }
+
+  Future<void> _deleteProjectsFor(int studentId) async {
+    try {
+      await _projects.deleteLearner(studentId);
+    } catch (_) {
+      // Best-effort, same as certificates: a folder open in Explorer must
+      // not fail a wipe whose rows already committed.
+    }
   }
 
   static String _sanitizeName(String name) =>

@@ -1,28 +1,24 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math';
 
-import 'package:archive/archive.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'package:drift/drift.dart' show Value;
-
-import '../../ai_core/model/model_manager.dart' show ModelStatus;
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
-import '../../db/otic_database.dart';
-import '../../db/providers/db_provider.dart';
-import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
+import '../../shared/coding/html_images.dart' show maskEmbeddedImages;
 import '../../shared/coding/interactive_html.dart' show escapeHtml;
 import '../../shared/widgets/code_instruction_bar.dart';
 import '../../shared/widgets/html_preview.dart';
+import '../../services/projects/project_providers.dart';
+import '../projects/project_actions.dart';
+import '../projects/project_files_sheet.dart';
+import '../projects/scaffold/project_scaffold.dart';
+import '../projects/widgets/project_tools_bar.dart';
 import '../create/dev_l10n.dart';
 import '../settings/coder_package_prompt.dart';
 import 'app_build_coder.dart';
@@ -313,15 +309,11 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   String _buildNote = '';
   bool _autocorrectBusy = false;
 
-  /// Set once this build has been saved, so a second Save updates the same
-  /// row instead of inserting a duplicate every time the student edits.
-  int? _savedProjectId;
+  /// This build's folder under Projects › Applications once saved; later
+  /// saves rewrite the same folder instead of making a new one.
+  String? _projectId;
+  String? _savedLabel;
   bool _saving = false;
-
-  /// Downloadable FastAPI scaffold for the current build, or null until the
-  /// student asks for one. Export-only — this app never runs it.
-  String? _backendCode;
-  bool _generatingBackend = false;
   bool _exporting = false;
 
   @override
@@ -523,7 +515,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     final recorded = tr(
       context,
       'Features recorded: ${_selectedFeatures.join(', ')}. ✅ '
-      'Coding model is building your app…',
+      'Building your app…',
     );
     setState(() => _messages.add(_ChatMsg(recorded, true)));
     _scrollDown();
@@ -545,266 +537,155 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
 
   void _applyCodeEdits() {
     setState(() {});
+    if (_projectId != null) _saveToProjects(quiet: true);
   }
 
-  // ── Persistence ───────────────────────────────────────────────────────────
+  // ── Project folder ───────────────────────────────────────────────────────
 
-  /// Saves the current build to the active student's profile — a new row on
-  /// the first save, then an update on every save after that (so re-saving
-  /// after an edit does not pile up duplicates of the same app).
-  Future<void> _saveProject() async {
-    if (_appType == null || _saving) return;
-    final student = await ref.read(activeStudentProvider.future);
-    if (!mounted) return;
-    if (student == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, 'Sign in to save your app.'))),
-      );
-      return;
-    }
+  String get _appTitle {
+    final name = _answers['app_name']?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    return _appType?.name ?? 'My app';
+  }
 
-    setState(() => _saving = true);
+  /// Writes the app as a full project (frontend + FastAPI/SQLite backend +
+  /// docs) under Projects › Applications — the first time as a new folder,
+  /// then into the same folder. [quiet] skips the snackbar for auto-saves.
+
+  // Saves run one at a time. A save asked for while one is running is not
+  // dropped: it marks [_saveAgain] and the running loop saves once more with
+  // the latest code, so a quick style change right after Build still lands.
+  Future<ProjectFolder?>? _saveInFlight;
+  bool _saveAgain = false;
+  bool _saveLoud = false;
+
+  /// Saves the project (or queues one more save). The returned future
+  /// completes after the newest code is on disk.
+  Future<ProjectFolder?> _saveToProjects({bool quiet = false}) {
+    _saveAgain = true;
+    if (!quiet) _saveLoud = true;
+    return _saveInFlight ??= _drainSaves().whenComplete(() => _saveInFlight = null);
+  }
+
+  Future<ProjectFolder?> _drainSaves() async {
+    ProjectFolder? last;
+    if (mounted) setState(() => _saving = true);
     try {
-      final intent = _currentIntent();
-      final db = ref.read(dbProvider);
-      final html = _codeController.text;
-      final id = _savedProjectId;
-      if (id == null) {
-        final newId = await db.appBuilderProjectDao.saveProject(
-          AppBuilderProjectsCompanion.insert(
-            studentId: student.id,
-            title: intent.appName,
-            appTypeId: intent.appTypeId,
-            appTypeName: intent.appTypeName,
-            themeColor: Value(intent.themePrimary),
-            htmlContent: html,
-            backendContent: Value(_backendCode),
-            answersJson: Value(jsonEncode(intent.answers)),
-            updatedAt: Value(DateTime.now()),
-          ),
-        );
-        _savedProjectId = newId;
-        // Counts toward Achievements the same as any other saved project —
-        // see the Creator badge and Achievements' combined project count.
-        await ref.read(badgeServiceProvider).onProjectSaved(student.id);
-      } else {
-        await db.appBuilderProjectDao.updateProject(
-          id,
-          AppBuilderProjectsCompanion(
-            title: Value(intent.appName),
-            htmlContent: Value(html),
-            backendContent: Value(_backendCode),
-            answersJson: Value(jsonEncode(intent.answers)),
-            updatedAt: Value(DateTime.now()),
-          ),
-        );
+      while (_saveAgain && mounted) {
+        _saveAgain = false;
+        final loud = _saveLoud;
+        _saveLoud = false;
+        last = await _saveOnce(quiet: !loud) ?? last;
       }
-      ref.invalidate(studentAppBuilderProjectsProvider(student.id));
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, 'App saved to your projects.'))),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, "Couldn't save your app. Try again."))),
-      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+    return last;
   }
 
-  // ── Backend scaffold (export-only) ───────────────────────────────────────
-
-  /// Generates a downloadable FastAPI backend matching the current build's
-  /// features. This app never runs it — it exists to hand the student real
-  /// server-side source they can run on a machine that has Python.
-  Future<void> _generateBackend() async {
-    if (_appType == null || _generatingBackend) return;
-    setState(() {
-      _generatingBackend = true;
-      _buildNote = tr(context, 'Writing a backend for your app…');
-    });
+  Future<ProjectFolder?> _saveOnce({required bool quiet}) async {
+    if (_appType == null) return null;
+    final html = _codeController.text;
+    if (html.trim().isEmpty) return null;
     try {
-      final info = await ref.read(programmingModelInfoProvider.future);
-      if (info.status != ModelStatus.ready) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              tr(context, 'Coding model not found — install it in Settings.'),
-            ),
-          ),
-        );
-        return;
-      }
-      final coder = await ref.read(aiCoderServiceProvider.future);
       final intent = _currentIntent();
-      final backend = await coder
-          .generateAppBackend(intent: intent)
-          .timeout(const Duration(minutes: 3), onTimeout: () => null);
-      if (!mounted) return;
-      if (backend == null || backend.trim().isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text(tr(context, "Couldn't write a backend. Try again.")),
-          ),
-        );
-        return;
-      }
-      setState(() => _backendCode = backend);
-      await _showBackendPreview(backend);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, "Couldn't write a backend. Try again."))),
+      final images = <String, Uint8List>{};
+      final files = buildAppProject(
+        title: _appTitle,
+        html: html,
+        appTypeId: intent.appTypeId,
+        appTypeName: intent.appTypeName,
+        themeColor: intent.themePrimary,
+        features: intent.features,
+        images: images,
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _generatingBackend = false;
-          _buildNote = '';
-        });
+      final saved = await saveCreation(
+        ref,
+        kind: ProjectKind.application,
+        title: _appTitle,
+        files: files,
+        binaryFiles: images,
+        projectId: _projectId,
+        source: 'app_builder',
+        template: intent.appTypeId,
+        templateName: intent.appTypeName,
+        features: intent.features,
+        answers: intent.answers,
+      );
+      if (!mounted) return saved?.folder;
+      if (saved == null) {
+        if (!quiet) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(tr(context, 'Create a learner profile to save projects.'))));
+        }
+        return null;
       }
+      setState(() {
+        _projectId = saved.folder.manifest.id;
+        _savedLabel = saved.breadcrumb;
+      });
+      if (!quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(trFill(context, 'Saved “{name}” to Projects', {'name': saved.breadcrumb})),
+          action: SnackBarAction(
+            label: tr(context, 'Open'),
+            onPressed: () => context.push('/projects'),
+          ),
+        ));
+      }
+      return saved.folder;
+    } catch (e) {
+      debugPrint('app project save failed: $e');
+      if (mounted && !quiet) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(tr(context, "Couldn't save your project. Try again."))));
+      }
+      return null;
     }
   }
 
-  Future<void> _showBackendPreview(String backend) {
-    return showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.75,
-        builder: (_, scrollController) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 8, 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.dns_outlined, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      tr(context, 'backend.py — export only, not run here'),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: tr(context, 'Copy'),
-                    icon: const Icon(Icons.copy_outlined, size: 18),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: backend));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(tr(context, 'Copied.'))),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    tooltip: tr(context, 'Close'),
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () => Navigator.of(sheetContext).pop(),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: SelectableText(
-                  backend,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  /// Swaps the screen for [html], keeps [undo] for the Undo snackbar,
+  /// repaints and re-saves the project folder.
+  void _replaceCode(String html, {required String undo}) {
+    _undoSnapshot = undo;
+    _codeController.text = html;
+    _studioKey.currentState?.applyNow();
+    if (_projectId != null) _saveToProjects(quiet: true);
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────
+  Future<void> _addPictures() async {
+    final before = _codeController.text;
+    final updated = await showAddPicturesFlow(context, before);
+    if (updated == null || !mounted) return;
+    _replaceCode(updated, undo: before);
+    showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+  }
 
-  /// Saves the build to a file the student can move by USB, email, or chat.
-  ///
-  /// A single `.html` when there is no backend (matches Website Builder's
-  /// export exactly); a `.zip` with the frontend, the backend, and a short
-  /// run-it-yourself README when there is one — the backend is export-only,
-  /// so the zip is what actually makes it runnable somewhere else.
+  Future<void> _openStyle() async {
+    final before = _codeController.text;
+    final updated = await showStyleSheet(context, before);
+    if (updated == null || !mounted) return;
+    _replaceCode(updated, undo: before);
+    showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+  }
+
+  /// Shows the generated backend files (models, routes, tests) read-only.
+  Future<void> _viewBackend() async {
+    final folder = await _saveToProjects(quiet: true);
+    if (folder == null || !mounted) return;
+    await showProjectFilesSheet(context, folder, initialPrefix: 'backend/');
+  }
+
   Future<void> _exportProject() async {
-    if (_appType == null || _exporting) return;
+    if (_exporting) return;
     setState(() => _exporting = true);
     try {
-      final intent = _currentIntent();
-      final slug = intent.appName
-          .replaceAll(RegExp(r'[^\w\s-]'), '')
-          .trim()
-          .replaceAll(RegExp(r'\s+'), '_')
-          .toLowerCase();
-      final baseName = slug.isEmpty ? 'my_app' : slug;
-      final html = _codeController.text;
-      final backend = _backendCode;
-
-      String? path;
-      if (backend == null || backend.trim().isEmpty) {
-        final bytes = Uint8List.fromList(utf8.encode(html));
-        path = await FilePicker.platform.saveFile(
-          dialogTitle: tr(context, 'Export app'),
-          fileName: '$baseName.html',
-          type: FileType.custom,
-          allowedExtensions: ['html'],
-          bytes: bytes,
-        );
-        if (path != null &&
-            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-          await File(path).writeAsBytes(bytes);
-        }
-      } else {
-        final archive = Archive()
-          ..addFile(_archiveTextFile('frontend.html', html))
-          ..addFile(_archiveTextFile('backend.py', backend))
-          ..addFile(_archiveTextFile(
-            'README.txt',
-            'Frontend: open frontend.html in a browser.\n\n'
-                'Backend (optional): needs Python 3 on this machine.\n'
-                '  pip install fastapi uvicorn\n'
-                '  python backend.py\n'
-                'Then update the frontend\'s fetch calls to point at '
-                'http://127.0.0.1:8000 if it is not already.\n',
-          ));
-        final zipBytes = Uint8List.fromList(ZipEncoder().encode(archive));
-        path = await FilePicker.platform.saveFile(
-          dialogTitle: tr(context, 'Export app'),
-          fileName: '$baseName.zip',
-          type: FileType.custom,
-          allowedExtensions: ['zip'],
-          bytes: zipBytes,
-        );
-        if (path != null &&
-            (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-          await File(path).writeAsBytes(zipBytes);
-        }
-      }
-
-      if (!mounted || path == null) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(trFill(context, 'Saved to {path}', {'path': path}))),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, "Couldn't export your app. Try again."))),
-      );
+      final folder = await _saveToProjects(quiet: true);
+      if (folder == null || !mounted) return;
+      await exportProjectZip(context, ref, folder);
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
-  }
-
-  ArchiveFile _archiveTextFile(String name, String content) {
-    final bytes = utf8.encode(content);
-    return ArchiveFile(name, bytes.length, bytes);
   }
 
   Future<void> _undoLastInstruction() async {
@@ -813,6 +694,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     _undoSnapshot = null;
     _codeController.text = previous;
     _studioKey.currentState?.applyNow();
+    if (_projectId != null) await _saveToProjects(quiet: true);
   }
 
   /// Runs a plain-English restyle request ("center the text", "make it
@@ -821,17 +703,28 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     if (_autocorrectBusy) return;
     final before = _codeController.text;
     if (before.trim().isEmpty) return;
+    // Colour / font / size requests apply instantly, with no model call.
+    final styled = tryQuickStyleInstruction(before, instruction);
+    if (styled != null) {
+      _replaceCode(styled, undo: before);
+      showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
+      return;
+    }
     final coderOk = await promptAndFetchCoderPackage(context, ref);
     if (!coderOk || !mounted) return;
     setState(() => _autocorrectBusy = true);
     try {
       final engine = await ref.read(programmingEngineProvider.future);
-      final fixed = await applyCodeInstruction(
-        source: before,
+      // Pictures go to the model as short placeholders, not megabytes of
+      // base64 that would crowd out the page itself.
+      final masked = maskEmbeddedImages(before);
+      final edited = await applyCodeInstruction(
+        source: masked.text,
         instruction: instruction,
         kind: CodeAutocorrectKind.html,
         engine: engine,
       );
+      final fixed = edited == null ? null : masked.restore(edited);
       if (!mounted) return;
       if (fixed == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -843,9 +736,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
         );
         return;
       }
-      _undoSnapshot = before;
-      _codeController.text = fixed;
-      _studioKey.currentState?.applyNow();
+      _replaceCode(fixed, undo: before);
       if (!mounted) return;
       showInstructionAppliedSnack(context, onUndo: _undoLastInstruction);
     } catch (_) {
@@ -902,10 +793,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     setState(() {
       _building = true;
       _buildNote = tr(context, 'Building your app…');
-      // A fresh build is a different app from whatever was last saved, and
-      // any backend generated for the previous build no longer matches.
-      _savedProjectId = null;
-      _backendCode = null;
+      // A fresh build is a different app from whatever was last saved.
+      _projectId = null;
+      _savedLabel = null;
     });
 
     final intent = _currentIntent();
@@ -926,6 +816,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
       _buildNote = '';
     });
     _scrollDown();
+    // Every build is a project: saved straight away into Projects ›
+    // Applications, with its own backend.
+    await _saveToProjects();
   }
 
   @override
@@ -946,23 +839,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
             child: Text(tr(context, 'Lessons')),
           ),
           if (_showStudio) ...[
-            IconButton(
-              tooltip: tr(context, 'Save to my projects'),
-              onPressed: _saving ? null : _saveProject,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(_savedProjectId == null
-                      ? Icons.save_outlined
-                      : Icons.save_rounded),
-            ),
             PopupMenuButton<String>(
               tooltip: tr(context, 'More'),
-              enabled: !_generatingBackend && !_exporting,
-              icon: (_generatingBackend || _exporting)
+              enabled: !_exporting,
+              icon: _exporting
                   ? const SizedBox(
                       width: 18,
                       height: 18,
@@ -970,24 +850,16 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                     )
                   : const Icon(Icons.more_vert),
               onSelected: (value) {
-                if (value == 'backend') _generateBackend();
-                if (value == 'view_backend' && _backendCode != null) {
-                  _showBackendPreview(_backendCode!);
-                }
+                if (value == 'backend') _viewBackend();
                 if (value == 'export') _exportProject();
               },
               itemBuilder: (_) => [
                 PopupMenuItem(
-                  value: _backendCode == null ? 'backend' : 'view_backend',
+                  value: 'backend',
                   child: Row(children: [
                     const Icon(Icons.dns_outlined, size: 18),
                     const SizedBox(width: 10),
-                    Text(tr(
-                      context,
-                      _backendCode == null
-                          ? 'Write a backend for this app'
-                          : 'View backend',
-                    )),
+                    Text(tr(context, 'View project files')),
                   ]),
                 ),
                 PopupMenuItem(
@@ -995,7 +867,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                   child: Row(children: [
                     const Icon(Icons.ios_share_outlined, size: 18),
                     const SizedBox(width: 10),
-                    Text(tr(context, 'Export…')),
+                    Text(tr(context, 'Export project (.zip)')),
                   ]),
                 ),
               ],
@@ -1025,13 +897,21 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                 context,
                 _showStudio
                     ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
-                    : 'Answer the prompts to record features. Build runs the coding '
-                        'model, then opens Preview Layout | View Source Code.',
+                    : 'Answer the prompts to record features. Build makes your app, '
+                        'then opens Preview Layout | View Source Code.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),
           ),
-          if (_showStudio)
+          if (_showStudio) ...[
+            ProjectToolsBar(
+              savedLabel: _savedLabel,
+              saving: _saving,
+              onSave: _saveToProjects,
+              onPictures: _addPictures,
+              onStyle: _openStyle,
+              onOpenProjects: () => context.push('/projects'),
+            ),
             Expanded(
               child: LiveHtmlStudio(
                 key: _studioKey,
@@ -1042,8 +922,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                   onSubmit: _applyInstruction,
                 ),
               ),
-            )
-          else
+            ),
+          ] else
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,

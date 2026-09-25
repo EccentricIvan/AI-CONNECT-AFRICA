@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_gemma/flutter_gemma.dart' show ModelType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
@@ -92,6 +93,46 @@ final modelInfoProvider = FutureProvider<ModelInfo>((ref) async {
   }
 });
 
+/// The brain engine for this platform: LiteRT-LM on Android (NPU → GPU →
+/// LiteRT CPU), llama.cpp on desktop. Never mixed — see
+/// model_runtime_policy.dart.
+InferenceEngine createBrainEngine() {
+  if (androidUsesLiteRt) {
+    return LiteRtLmEngineImpl(
+      roleLabel: 'Qwen2.5-Coder 1.5B',
+      roleKey: 'brain',
+      schedulerLane: EngineLane.reason,
+      modelType: ModelType.qwen,
+    );
+  }
+  return LlamaCppEngineImpl(
+    schedulerLane: EngineLane.reason,
+    backendLabel: 'llama.cpp · Qwen2.5-Coder 1.5B (CPU×2)',
+    nGpuLayers: 0,
+    threads: 2,
+    // `/no_think` is a Qwen3 switch; Qwen2.5 would read it as text.
+    appendNoThink: false,
+  );
+}
+
+/// The AfriSLM translator engine for this platform (same split as the brain).
+InferenceEngine createTranslatorEngine() {
+  if (androidUsesLiteRt) {
+    return LiteRtLmEngineImpl(
+      roleLabel: 'AfriSLM 0.8B',
+      roleKey: 'translate',
+      schedulerLane: EngineLane.translate,
+      modelType: ModelType.qwen3,
+      appendNoThink: true,
+      isolatedTurns: true,
+    );
+  }
+  return LlamaCppEngineImpl(
+    schedulerLane: EngineLane.translate,
+    backendLabel: 'llama.cpp · AfriSLM 0.8B',
+  );
+}
+
 /// The two on-device models: one brain and one translator.
 ///
 /// [reasoner] is Qwen2.5-Coder-1.5B. It does all reasoning and answer
@@ -144,14 +185,11 @@ class DualModelRuntime {
     try {
       final info = await AfriSlmModelManager().checkModel();
       if (!info.isReady || info.path == null) {
-        debugPrint('TRANSLATION OFF: AfriSLM GGUF not on disk yet.');
+        debugPrint('TRANSLATION OFF: AfriSLM model not on disk yet.');
         return null;
       }
       afrislmPath = info.path;
-      final engine = LlamaCppEngineImpl(
-        schedulerLane: EngineLane.translate,
-        backendLabel: 'llama.cpp · AfriSLM 0.8B',
-      );
+      final engine = createTranslatorEngine();
       await engine.loadModel(info.path!);
       _translator = engine;
       debugPrint('TRANSLATION ON: AfriSLM at ${info.path}');
@@ -190,34 +228,18 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
     final brainPath = plan.brainPath;
     if (brainPath == null || !isAllowedBrainPath(brainPath)) {
       debugPrint(
-        'BRAIN missing. Place ${ModelManager.brainGgufFileName} in models/ '
+        'BRAIN missing. Place ${ModelManager.brainFileName} in models/ '
         '(or use Install Packages).',
       );
       return demo(DemoReason.modelNotInstalled);
     }
 
-    final InferenceEngine reasoner;
-    final liteRt = useLiteRtRuntime && isLiteRtModelPath(brainPath);
-    if (liteRt) {
-      reasoner = LiteRtLmEngineImpl(roleLabel: 'Qwen2.5-Coder 1.5B');
-    } else {
-      reasoner = LlamaCppEngineImpl(
-        schedulerLane: EngineLane.reason,
-        backendLabel: 'llama.cpp · Qwen2.5-Coder 1.5B (CPU×2)',
-        nGpuLayers: 0,
-        threads: 2,
-        // `/no_think` is a Qwen3 switch; Qwen2.5 would read it as text.
-        appendNoThink: false,
-      );
-    }
+    final reasoner = createBrainEngine();
     await reasoner.loadModel(brainPath);
     if (reasoner is LiteRtLmEngineImpl) {
       await reasoner.pinSystemPrompt(kTutorContract);
     }
-    debugPrint(
-      'BRAIN loaded ${liteRt ? 'LiteRT-LM (NNAPI/GPU)' : 'llama.cpp GGUF'} '
-      'at $brainPath',
-    );
+    debugPrint('BRAIN loaded: ${reasoner.backendLabel} at $brainPath');
 
     InferenceEngine? translator;
     const shared = false;
@@ -232,13 +254,10 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
         // Soft-fail: never take down the brain if AfriSLM OOM / fails
         // after Install Packages on a 4 GB phone.
         try {
-          final engine = LlamaCppEngineImpl(
-            schedulerLane: EngineLane.translate,
-            backendLabel: 'llama.cpp · AfriSLM 0.8B',
-          );
+          final engine = createTranslatorEngine();
           await engine.loadModel(afrislmPath!);
           translator = engine;
-          debugPrint('TRANSLATION ON: AfriSLM at $afrislmPath');
+          debugPrint('TRANSLATION ON: ${engine.backendLabel} at $afrislmPath');
         } catch (e, st) {
           debugPrint(
             'TRANSLATION LOAD FAILED (brain stays up; retry on demand): $e\n$st',
@@ -603,7 +622,7 @@ class AiStatus {
     return AiStatus(
       isDemo: false,
       title: 'AI ready',
-      detail: 'Using ${engine.backendLabel}',
+      detail: 'Answers are made on this device.',
       backendLabel: engine.backendLabel,
     );
   }
@@ -1222,12 +1241,12 @@ String _chromeFollowUp(String followUp, String lang) {
 String _friendlyAiError(Object e) {
   final raw = e.toString();
   if (raw.contains('ModelLoadException') || raw.contains('failed to load')) {
-    return 'The AI model failed to load. Open Settings to check the model, then try again.';
+    return 'The classroom assistant could not start. Open Settings → Install Packages, then try again.';
   }
   if (raw.contains('SocketException') || raw.contains('Connection')) {
-    return 'Couldn’t connect to the local AI. Check the model in Settings, then try again.';
+    return 'Couldn’t reach the classroom assistant. Open Settings, then try again.';
   }
-  return 'Couldn’t get an answer just now. Check your AI model in Settings, then try again.';
+  return 'Couldn’t get an answer just now. Please try again.';
 }
 
 final chatProvider = AsyncNotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);

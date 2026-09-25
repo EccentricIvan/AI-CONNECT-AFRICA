@@ -69,22 +69,20 @@ class AdminScreen extends ConsumerWidget {
             const SizedBox(height: 20),
 
             // ── AI Model ─────────────────────────────────────────────────
-            const _SectionTitle('AI Model'),
+            const _SectionTitle('Learning packages'),
             modelAsync.when(
               loading: () => const _InfoCard(
-                children: [ListTile(title: Text('Checking model…'))],
+                children: [ListTile(title: Text('Checking packages…'))],
               ),
               error: (e, _) => _InfoCard(
-                children: [ListTile(title: Text('Model check failed: $e'))],
+                children: [ListTile(title: Text('Package check failed: $e'))],
               ),
               data: (info) => _InfoCard(
                 children: [
                   _InfoRow(
                     icon: Icons.memory,
-                    label: 'Qwen2.5-Coder 1.5B (tutor + code)',
-                    value: info.isReady
-                        ? 'Installed · ${info.platform ?? ''}'
-                        : 'Not installed',
+                    label: 'Classroom assistant',
+                    value: info.isReady ? 'Installed' : 'Not installed',
                     valueColor: info.isReady
                         ? AppColors.teachColor
                         : Colors.orange,
@@ -92,15 +90,9 @@ class AdminScreen extends ConsumerWidget {
                   if (info.isReady && info.sizeBytes != null)
                     _InfoRow(
                       icon: Icons.sd_storage,
-                      label: 'Model size',
+                      label: 'Package size',
                       value:
                           '${(info.sizeBytes! / (1024 * 1024)).toStringAsFixed(0)} MB',
-                    ),
-                  if (info.path != null)
-                    _InfoRow(
-                      icon: Icons.folder,
-                      label: 'Model path',
-                      value: info.path!,
                     ),
                 ],
               ),
@@ -154,7 +146,7 @@ class AdminScreen extends ConsumerWidget {
                     '1. Receive the update package on a USB drive\n'
                     '2. Copy the new app installer to this device\n'
                     '3. Run the installer — student data is preserved\n'
-                    '4. New model files go in the model folder',
+                    '4. New learning packages go in the packages folder',
                     style: TextStyle(fontSize: 12, height: 1.6),
                   ),
                 ),
@@ -185,8 +177,8 @@ class AdminScreen extends ConsumerWidget {
                           ? 'Deletes every learner profile, their progress, '
                               'badges, projects and chat sessions on this '
                               'device. Curriculum, teacher notes/subjects, '
-                              'classes and installed models are untouched.'
-                          : 'Set a Teacher PIN first (Settings → Teacher '
+                              'classes and installed learning packages are untouched.'
+                          : 'Set a Teacher PIN first (Teacher → Teacher '
                               'PIN) — this stays locked until this device '
                               'requires one to reach Teacher/Admin at all.',
                     ),
@@ -216,7 +208,7 @@ class AdminScreen extends ConsumerWidget {
         content: const Text(
           'This permanently deletes every learner profile on this device — '
           'progress, badges, projects, and chat sessions. Curriculum, '
-          'teacher notes/subjects, classes and installed models stay. This '
+          'teacher notes/subjects, classes and installed learning packages stay. This '
           'cannot be undone.',
         ),
         actions: [

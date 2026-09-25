@@ -6,6 +6,7 @@ import 'package:ai_connect_africa/services/model_fetch_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:ai_connect_africa/ai_core/model/device_tier.dart';
 
 class _NoNetworkDownloader extends ModelDownloadService {
   int calls = 0;
@@ -88,19 +89,39 @@ void main() {
         reason: 'no file may be queued twice');
   });
 
-  test('every platform downloads the same coder GGUF as its brain', () {
-    for (final platform in [TargetPlatform.windows, TargetPlatform.android]) {
-      debugDefaultTargetPlatformOverride = platform;
-      expect(ModelFetchFiles.chat, 'qwen2.5-coder-1.5b-instruct.gguf');
-      expect(
-        ModelFetchService.coreChatPackage.url,
-        '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf',
-      );
-      expect(
-        ModelFetchService.coreTranslatePackage.url,
-        '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf',
-      );
-    }
+  test('Windows downloads the GGUFs, Android the LiteRT builds, each pinned', () {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    expect(ModelFetchFiles.chat, 'qwen2.5-coder-1.5b-instruct.gguf');
+    expect(ModelFetchService.coreChatPackage.url,
+        '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct.gguf');
+    expect(ModelFetchService.coreTranslatePackage.url,
+        '$kModelFetchHfBaseUrl/afrislm-0.8b-q4_k_m.gguf');
+    expect(ModelFetchService.coreChatPackage.sha256, hasLength(64));
+    expect(ModelFetchService.coreChatPackage.mirrors, isEmpty);
+
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    expect(ModelFetchFiles.chat, 'qwen2.5-coder-1.5b-instruct_int4.litertlm');
+    expect(ModelFetchService.coreChatPackage.url,
+        '$kModelFetchHfBaseUrl/qwen2.5-coder-1.5b-instruct_int4.litertlm');
+    // Translator build follows the memory tier: int8 above ~5 GB, int4 on
+    // 4 GB phones (with int8 as the fallback download).
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 7812344 kB'));
+    expect(ModelFetchService.coreTranslatePackage.url,
+        '$kModelFetchHfBaseUrl/afrislm-0.8b_int8.litertlm');
+    expect(ModelFetchFiles.translateFallback, isNull);
+    DeviceTier.overrideForTesting(DeviceTier.fromMeminfo('MemTotal: 3812344 kB'));
+    expect(ModelFetchService.coreTranslatePackage.url,
+        '$kModelFetchHfBaseUrl/afrislm-0.8b_int8.litertlm');
+    expect(ModelFetchService.coreTranslatePackage.sha256, hasLength(64));
+    DeviceTier.overrideForTesting(null);
+    expect(ModelFetchService.coreChatPackage.sha256, hasLength(64));
+    // While the Oticgroup repo is being filled, the same files come from the
+    // conversion workflow's GitHub release (and litert-community for the
+    // brain) — the SHA-256 pin makes every mirror equally safe.
+    expect(ModelFetchService.coreChatPackage.mirrors,
+        everyElement(endsWith('.litertlm')));
+    expect(ModelFetchService.coreTranslatePackage.mirrors, isNotEmpty);
+    debugDefaultTargetPlatformOverride = null;
   });
 
   test('downloads land in canonical install directory', () async {

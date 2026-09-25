@@ -112,9 +112,19 @@ class BadgeService {
 
   // ── Trigger: project saved ────────────────────────────────────────────────
 
-  Future<List<BadgeDef>> onProjectSaved(int studentId) async {
+  Future<List<BadgeDef>> onProjectSaved(int studentId,
+      {bool fullStack = false}) async {
     final awarded = await _touchStreak(studentId);
     await _award(studentId, 'creator', awarded);
+    if (fullStack) await _award(studentId, 'full_stack_builder', awarded);
+    return awarded;
+  }
+
+  // ── Trigger: a project was exported / moved out of the app ───────────────
+
+  Future<List<BadgeDef>> onProjectExported(int studentId) async {
+    final awarded = await _touchStreak(studentId);
+    await _award(studentId, 'shipped_it', awarded);
     return awarded;
   }
 

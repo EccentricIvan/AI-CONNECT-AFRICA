@@ -67,8 +67,8 @@ class MockEngine extends InferenceEngine {
     }
     return 'That\'s a great question! Let me break it down step by step. '
         'This topic has several interesting angles we can explore together. '
-        'To get the most out of your learning, install the AI model file '
-        'from USB or local storage. What part of this topic interests you most?';
+        'To get the most out of your learning, install the learning packages '
+        'in Settings. What part of this topic interests you most?';
   }
 
   @override
@@ -89,22 +89,22 @@ enum DemoReason {
 extension DemoReasonMessage on DemoReason {
   String get title => switch (this) {
         DemoReason.web => 'Demo answers (web)',
-        DemoReason.modelNotInstalled => 'Demo answers — model not installed',
-        DemoReason.ollamaUnavailable => 'Demo answers — Ollama not running',
-        DemoReason.loadFailed => 'Demo answers — model failed to load',
+        DemoReason.modelNotInstalled => 'Demo answers — packages not installed',
+        DemoReason.ollamaUnavailable => 'Demo answers — translation not ready',
+        DemoReason.loadFailed => 'Demo answers — assistant could not start',
         DemoReason.generic => 'Demo answers',
       };
 
   String get detail => switch (this) {
         DemoReason.web =>
-          'The browser build cannot run an on-device model. Replies are sample text only.',
+          'The browser version cannot run the classroom assistant. Replies are sample text only.',
         DemoReason.modelNotInstalled =>
-          'Install the chat model from USB or Settings to get real tutor answers.',
+          'Install the learning packages in Settings to get real tutor answers.',
         DemoReason.ollamaUnavailable =>
-          'Start Ollama locally with the AfriSLM translation model for real-language translation.',
+          'Install the language pack in Settings for answers in your language.',
         DemoReason.loadFailed =>
-          'The local model could not start. Check Settings, then try again.',
+          'The classroom assistant could not start. Check Settings, then try again.',
         DemoReason.generic =>
-          'Showing sample replies until a real local model is available.',
+          'Showing sample replies until setup is finished.',
       };
 }

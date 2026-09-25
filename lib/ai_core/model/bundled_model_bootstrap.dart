@@ -24,8 +24,9 @@ class BundledModelBootstrapResult {
 
 /// Prepares APK-bundled models for the engines on first launch.
 ///
-/// Both models are GGUFs run by llama.cpp, which opens a filesystem path,
-/// not an AssetManager entry — so a fat APK's brain and translator are each
+/// Both models are `.litertlm` files on Android. The LiteRT engine is
+/// created per role straight from a filesystem path (not flutter_gemma's
+/// asset-backed install), so a fat APK's brain and translator are each
 /// extracted once into app storage.
 ///
 /// Slim / debug APKs without those assets no-op and leave "Install from file"
@@ -39,10 +40,10 @@ class BundledModelBootstrap {
         _translate = translateManager ?? AfriSlmModelManager();
 
   static const _channelName = 'ai_connect_africa/bundled_models';
-  static const brainAssetPath = 'models/${ModelManager.brainGgufFileName}';
+  /// The brain as a fat APK carries it: the `.litertlm` on Android.
+  static String get brainAssetPath => 'models/${ModelManager.brainFileName}';
 
-  /// Fat APK / asset-pack names. Install Packages uses Q4; Windows zips and
-  /// older fat APKs still ship `translate-afrislm.gguf`.
+  /// Fat APK / asset-pack names for the translator on this platform.
   static List<String> get translateAssetCandidates => [
         for (final name in AfriSlmModelManager.allFileNames) 'models/$name',
       ];

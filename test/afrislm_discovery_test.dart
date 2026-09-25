@@ -85,7 +85,7 @@ void main() {
       info.isReady,
       isTrue,
       reason: 'looked for ${AfriSlmModelManager.modelFileName} + '
-          '${AfriSlmModelManager.alternateFileNames} — '
+          '${AfriSlmModelManager.alternateGgufFileNames} — '
           'got ${info.status} at ${info.path}',
     );
     expect(info.sizeBytes, greaterThan(300 * 1024 * 1024));

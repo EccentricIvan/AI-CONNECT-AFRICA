@@ -17,6 +17,7 @@ class ModelPackage {
     required this.sha256,
     required this.approxBytes,
     required this.essential,
+    this.mirrors = const [],
   });
 
   final String id;
@@ -30,6 +31,11 @@ class ModelPackage {
   /// For the storage precheck and the "how big is this" line in the UI.
   /// The real size comes from the response, this only has to be close.
   final int approxBytes;
+
+  /// Tried in order when [url] answers 404 (or another hard HTTP error) —
+  /// the same bytes elsewhere, e.g. a GitHub release copy while the main
+  /// repo is still being filled. [sha256] makes every mirror equally safe.
+  final List<String> mirrors;
 
   /// Whether the app is unusable without it (the brain is; see
   /// `ModelFetchService.corePackages` for how this is used).
