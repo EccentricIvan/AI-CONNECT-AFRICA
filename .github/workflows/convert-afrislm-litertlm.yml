@@ -1,0 +1,130 @@
+name: Convert AfriSLM to LiteRT-LM
+
+# Android runs both models on LiteRT-LM (NPU/GPU, falling back to LiteRT's
+# CPU backend); no .litertlm of the AfriSLM translator is published, so it
+# is converted here from the Apache-2.0 checkpoint with Google's own
+# exporter (litert-torch, the qwen3_5 path behind litert-community's
+# Qwen3.5-0.8B). The same job gates the result against the GGUF the app
+# ships today and only publishes when it translates about as well.
+#
+# Needs a Linux box with ~16 GB RAM — too heavy for the dev laptop.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['convert/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: convert-afrislm
+  cancel-in-progress: true
+
+env:
+  SOURCE_REPO: qvac/TranslatePsy-AfriSLM-0.8B
+  MODELS_BASE: https://huggingface.co/Oticgroup/ai-connect-africa-packages/resolve/main
+  GGUF_FILE: afrislm-0.8b-q4_k_m.gguf
+  GGUF_SHA: 4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc
+  OUT_FILE: afrislm-0.8b_int8.litertlm
+  # The tutor's LiteRT build is already published; mirrored alongside.
+  BRAIN_SOURCE: https://huggingface.co/litert-community/Qwen2.5-Coder-1.5B-Instruct/resolve/main/Qwen2.5-Coder-1.5B-Instruct_int4.litertlm
+  BRAIN_FILE: qwen2.5-coder-1.5b-instruct_int4.litertlm
+  RELEASE_TAG: litert-models
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Make room (disk + swap)
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          sudo swapoff -a || true
+          sudo fallocate -l 16G /swapfile2 && sudo chmod 600 /swapfile2
+          sudo mkswap /swapfile2 && sudo swapon /swapfile2
+          free -h; df -h /
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install converter, LiteRT-LM runtime and llama.cpp
+        run: |
+          set -euo pipefail
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install "litert-torch==0.9.4" "litert-lm-api==0.16.0" sacrebleu huggingface_hub
+          pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+          pip list | grep -iE "litert|torch|llama|quantizer" || true
+
+      - name: Download AfriSLM checkpoint
+        run: |
+          set -euo pipefail
+          python -c "from huggingface_hub import snapshot_download; snapshot_download('$SOURCE_REPO', local_dir='afrislm')"
+          ls -la afrislm
+
+      - name: Convert to .litertlm (int8, text only)
+        run: |
+          set -euo pipefail
+          python -m litert_torch.generative.export_hf \
+            --model=./afrislm \
+            --output_dir=./out \
+            --quantization_recipe=dynamic_wi8_afp32 \
+            --cache_length=1024 \
+            --prefill_lengths='[32,64,128,256,512]' \
+            --use_jinja_template=True \
+            --bundle_litert_lm=True \
+            --export_vision_encoder=False
+          find out -type f -printf '%s %p\n' | sort -n | tail -20
+          f=$(find out -name '*.litertlm' | head -n1)
+          test -n "$f"
+          mv "$f" "$OUT_FILE"
+          sha256sum "$OUT_FILE" | tee "$OUT_FILE.sha256"
+
+      - name: Fetch the GGUF the app ships today (baseline)
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o "$GGUF_FILE" "$MODELS_BASE/$GGUF_FILE"
+          echo "$GGUF_SHA  $GGUF_FILE" | sha256sum -c -
+
+      - name: Quality gate (LiteRT vs GGUF round-trip translation)
+        run: |
+          python tools/litert/translation_gate.py \
+            --litertlm "$OUT_FILE" --gguf "$GGUF_FILE" --out gate-report.md
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-report
+          path: gate-report.md
+          if-no-files-found: ignore
+
+      - name: Mirror the tutor .litertlm
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o "$BRAIN_FILE" "$BRAIN_SOURCE"
+          sha256sum "$BRAIN_FILE" | tee "$BRAIN_FILE.sha256"
+
+      - name: Publish to the litert-models release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          notes="LiteRT-LM models for the Android build (both Apache-2.0).
+
+          | Role | File | SHA-256 |
+          |------|------|---------|
+          | Brain (tutor + code), Qwen2.5-Coder-1.5B int4 | \`$BRAIN_FILE\` | \`$(cut -d' ' -f1 "$BRAIN_FILE.sha256")\` |
+          | Translation, AfriSLM 0.8B int8 (converted here) | \`$OUT_FILE\` | \`$(cut -d' ' -f1 "$OUT_FILE.sha256")\` |
+
+          Mirror both into Oticgroup/ai-connect-africa-packages (see tools/litert/README.md)."
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --prerelease --title "LiteRT-LM models (Android)" --notes "$notes"
+          else
+            gh release edit "$RELEASE_TAG" --notes "$notes"
+          fi
+          gh release upload "$RELEASE_TAG" "$OUT_FILE" "$OUT_FILE.sha256" \
+            "$BRAIN_FILE" "$BRAIN_FILE.sha256" gate-report.md --clobber
