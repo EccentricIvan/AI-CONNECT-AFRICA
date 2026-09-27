@@ -15,6 +15,8 @@ void main() {
       MockEngine(demoReason: DemoReason.ollamaUnavailable),
     );
     expect(demo.isDemo, isTrue);
-    expect(demo.title, contains('Ollama'));
+    // Plain words for the learner; engine names are never shown.
+    expect(demo.title, contains('translation not ready'));
+    expect(demo.title, isNot(contains('Ollama')));
   });
 }
