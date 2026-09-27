@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -80,14 +81,50 @@ class CancellationToken {
 /// 3. **`.part` then rename.** A killed download must never leave a truncated
 ///    file at a path model discovery would find, which
 ///    fails in confusing ways rather than obvious ones.
+///
+/// **Speed.** A large file is fetched in [chunkBytes] pieces over
+/// [connections] parallel HTTP Range requests. A single TCP connection on a
+/// high-latency mobile link tops out far below the link's real capacity; a
+/// few in parallel fill it. Finished pieces are recorded in a
+/// `<target>.part.chunks` file, so a resume only fetches the missing ones.
+/// Progress is reported at most every [progressInterval] (not per network
+/// packet), and the SHA-256 check runs in a background isolate. A server
+/// that ignores Range falls back to the single-stream path.
 class ModelDownloadService {
-  // ignore: prefer_initializing_formals
-  ModelDownloadService({HttpClient? client}) : _client = client;
+  ModelDownloadService({
+    HttpClient? client,
+    this.connections = 4,
+    this.chunkBytes = 8 * 1024 * 1024,
+    this.parallelMinBytes = 32 * 1024 * 1024,
+    this.progressInterval = const Duration(milliseconds: 200),
+    this.stallTimeout = const Duration(seconds: 45),
+    // ignore: prefer_initializing_formals
+  }) : _client = client;
+
+  /// A connection that delivers no bytes for this long is abandoned and
+  /// retried. Mobile links often stall without closing, which would
+  /// otherwise hang the download for good.
+  final Duration stallTimeout;
 
   /// Injected only by tests; production builds create a client per download.
   final HttpClient? _client;
 
+  /// Parallel connections for a large file. 1 disables parallel fetching.
+  final int connections;
+
+  /// Size of each parallel piece — also the resume granularity.
+  final int chunkBytes;
+
+  /// Files smaller than this use one connection.
+  final int parallelMinBytes;
+
+  /// Minimum gap between progress reports while bytes are flowing.
+  final Duration progressInterval;
+
   static const _maxAttempts = 3;
+
+  /// Retries per piece before the whole download reports a network error.
+  static const _chunkAttempts = 4;
 
   HttpClient _createClient() => HttpClient()
     ..connectionTimeout = const Duration(seconds: 45)
@@ -199,9 +236,18 @@ class ModelDownloadService {
     final partial = File('$targetPath.part');
 
     var state = const ModelDownloadState(phase: DownloadPhase.connecting);
+    var lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
     void emit(ModelDownloadState next) {
       state = next;
+      lastEmit = DateTime.now();
       onState?.call(next);
+    }
+
+    // Progress while bytes flow: a report per packet (tens of thousands per
+    // file) rebuilds the install screen on the thread reading the socket.
+    void emitProgress(ModelDownloadState next) {
+      state = next;
+      if (DateTime.now().difference(lastEmit) >= progressInterval) emit(next);
     }
 
     emit(state);
@@ -211,10 +257,66 @@ class ModelDownloadService {
       resumeFrom = await partial.length();
     }
 
-    await _ensureSpaceFor(pkg, targetPath, alreadyHave: resumeFrom);
-
     final ownsClient = _client == null;
     final client = _client ?? _createClient();
+
+    // A large file on a server that honours Range goes the parallel way.
+    if (connections > 1 && pkg.approxBytes >= parallelMinBytes) {
+      int? total;
+      try {
+        total = await _probeRangeSupport(client, pkg);
+      } on ModelDownloadException catch (e) {
+        emit(state.copyWith(phase: DownloadPhase.failed, error: e.message));
+        if (ownsClient) client.close(force: true);
+        rethrow; // a hard HTTP error: let the caller try the next mirror
+      } catch (e) {
+        // Probe trouble (odd server, dropped connection): the single-stream
+        // path below still works, just slower.
+        debugPrint('ModelDownloadService: parallel fetch unavailable ($e)');
+      }
+
+      if (total != null && total >= parallelMinBytes) {
+        // Committed to pieces from here: any failure keeps the finished ones
+        // for the next resume rather than falling back and discarding them.
+        try {
+          await _ensureSpaceFor(pkg, targetPath, alreadyHave: 0);
+          return await _downloadParallel(
+            client,
+            pkg,
+            total: total,
+            targetPath: targetPath,
+            emit: emit,
+            emitProgress: emitProgress,
+            cancelToken: cancelToken,
+          );
+        } on ModelDownloadException catch (e) {
+          emit(state.copyWith(phase: DownloadPhase.failed, error: e.message));
+          rethrow;
+        } on FileSystemException {
+          const msg = 'Could not save the package. The device may be out of storage.';
+          emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
+          throw const ModelDownloadException(msg);
+        } catch (e) {
+          final msg = 'Network error: $e. The download resumes where it stopped '
+              'when you try again.';
+          emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
+          throw ModelDownloadException(msg);
+        } finally {
+          if (ownsClient) client.close(force: true);
+        }
+      }
+
+      // Range isn't honoured: a sidecar from an earlier parallel attempt is
+      // useless to the single stream, and its .part isn't a contiguous prefix.
+      final sidecar = File('$targetPath.part.chunks');
+      if (await sidecar.exists()) {
+        await sidecar.delete();
+        if (await partial.exists()) await partial.delete();
+        resumeFrom = 0;
+      }
+    }
+
+    await _ensureSpaceFor(pkg, targetPath, alreadyHave: resumeFrom);
 
     IOSink? sink;
     try {
@@ -263,7 +365,7 @@ class ModelDownloadService {
         totalBytes: total,
       ));
 
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(stallTimeout)) {
         if (cancelToken?.isCancelled ?? false) {
           // Cancelling is not discarding: the .part stays so the next
           // attempt resumes from here instead of re-spending the data.
@@ -272,7 +374,7 @@ class ModelDownloadService {
         sink.add(chunk);
         digest.add(chunk);
         received += chunk.length;
-        emit(state.copyWith(
+        emitProgress(state.copyWith(
           phase: DownloadPhase.downloading,
           receivedBytes: received,
           totalBytes: total,
@@ -326,6 +428,12 @@ class ModelDownloadService {
           'it stopped when you try again.';
       emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
       throw ModelDownloadException(msg);
+    } on TimeoutException {
+      // A stalled connection: the retry loop resumes from the .part.
+      const msg = 'Network error: the connection stalled. The download resumes '
+          'where it stopped when you try again.';
+      emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
+      throw const ModelDownloadException(msg);
     } on FileSystemException {
       const msg = 'Could not save the package. The device may be out of storage.';
       emit(state.copyWith(phase: DownloadPhase.failed, error: msg));
@@ -335,6 +443,210 @@ class ModelDownloadService {
         await sink?.close();
       } catch (_) {}
       if (ownsClient) client.close(force: true);
+    }
+  }
+
+  // ── Parallel ranged download ─────────────────────────────────────────────
+
+  /// The file's size when the server answers a one-byte Range request with
+  /// 206 — i.e. it can serve pieces in parallel. Null when it can't. Throws
+  /// [ModelDownloadException] on a hard HTTP error so mirrors are tried.
+  Future<int?> _probeRangeSupport(HttpClient client, ModelPackage pkg) async {
+    final request = await client.getUrl(Uri.parse(pkg.url));
+    request.followRedirects = true;
+    request.maxRedirects = 12;
+    request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-0');
+    final response = await request.close();
+    // Only the headers are needed; drop the body (or the whole file, from a
+    // server that ignored Range) without reading it.
+    unawaited(response.listen(null).cancel());
+    final status = response.statusCode;
+    if (status == HttpStatus.notFound ||
+        status == HttpStatus.unauthorized ||
+        status == HttpStatus.forbidden) {
+      throw ModelDownloadException(_httpMessage(status, pkg));
+    }
+    if (status != HttpStatus.partialContent) return null;
+    final range = response.headers.value(HttpHeaders.contentRangeHeader);
+    final total = range == null ? null : RegExp(r'/(\d+)\s*$').firstMatch(range)?.group(1);
+    return total == null ? null : int.tryParse(total);
+  }
+
+  Future<String> _downloadParallel(
+    HttpClient client,
+    ModelPackage pkg, {
+    required int total,
+    required String targetPath,
+    required void Function(ModelDownloadState) emit,
+    required void Function(ModelDownloadState) emitProgress,
+    CancellationToken? cancelToken,
+  }) async {
+    final partial = File('$targetPath.part');
+    final sidecar = File('$targetPath.part.chunks');
+    final chunkCount = (total + chunkBytes - 1) ~/ chunkBytes;
+    int chunkStart(int i) => i * chunkBytes;
+    int chunkEnd(int i) => (i + 1) * chunkBytes > total ? total : (i + 1) * chunkBytes;
+
+    // What is already on disk: pieces listed in the sidecar, or — for a
+    // .part left by the single-stream path — every piece inside its prefix.
+    final done = <int>{};
+    final header = '$total $chunkBytes';
+    if (await partial.exists()) {
+      if (await sidecar.exists()) {
+        final lines = await sidecar.readAsLines();
+        if (lines.isNotEmpty && lines.first.trim() == header) {
+          for (final l in lines.skip(1)) {
+            final i = int.tryParse(l.trim());
+            if (i != null && i >= 0 && i < chunkCount) done.add(i);
+          }
+        }
+      } else {
+        final prefix = await partial.length();
+        for (var i = 0; i < chunkCount && chunkEnd(i) <= prefix; i++) {
+          done.add(i);
+        }
+      }
+    }
+    if (done.isEmpty && await partial.exists()) await partial.delete();
+    await sidecar.writeAsString('$header\n${done.map((i) => '$i\n').join()}');
+
+    final raf = await partial.open(mode: FileMode.append);
+    // One file handle, writes serialised: pieces from different connections
+    // must never interleave a seek and a write.
+    var writeLock = Future<void>.value();
+    Future<void> locked(Future<void> Function() body) {
+      final next = writeLock.then((_) => body());
+      writeLock = next.catchError((_) {});
+      return next;
+    }
+
+    try {
+      if (await raf.length() < total) await raf.truncate(total);
+
+      var received = 0;
+      for (final i in done) {
+        received += chunkEnd(i) - chunkStart(i);
+      }
+      emit(ModelDownloadState(
+        phase: DownloadPhase.downloading,
+        receivedBytes: received,
+        totalBytes: total,
+      ));
+
+      final queue = [for (var i = chunkCount - 1; i >= 0; i--) if (!done.contains(i)) i];
+      final attempts = <int, int>{};
+      // Bytes of each in-flight piece, so a failed piece takes back exactly
+      // its own progress, not other connections'.
+      final inFlight = <int, int>{};
+      Object? fatal;
+
+      Future<void> fetchPiece(int i) async {
+        final start = chunkStart(i), end = chunkEnd(i);
+        final request = await client.getUrl(Uri.parse(pkg.url));
+        request.followRedirects = true;
+        request.maxRedirects = 12;
+        request.headers.set(HttpHeaders.rangeHeader, 'bytes=$start-${end - 1}');
+        final response = await request.close();
+        if (response.statusCode != HttpStatus.partialContent) {
+          unawaited(response.listen(null).cancel());
+          throw HttpException('piece $i answered HTTP ${response.statusCode}');
+        }
+        var at = start;
+        await for (final bytes in response.timeout(stallTimeout)) {
+          if (cancelToken?.isCancelled ?? false) {
+            throw const ModelDownloadException('Download cancelled.');
+          }
+          if (fatal != null) return;
+          if (at + bytes.length > end) throw HttpException('piece $i overran its range');
+          final pos = at;
+          at += bytes.length;
+          await locked(() async {
+            await raf.setPosition(pos);
+            await raf.writeFrom(bytes);
+          });
+          received += bytes.length;
+          inFlight[i] = (inFlight[i] ?? 0) + bytes.length;
+          emitProgress(ModelDownloadState(
+            phase: DownloadPhase.downloading,
+            receivedBytes: received,
+            totalBytes: total,
+          ));
+        }
+        if (at != end) throw HttpException('piece $i ended early');
+        await locked(() async {
+          await sidecar.writeAsString('$i\n', mode: FileMode.append, flush: true);
+        });
+      }
+
+      Future<void> worker() async {
+        while (queue.isNotEmpty && fatal == null) {
+          final i = queue.removeLast();
+          try {
+            await fetchPiece(i);
+            inFlight.remove(i);
+          } on ModelDownloadException catch (e) {
+            fatal ??= e;
+            return;
+          } on Object catch (e) {
+            // A dropped piece is re-queued from its start; its partial bytes
+            // are simply overwritten.
+            received -= inFlight.remove(i) ?? 0;
+            final n = (attempts[i] ?? 0) + 1;
+            attempts[i] = n;
+            if (n >= _chunkAttempts) {
+              fatal ??= ModelDownloadException(
+                'Network error: $e. The download resumes where it stopped when '
+                'you try again.',
+              );
+              return;
+            }
+            queue.add(i);
+            await Future<void>.delayed(Duration(milliseconds: 500 * n));
+          }
+        }
+      }
+
+      final workers = connections < chunkCount ? connections : chunkCount;
+      await Future.wait([for (var w = 0; w < workers; w++) worker()]);
+      await writeLock;
+      await raf.flush();
+      await raf.close();
+
+      final failure = fatal;
+      if (failure is ModelDownloadException) throw failure;
+      if (failure != null) throw ModelDownloadException('$failure');
+
+      emit(ModelDownloadState(
+        phase: DownloadPhase.verifying,
+        receivedBytes: total,
+        totalBytes: total,
+      ));
+      if (pkg.sha256.isNotEmpty) {
+        final digestHex = await _sha256OfFileInIsolate(partial.path);
+        if (digestHex != pkg.sha256) {
+          await partial.delete();
+          await sidecar.delete();
+          throw const ModelDownloadException(
+            'The downloaded file failed its integrity check and was removed. '
+            'This usually means the download was corrupted — try again.',
+          );
+        }
+      }
+
+      final target = File(targetPath);
+      if (await target.exists()) await target.delete();
+      await partial.rename(targetPath);
+      if (await sidecar.exists()) await sidecar.delete();
+      emit(ModelDownloadState(
+        phase: DownloadPhase.done,
+        receivedBytes: total,
+        totalBytes: total,
+      ));
+      return targetPath;
+    } finally {
+      try {
+        await raf.close();
+      } catch (_) {}
     }
   }
 
@@ -392,6 +704,21 @@ class ModelDownloadService {
     }
     return null;
   }
+}
+
+/// SHA-256 of a file, computed off the UI thread — hashing ~1 GB takes
+/// seconds on a phone. Top-level on purpose: `Isolate.run` copies the
+/// closure's captured scope, and a closure made inside the downloader would
+/// drag along unsendable state (pending futures, file handles).
+Future<String> _sha256OfFileInIsolate(String path) =>
+    Isolate.run(() => _sha256OfFile(path));
+
+Future<String> _sha256OfFile(String path) async {
+  final digest = _Sha256Accumulator();
+  await for (final chunk in File(path).openRead()) {
+    digest.add(chunk);
+  }
+  return digest.close().toString();
 }
 
 /// Feeds chunks into a SHA-256 as they stream past, so verification needs no
