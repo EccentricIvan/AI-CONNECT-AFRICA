@@ -30,9 +30,14 @@ import '../db/tables/topic_resources_table.dart';
 /// comes from [TopicResources] being a *new table* that nothing else joins
 /// against — not from a second database engine.
 class OfflineStorageService {
-  OfflineStorageService(this._db);
+  OfflineStorageService(this._db, {this.visibleClassUuid});
 
   final OticDatabase _db;
+
+  /// The active learner's class. Retrieval sees this device's own notes plus
+  /// notes received for this class only — never another class's, even on a
+  /// device shared between classes.
+  final String? visibleClassUuid;
 
   TopicResourceDao get _dao => _db.topicResourceDao;
 
@@ -55,17 +60,23 @@ class OfflineStorageService {
     required String content,
     int termMarker = kAllTermsMarker,
     DateTime? createdAt,
+
+    /// The uploaded file (or typed note) this belongs to, as the teacher
+    /// sees it. Defaults to [resourceTitle] — a note that stands alone.
+    String? documentTitle,
   }) async {
     final title = resourceTitle.trim();
     final body = content.trim();
+    final document = (documentTitle ?? title).trim();
     if (title.isEmpty || body.isEmpty) return 0;
 
     final subject = normalizeSubjectId(subjectId);
     final topic = normalizeTopicKey(topicKey);
     if (subject.isEmpty || topic.isEmpty) return 0;
 
-    final term =
-        kTermMarkers.contains(termMarker) ? termMarker : kAllTermsMarker;
+    final term = kTermMarkers.contains(termMarker)
+        ? termMarker
+        : kAllTermsMarker;
     final stamp = (createdAt ?? DateTime.now()).toUtc().toIso8601String();
     final chunks = chunkContent(body);
 
@@ -79,6 +90,7 @@ class OfflineStorageService {
             resourceTitle: title,
             contentChunk: chunk,
             createdAt: stamp,
+            documentTitle: Value(document.isEmpty ? title : document),
           ),
       ]);
       return chunks.length;
@@ -102,8 +114,9 @@ class OfflineStorageService {
       return await _dao.insertChunk(
         subjectId: normalizeSubjectId(subjectId),
         topicKey: normalizeTopicKey(topicKey),
-        termMarker:
-            kTermMarkers.contains(termMarker) ? termMarker : kAllTermsMarker,
+        termMarker: kTermMarkers.contains(termMarker)
+            ? termMarker
+            : kAllTermsMarker,
         resourceTitle: resourceTitle.trim(),
         contentChunk: contentChunk,
         createdAt: createdAt,
@@ -163,6 +176,7 @@ class OfflineStorageService {
         subjectId: normalizeSubjectId(subjectId),
         topicKey: normalizeTopicKey(topicKey),
         termMarker: termMarker,
+        visibleClassUuid: visibleClassUuid,
       );
     } catch (e) {
       debugPrint('chunksForTopic failed: $e');
@@ -178,6 +192,7 @@ class OfflineStorageService {
       return await _dao.chunksForSubject(
         subjectId: normalizeSubjectId(subjectId),
         termMarker: termMarker,
+        visibleClassUuid: visibleClassUuid,
       );
     } catch (e) {
       debugPrint('chunksForSubject failed: $e');
@@ -198,6 +213,7 @@ class OfflineStorageService {
         subjectId: normalizeSubjectId(subjectId),
         needle: trimmed,
         termMarker: termMarker,
+        visibleClassUuid: visibleClassUuid,
       );
     } catch (e) {
       debugPrint('searchChunks failed: $e');
@@ -213,7 +229,11 @@ class OfflineStorageService {
     final trimmed = needle.trim();
     if (trimmed.isEmpty) return const [];
     try {
-      return await _dao.searchAllChunks(needle: trimmed, limit: limit);
+      return await _dao.searchAllChunks(
+        needle: trimmed,
+        limit: limit,
+        visibleClassUuid: visibleClassUuid,
+      );
     } catch (e) {
       debugPrint('searchAllChunks failed: $e');
       return const [];
@@ -301,7 +321,9 @@ List<String> chunkContent(String content, {int size = kResourceChunkSize}) {
     final floor = start + (size * 0.5).round();
     var cut = text.lastIndexOf('\n\n', end);
     if (cut < floor) {
-      final sentence = RegExp(r'[.!?]\s').allMatches(text.substring(start, end));
+      final sentence = RegExp(
+        r'[.!?]\s',
+      ).allMatches(text.substring(start, end));
       cut = sentence.isEmpty ? -1 : start + sentence.last.start;
     }
     if (cut >= floor) {
@@ -320,13 +342,28 @@ List<String> chunkContent(String content, {int size = kResourceChunkSize}) {
 // ── Providers ────────────────────────────────────────────────────────────
 
 final offlineStorageServiceProvider = Provider<OfflineStorageService>((ref) {
-  return OfflineStorageService(ref.watch(dbProvider));
+  return OfflineStorageService(
+    ref.watch(dbProvider),
+    visibleClassUuid: ref.watch(activeClassUuidProvider).valueOrNull,
+  );
+});
+
+/// The active learner's class id (`ClassGroups.groupUuid`), or null.
+final activeClassUuidProvider = FutureProvider<String?>((ref) async {
+  final student = await ref.watch(activeStudentProvider.future);
+  final id = student?.classGroupId;
+  if (id == null) return null;
+  final db = ref.watch(dbProvider);
+  final group = await (db.select(
+    db.classGroups,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+  return group?.groupUuid;
 });
 
 /// Teacher-visible resource list for a subject (null = every subject).
 final topicResourcesProvider =
     FutureProvider.family<List<ResourceSummary>, String?>((ref, subjectId) {
-  return ref.watch(offlineStorageServiceProvider).listResources(
-        subjectId: subjectId,
-      );
-});
+      return ref
+          .watch(offlineStorageServiceProvider)
+          .listResources(subjectId: subjectId);
+    });

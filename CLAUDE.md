@@ -126,7 +126,10 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
 ### Teacher notes → tutor (offline knowledge base)
 
 Uploaded files become plain text, which is split into sections and then into
-~500-char rows in `topic_resources`. The original file is not kept.
+~500-char rows in `topic_resources`. The original file is not kept. That
+split is for the tutor's search only. People see, share and delete **one
+note per uploaded file** (`topic_resources.document_title`). Never list the
+per-heading sections or chunks in the UI.
 `topic_resources_fts` is an external-content **FTS5** index: porter
 tokenizer, BM25 ranking, kept in sync by triggers. It comes from the SQLite
 that `sqlite3_flutter_libs` ships. It is created by raw SQL in
@@ -139,6 +142,44 @@ existing 700-char notes slot, because the question sits at the end of the
 prompt and the engines clip from the end. Notes *supplement* the model; they
 do not override it. There are no embeddings: a third model does not fit
 4 GB Android.
+
+### Class sync (teacher → students over the local Wi-Fi)
+
+Notes are shared only within one **school + class/stream + subject**.
+The code is in `lib/collaboration/sync/`, with tests in
+`test/class_sync_e2e_test.dart` and `test/class_crypto_test.dart`. Don't
+loosen any of these rules:
+
+- **School.** It's set in Admin → School on the teacher's device. A student
+  device adopts it at its first join and refuses classes from any other
+  school.
+- **Joining.** The teacher's Class sync screen shows a join code (30 min,
+  locked after 20 wrong tries). The student types it in Collaborate → Join
+  a class.
+  - The code never crosses the network. A PBKDF2-stretched proof does.
+  - The reply gives the device the class key and pins the teacher device's
+    Ed25519 public key. The class is created locally with the teacher's
+    `groupUuid`.
+- **Serving.** `ClassSyncDao.sharedChunks` is the only rule. A chunk is
+  served only if it was written on this device (`class_group_uuid IS NULL`)
+  *and* has a `resource_shares` row for that class.
+  - Notes are never shared until the teacher ticks a class (Lesson
+    materials → Share with classes).
+  - Received notes are never passed on.
+  - Joined classes are never served.
+- **Every request** is MAC'd with the class key and names the school.
+  Anything wrong gets the same bare 404.
+- **Every reply** is AES-GCM encrypted with the class key and signed by the
+  teacher's key over the requester's nonce. A classmate holding the key
+  can't pose as the teacher, and old replies can't be replayed.
+- **Receiving.** Each subject is replaced whole, in one transaction, and
+  only if every chunk verifies. The version is a digest over chunk hashes,
+  so edits and removals propagate. Subjects no longer shared are deleted.
+- **Shared devices.** Tutor retrieval sees this device's own notes plus
+  received notes for the **active learner's** class only
+  (`TopicResourceDao._visibleTo`).
+- **Protocol v2 only.** Devices on older builds can't sync with upgraded
+  ones.
 
 ## Student Memory Engine
 
@@ -220,28 +261,52 @@ platform:
 
 Folders cut, deleted or pasted in Explorer show up on the next list.
 
-- **Generation is template-first, never model-written.** The code lives in
+- **Describe first, pick from a list second.** The App and Website chat
+  builders open on a free-text prompt ("describe the app you want").
+  - The coder model writes the **page** from that description
+    (`generateAppHtml` / `generateSiteHtml` in `ai_coder_service.dart`).
+    If it's missing, refuses or fails, the build falls back to the template
+    for the classified type — never a blank screen.
+  - The description is also classified **locally, with no model call**
+    (`classifyAppType` / `classifySiteTemplate`, scored keywords). That picks
+    the app type whose backend resources and fallback template the build
+    uses. Attached pictures go into a gallery afterwards; the model never
+    sees them.
+  - The ☰ list picker runs the original guided questions and pure template
+    build, with no model call.
+- **The project scaffold is never model-written.** The code lives in
   `lib/features/projects/scaffold/`.
   - It turns the builder's page into `frontend/` (split CSS/JS, embedded
     pictures extracted to `frontend/images/`).
   - It adds a FastAPI + SQLAlchemy + SQLite `backend/` with CRUD routes per
-    app type (`resource_spec.dart`), plus a pytest suite.
+    app type (`resource_spec.dart`), plus a pytest suite. The backend schema
+    always comes from that fixed table — the model never invents resources
+    or fields.
   - It adds README / DEPLOY.md (free hosts), a Dockerfile, `render.yaml`
     and `.vscode/`.
-  - The 1.5B model only edits the page. After changing any scaffold, run
-    `tools/verify_scaffolds.ps1`: it installs and runs every generated
-    backend's tests.
+  - After changing any scaffold, run `tools/verify_scaffolds.ps1`: it
+    installs and runs every generated backend's tests.
 - **One save path.** Every builder saves through `saveCreation`
   (`project_providers.dart`), which awards badges and refreshes
   `studentProjectFoldersProvider`. Achievements counts from that provider.
 - **Legacy rows are synced into folders.** Older DB-row saves are
-  `app_builder_projects`, the Block canvas's `website_projects` and the
-  guided chat's `student_projects`. `LegacyProjectSync` gives each one a
+  `app_builder_projects`, the removed Block canvas's `website_projects`
+  and the guided chat's `student_projects`. `LegacyProjectSync` gives each one a
   folder once, and a ledger stops deleted ones from coming back.
 - **Style and pictures need no model.** Style requests ("make the text
   red") are applied through `quick_style_edit.dart` in a
   `<style id="otic-style">` block. Pictures are embedded as data URIs while
   editing (`html_images.dart`) and become real files on save.
+- **A picture in the Tell-AI bar** comes with what to do with it. The model
+  can't see images, so none of this sends the picture to the model:
+  - "make the UI like this" → `ui_look.dart` measures the screenshot's
+    pixels (theme, colours, bar, card colour, corner radius, columns) and
+    restyles the page in one `<style id="otic-look">` block. It never
+    copies layout or fonts.
+  - "make it the logo / the background / put it in the about section /
+    make it round" → `image_instruction.dart` places and styles it.
+  - Only styling those can't express goes to the coder, as a CSS patch
+    aimed at the placed picture (`image_instruction_runner.dart`).
 - **Deleting a learner.** `LearnerDataWiper` also deletes the learner's
   project folder.
 

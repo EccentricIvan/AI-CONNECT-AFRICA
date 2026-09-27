@@ -9,8 +9,8 @@ import 'projects/project_store.dart';
 
 /// Deletes a learner's own data — never the shared "application resources"
 /// a device's students learn from. Those live in `topic_resources`,
-/// `custom_subjects`, `class_groups`, the translation cache, and
-/// `sync_state` (the P2P resource-sync bookkeeping — see
+/// `custom_subjects`, `class_groups`, the translation cache, and class sync's
+/// `sync_state`, `resource_shares` and `sync_identity` (see
 /// `SelectiveSyncManager`, which pulls resources over the local network for
 /// the same reason: that network carries resources, never student data).
 /// None of those are touched here.
@@ -43,9 +43,9 @@ class LearnerDataWiper {
     SessionRecallStore? recallStore,
     Future<Directory> Function()? certificatesDir,
     ProjectStore? projectStore,
-  })  : _recallStore = recallStore ?? SessionRecallStore(),
-        _certificatesDir = certificatesDir ?? _defaultCertificatesDir,
-        _projects = projectStore ?? ProjectStore();
+  }) : _recallStore = recallStore ?? SessionRecallStore(),
+       _certificatesDir = certificatesDir ?? _defaultCertificatesDir,
+       _projects = projectStore ?? ProjectStore();
 
   final OticDatabase _db;
   final SessionRecallStore _recallStore;
@@ -92,8 +92,9 @@ class LearnerDataWiper {
     // it does. Recall files and prefs are outside it because file/prefs IO
     // cannot be rolled back with the DB anyway; they run only once the
     // deletes have actually committed.
-    final sessionIds =
-        await _db.transaction(() => _deleteRowsForStudent(studentId));
+    final sessionIds = await _db.transaction(
+      () => _deleteRowsForStudent(studentId),
+    );
     for (final id in sessionIds) {
       await _recallStore.delete(id);
     }
@@ -161,8 +162,9 @@ class LearnerDataWiper {
       // partway through wiping student #7 of 20 must not undo the 6 that
       // already fully committed, and per-student atomicity is all the
       // guarantee wipeStudent above already promises on its own.
-      final sessionIds =
-          await _db.transaction(() => _deleteRowsForStudent(student.id));
+      final sessionIds = await _db.transaction(
+        () => _deleteRowsForStudent(student.id),
+      );
       for (final id in sessionIds) {
         await _recallStore.delete(id);
       }
@@ -188,30 +190,30 @@ class LearnerDataWiper {
 
   Future<Set<String>> _deleteRowsForStudent(int studentId) async {
     final sessionIds = await _db.chatSessionDao.deleteForStudent(studentId);
-    await (_db.delete(_db.sessionSummaries)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.topicProgress)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.learningPaths)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.earnedBadges)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.studentProjects)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.websiteProjects)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.appBuilderProjects)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
-    await (_db.delete(_db.assignments)
-          ..where((t) => t.studentId.equals(studentId)))
-        .go();
+    await (_db.delete(
+      _db.sessionSummaries,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.topicProgress,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.learningPaths,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.earnedBadges,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.studentProjects,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.websiteProjects,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.appBuilderProjects,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.assignments,
+    )..where((t) => t.studentId.equals(studentId))).go();
     await _db.studentDao.deleteStudent(studentId);
     return sessionIds;
   }

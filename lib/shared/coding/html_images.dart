@@ -7,7 +7,11 @@ import 'interactive_html.dart' show escapeHtml;
 /// the live preview shows it with no file server behind it. [extractImages]
 /// turns these back into real files when the project is saved.
 class PickedImage {
-  const PickedImage({required this.name, required this.bytes, required this.mime});
+  const PickedImage({
+    required this.name,
+    required this.bytes,
+    required this.mime,
+  });
   final String name;
   final Uint8List bytes;
   final String mime;
@@ -16,7 +20,9 @@ class PickedImage {
 
   /// Alt text from the file name: "my_shop-front.jpg" → "my shop front".
   String get altText {
-    final base = name.contains('.') ? name.substring(0, name.lastIndexOf('.')) : name;
+    final base = name.contains('.')
+        ? name.substring(0, name.lastIndexOf('.'))
+        : name;
     final words = base.replaceAll(RegExp(r'[_\-]+'), ' ').trim();
     return words.isEmpty ? 'Picture' : words;
   }
@@ -40,7 +46,9 @@ const kMaxImageBytes = 20 * 1024 * 1024;
 /// While the coder model edits the page, embedded pictures are swapped for
 /// short placeholder paths: a photo's base64 would otherwise fill the
 /// model's whole prompt (and come back truncated). [restore] puts them back.
-({String text, String Function(String edited) restore}) maskEmbeddedImages(String html) {
+({String text, String Function(String edited) restore}) maskEmbeddedImages(
+  String html,
+) {
   final byToken = <String, String>{};
   final byData = <String, String>{};
   var n = 1;
@@ -79,19 +87,29 @@ class PageImage {
 }
 
 final _imgRe = RegExp(r'<img\b[^>]*>', caseSensitive: false);
-final _srcRe = RegExp(r'''\bsrc\s*=\s*(["'])(.*?)\1''', caseSensitive: false, dotAll: true);
-final _altRe = RegExp(r'''\balt\s*=\s*(["'])(.*?)\1''', caseSensitive: false, dotAll: true);
+final _srcRe = RegExp(
+  r'''\bsrc\s*=\s*(["'])(.*?)\1''',
+  caseSensitive: false,
+  dotAll: true,
+);
+final _altRe = RegExp(
+  r'''\balt\s*=\s*(["'])(.*?)\1''',
+  caseSensitive: false,
+  dotAll: true,
+);
 
 List<PageImage> listPageImages(String html) {
   final out = <PageImage>[];
   var i = 0;
   for (final m in _imgRe.allMatches(html)) {
     final tag = m.group(0)!;
-    out.add(PageImage(
-      index: i++,
-      src: _srcRe.firstMatch(tag)?.group(2) ?? '',
-      alt: _altRe.firstMatch(tag)?.group(2) ?? '',
-    ));
+    out.add(
+      PageImage(
+        index: i++,
+        src: _srcRe.firstMatch(tag)?.group(2) ?? '',
+        alt: _altRe.firstMatch(tag)?.group(2) ?? '',
+      ),
+    );
   }
   return out;
 }
@@ -105,7 +123,10 @@ String replacePageImage(String html, int index, PickedImage image) {
     var tag = m.group(0)!;
     tag = _srcRe.hasMatch(tag)
         ? tag.replaceFirst(_srcRe, 'src="${image.dataUri}"')
-        : tag.replaceFirst(RegExp(r'<img', caseSensitive: false), '<img src="${image.dataUri}"');
+        : tag.replaceFirst(
+            RegExp(r'<img', caseSensitive: false),
+            '<img src="${image.dataUri}"',
+          );
     final alt = 'alt="${escapeHtml(image.altText)}"';
     tag = _altRe.hasMatch(tag)
         ? tag.replaceFirst(_altRe, alt)
@@ -114,18 +135,33 @@ String replacePageImage(String html, int index, PickedImage image) {
   });
 }
 
+/// Puts pictures attached before a build onto whatever page the build made.
+/// Always a gallery: unlike [setLogo] it doesn't depend on the page having a
+/// `<header>`/`<nav>`, so the pictures are visible whichever HTML came back.
+String applyPickedImages(
+  String html,
+  List<PickedImage> images, {
+  String heading = 'Gallery',
+}) => images.isEmpty ? html : addToGallery(html, images, heading: heading);
+
 const _galleryStart = '<!-- otic-gallery -->';
 const _galleryEnd = '<!-- /otic-gallery -->';
 
 /// Adds [images] to a "Gallery" section (created before the footer the
 /// first time), styled to fit any template.
-String addToGallery(String html, List<PickedImage> images, {String heading = 'Gallery'}) {
+String addToGallery(
+  String html,
+  List<PickedImage> images, {
+  String heading = 'Gallery',
+}) {
   if (images.isEmpty) return html;
   final figures = StringBuffer();
   for (final img in images) {
     final alt = escapeHtml(img.altText);
-    figures.writeln('    <figure><img src="${img.dataUri}" alt="$alt" loading="lazy">'
-        '<figcaption>$alt</figcaption></figure>');
+    figures.writeln(
+      '    <figure><img src="${img.dataUri}" alt="$alt" loading="lazy">'
+      '<figcaption>$alt</figcaption></figure>',
+    );
   }
 
   final start = html.indexOf(_galleryStart);
@@ -140,14 +176,16 @@ String addToGallery(String html, List<PickedImage> images, {String heading = 'Ga
 
   final section = StringBuffer()
     ..writeln(_galleryStart)
-    ..writeln('<style>.otic-gallery{max-width:1100px;margin:48px auto;padding:0 20px}'
-        '.otic-gallery h2{text-align:center;margin-bottom:20px}'
-        '.otic-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}'
-        '.otic-gallery figure{margin:0;border-radius:14px;overflow:hidden;background:#fff;'
-        'box-shadow:0 6px 20px rgba(15,23,42,.08)}'
-        '.otic-gallery img{width:100%;height:200px;object-fit:cover;display:block;transition:transform .3s}'
-        '.otic-gallery figure:hover img{transform:scale(1.04)}'
-        '.otic-gallery figcaption{padding:10px 12px;font-size:.9rem;color:#4b5563;text-transform:capitalize}</style>')
+    ..writeln(
+      '<style>.otic-gallery{max-width:1100px;margin:48px auto;padding:0 20px}'
+      '.otic-gallery h2{text-align:center;margin-bottom:20px}'
+      '.otic-gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}'
+      '.otic-gallery figure{margin:0;border-radius:14px;overflow:hidden;background:#fff;'
+      'box-shadow:0 6px 20px rgba(15,23,42,.08)}'
+      '.otic-gallery img{width:100%;height:200px;object-fit:cover;display:block;transition:transform .3s}'
+      '.otic-gallery figure:hover img{transform:scale(1.04)}'
+      '.otic-gallery figcaption{padding:10px 12px;font-size:.9rem;color:#4b5563;text-transform:capitalize}</style>',
+    )
     ..writeln('<section class="otic-gallery" id="gallery">')
     ..writeln('  <h2>${escapeHtml(heading)}</h2>')
     ..writeln('  <div class="otic-gallery-grid">')
@@ -180,7 +218,8 @@ String setLogo(String html, PickedImage image) {
     final before = listPageImages(html.substring(0, tagEnd + 1)).length;
     return replacePageImage(html, before, image);
   }
-  final logo = '<img src="${image.dataUri}" alt="${escapeHtml(image.altText)}" '
+  final logo =
+      '<img src="${image.dataUri}" alt="${escapeHtml(image.altText)}" '
       'style="height:44px;width:auto;border-radius:8px;vertical-align:middle;margin-right:10px">';
   return '${html.substring(0, tagEnd + 1)}$logo${html.substring(tagEnd + 1)}';
 }

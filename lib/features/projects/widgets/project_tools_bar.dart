@@ -84,7 +84,11 @@ class ProjectToolsBar extends StatelessWidget {
 }
 
 class _ToolButton extends StatelessWidget {
-  const _ToolButton({required this.icon, required this.label, required this.onTap});
+  const _ToolButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
@@ -112,6 +116,35 @@ class _ToolButton extends StatelessWidget {
 /// Lets the student pick pictures and choose where they go. Returns the new
 /// page HTML, or null when nothing changed.
 Future<String?> showAddPicturesFlow(BuildContext context, String html) async {
+  final images = await pickPictures(context);
+  if (images.isEmpty || !context.mounted) return null;
+
+  final onPage = listPageImages(html);
+  final choice = await showModalBottomSheet<_PictureChoice>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => _PicturePlacementSheet(images: images, onPage: onPage),
+  );
+  if (choice == null || !context.mounted) return null;
+  return switch (choice.kind) {
+    _Placement.gallery => addToGallery(
+      html,
+      images,
+      heading: tr(context, 'Gallery'),
+    ),
+    _Placement.logo => setLogo(html, images.first),
+    _Placement.replace => replacePageImage(
+      html,
+      choice.replaceIndex!,
+      images.first,
+    ),
+  };
+}
+
+/// Picks and shrinks pictures from disk. Empty on cancel, error, or when
+/// every picture was over the size limit.
+Future<List<PickedImage>> pickPictures(BuildContext context) async {
   final FilePickerResult? picked;
   try {
     picked = await FilePicker.platform.pickFiles(
@@ -124,9 +157,10 @@ Future<String?> showAddPicturesFlow(BuildContext context, String html) async {
     if (context.mounted) {
       _snack(context, tr(context, "Couldn't open your pictures. Try again."));
     }
-    return null;
+    return const [];
   }
-  if (picked == null || picked.files.isEmpty || !context.mounted) return null;
+  if (picked == null || picked.files.isEmpty || !context.mounted)
+    return const [];
 
   final images = <PickedImage>[];
   var tooBig = 0;
@@ -138,29 +172,21 @@ Future<String?> showAddPicturesFlow(BuildContext context, String html) async {
       tooBig++;
       continue;
     }
-    images.add(await shrinkPickedImage(PickedImage(name: f.name, bytes: bytes, mime: mime)));
+    images.add(
+      await shrinkPickedImage(
+        PickedImage(name: f.name, bytes: bytes, mime: mime),
+      ),
+    );
   }
   if (tooBig > 0 && context.mounted) {
     _snack(
       context,
-      trFill(context, '{n} picture(s) were over 20 MB and were skipped.', {'n': '$tooBig'}),
+      trFill(context, '{n} picture(s) were over 20 MB and were skipped.', {
+        'n': '$tooBig',
+      }),
     );
   }
-  if (images.isEmpty || !context.mounted) return null;
-
-  final onPage = listPageImages(html);
-  final choice = await showModalBottomSheet<_PictureChoice>(
-    context: context,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (ctx) => _PicturePlacementSheet(images: images, onPage: onPage),
-  );
-  if (choice == null || !context.mounted) return null;
-  return switch (choice.kind) {
-    _Placement.gallery => addToGallery(html, images, heading: tr(context, 'Gallery')),
-    _Placement.logo => setLogo(html, images.first),
-    _Placement.replace => replacePageImage(html, choice.replaceIndex!, images.first),
-  };
+  return images;
 }
 
 enum _Placement { gallery, logo, replace }
@@ -181,7 +207,9 @@ class _PicturePlacementSheet extends StatelessWidget {
     final one = images.length == 1;
     return SafeArea(
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.8,
+        ),
         child: ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -189,8 +217,9 @@ class _PicturePlacementSheet extends StatelessWidget {
             Text(
               one
                   ? tr(context, 'Where should this picture go?')
-                  : trFill(context, 'Where should these {n} pictures go?',
-                      {'n': '${images.length}'}),
+                  : trFill(context, 'Where should these {n} pictures go?', {
+                      'n': '${images.length}',
+                    }),
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
@@ -208,7 +237,12 @@ class _PicturePlacementSheet extends StatelessWidget {
                           color: Colors.black12,
                           child: const Icon(Icons.image_outlined),
                         )
-                      : Image.memory(images[i].bytes, width: 72, height: 72, fit: BoxFit.cover),
+                      : Image.memory(
+                          images[i].bytes,
+                          width: 72,
+                          height: 72,
+                          fit: BoxFit.cover,
+                        ),
                 ),
               ),
             ),
@@ -216,30 +250,49 @@ class _PicturePlacementSheet extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.grid_view_rounded),
               title: Text(tr(context, 'Add to a picture gallery')),
-              subtitle: Text(tr(context, 'A neat grid of your pictures near the bottom of the page')),
-              onTap: () => Navigator.pop(context, const _PictureChoice(_Placement.gallery)),
+              subtitle: Text(
+                tr(
+                  context,
+                  'A neat grid of your pictures near the bottom of the page',
+                ),
+              ),
+              onTap: () => Navigator.pop(
+                context,
+                const _PictureChoice(_Placement.gallery),
+              ),
             ),
             if (one)
               ListTile(
                 leading: const Icon(Icons.badge_outlined),
                 title: Text(tr(context, 'Use as the logo')),
                 subtitle: Text(tr(context, 'Shown in the top bar')),
-                onTap: () => Navigator.pop(context, const _PictureChoice(_Placement.logo)),
+                onTap: () => Navigator.pop(
+                  context,
+                  const _PictureChoice(_Placement.logo),
+                ),
               ),
             if (one && onPage.isNotEmpty) ...[
               const Divider(),
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(tr(context, 'Or replace a picture already on the page:'),
-                    style: Theme.of(context).textTheme.labelLarge),
+                child: Text(
+                  tr(context, 'Or replace a picture already on the page:'),
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
               ),
               for (final img in onPage)
                 ListTile(
                   dense: true,
                   leading: const Icon(Icons.swap_horiz_rounded),
-                  title: Text(img.label, maxLines: 1, overflow: TextOverflow.ellipsis),
-                  onTap: () =>
-                      Navigator.pop(context, _PictureChoice(_Placement.replace, img.index)),
+                  title: Text(
+                    img.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () => Navigator.pop(
+                    context,
+                    _PictureChoice(_Placement.replace, img.index),
+                  ),
                 ),
             ],
           ],
@@ -281,9 +334,22 @@ class _StyleSheetState extends State<_StyleSheet> {
   late double _scale = widget.initial.fontScale ?? 1.0;
 
   static const _swatches = [
-    '#111827', '#374151', '#6b7280', '#ffffff', '#dc2626', '#ea580c',
-    '#eab308', '#16a34a', '#0d9488', '#2563eb', '#1e3a8a', '#7c3aed',
-    '#db2777', '#92400e', '#fef3c7', '#eff6ff',
+    '#111827',
+    '#374151',
+    '#6b7280',
+    '#ffffff',
+    '#dc2626',
+    '#ea580c',
+    '#eab308',
+    '#16a34a',
+    '#0d9488',
+    '#2563eb',
+    '#1e3a8a',
+    '#7c3aed',
+    '#db2777',
+    '#92400e',
+    '#fef3c7',
+    '#eff6ff',
   ];
 
   Color _c(String hex) {
@@ -298,12 +364,17 @@ class _StyleSheetState extends State<_StyleSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-            const Spacer(),
-            if (value != null)
-              TextButton(onPressed: () => onPick(null), child: Text(tr(context, 'Default'))),
-          ]),
+          Row(
+            children: [
+              Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const Spacer(),
+              if (value != null)
+                TextButton(
+                  onPressed: () => onPick(null),
+                  child: Text(tr(context, 'Default')),
+                ),
+            ],
+          ),
           const SizedBox(height: 6),
           Wrap(
             spacing: 8,
@@ -324,7 +395,9 @@ class _StyleSheetState extends State<_StyleSheet> {
                         color: _c(hex),
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: value == hex ? AppColors.primary : Colors.black26,
+                          color: value == hex
+                              ? AppColors.primary
+                              : Colors.black26,
                           width: value == hex ? 3 : 1,
                         ),
                       ),
@@ -342,24 +415,55 @@ class _StyleSheetState extends State<_StyleSheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
         child: ListView(
           shrinkWrap: true,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           children: [
-            Text(tr(context, 'Style'), style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              tr(context, 'Style'),
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 4),
             Text(
-              tr(context, 'Tip: you can also type it, e.g. "make the text dark blue".'),
+              tr(
+                context,
+                'Tip: you can also type it, e.g. "make the text dark blue".',
+              ),
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 14),
-            _colorRow(tr(context, 'Text colour'), _text, (v) => setState(() => _text = v)),
-            _colorRow(tr(context, 'Headings'), _heading, (v) => setState(() => _heading = v)),
-            _colorRow(tr(context, 'Background'), _background, (v) => setState(() => _background = v)),
-            _colorRow(tr(context, 'Buttons & links'), _accent, (v) => setState(() => _accent = v)),
-            _colorRow(tr(context, 'Top bar'), _bar, (v) => setState(() => _bar = v)),
-            Text(tr(context, 'Font'), style: const TextStyle(fontWeight: FontWeight.w600)),
+            _colorRow(
+              tr(context, 'Text colour'),
+              _text,
+              (v) => setState(() => _text = v),
+            ),
+            _colorRow(
+              tr(context, 'Headings'),
+              _heading,
+              (v) => setState(() => _heading = v),
+            ),
+            _colorRow(
+              tr(context, 'Background'),
+              _background,
+              (v) => setState(() => _background = v),
+            ),
+            _colorRow(
+              tr(context, 'Buttons & links'),
+              _accent,
+              (v) => setState(() => _accent = v),
+            ),
+            _colorRow(
+              tr(context, 'Top bar'),
+              _bar,
+              (v) => setState(() => _bar = v),
+            ),
+            Text(
+              tr(context, 'Font'),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 6),
             Wrap(
               spacing: 8,
@@ -380,7 +484,9 @@ class _StyleSheetState extends State<_StyleSheet> {
             ),
             const SizedBox(height: 14),
             Text(
-              trFill(context, 'Text size: {n}%', {'n': '${(_scale * 100).round()}'}),
+              trFill(context, 'Text size: {n}%', {
+                'n': '${(_scale * 100).round()}',
+              }),
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             Slider(
@@ -408,7 +514,9 @@ class _StyleSheetState extends State<_StyleSheet> {
                       accentColor: _accent,
                       barColor: _bar,
                       fontFamily: _font,
-                      fontScale: _scale == 1.0 ? null : double.parse(_scale.toStringAsFixed(2)),
+                      fontScale: _scale == 1.0
+                          ? null
+                          : double.parse(_scale.toStringAsFixed(2)),
                     ),
                   ),
                   child: Text(tr(context, 'Apply')),

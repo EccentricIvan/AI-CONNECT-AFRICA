@@ -15,6 +15,7 @@ class SiteBuildIntent {
     required this.themePrimary,
     required this.answers,
     required this.content,
+    this.description = '',
   });
 
   final String templateId;
@@ -28,6 +29,10 @@ class SiteBuildIntent {
   /// Auto-picked copy recorded at build time (tagline, about, …).
   final Map<String, String> content;
 
+  /// Raw free-text description the learner typed, when this build came from
+  /// "describe your site" rather than the guided wizard.
+  final String description;
+
   /// Prompt the coder sees — features only, no full template HTML (ctx budget).
   String toCoderBrief() {
     final buf = StringBuffer()
@@ -35,7 +40,9 @@ class SiteBuildIntent {
       ..writeln(
         'Build ONE complete offline HTML5 website. Output ONLY the HTML document.',
       )
-      ..writeln('No markdown fences. No commentary. Start with <!DOCTYPE html>.')
+      ..writeln(
+        'No markdown fences. No commentary. Start with <!DOCTYPE html>.',
+      )
       ..writeln()
       ..writeln('DESIGN RULES (mandatory):')
       ..writeln(
@@ -65,6 +72,22 @@ class SiteBuildIntent {
         'COLOR THEME: $themeName'
         '${themePrimary != null ? ' — primary $themePrimary' : ''}',
       );
+
+    if (description.trim().isNotEmpty) {
+      buf
+        ..writeln()
+        ..writeln(
+          'DESCRIPTION (primary spec — this is what the student actually '
+          'asked for; if it conflicts with the site type above, follow this, '
+          'including which sections to include):',
+        )
+        ..writeln(description.trim())
+        ..writeln()
+        ..writeln(
+          'Keep the CSS short (about 30 lines) so the whole page fits — '
+          'every section the description needs must be in the <body>.',
+        );
+    }
 
     if (answers.isNotEmpty) {
       buf.writeln();

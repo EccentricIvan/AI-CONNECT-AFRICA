@@ -10,6 +10,7 @@ import 'daos/assignment_dao.dart';
 import 'daos/badge_dao.dart';
 import 'daos/chat_session_dao.dart';
 import 'daos/class_group_dao.dart';
+import 'daos/class_sync_dao.dart';
 import 'daos/custom_subject_dao.dart';
 import 'daos/path_dao.dart';
 import 'daos/project_dao.dart';
@@ -27,6 +28,8 @@ import 'tables/class_groups_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
 import 'tables/learning_paths_table.dart';
+import 'tables/resource_shares_table.dart';
+import 'tables/sync_identity_table.dart';
 import 'tables/session_summaries_table.dart';
 import 'tables/student_projects_table.dart';
 import 'tables/students_table.dart';
@@ -54,6 +57,8 @@ part 'otic_database.g.dart';
     AppBuilderProjects,
     SyncState,
     Assignments,
+    ResourceShares,
+    SyncIdentity,
   ],
   daos: [
     StudentDao,
@@ -70,6 +75,7 @@ part 'otic_database.g.dart';
     AppBuilderProjectDao,
     SyncStateDao,
     AssignmentDao,
+    ClassSyncDao,
   ],
 )
 class OticDatabase extends _$OticDatabase {
@@ -84,210 +90,210 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) async {
-          await m.createAll();
-          // Not a drift table (drift has no FTS5 table class), so createAll
-          // does not know about it.
-          await _createResourceSearchIndex();
-        },
-        onUpgrade: (m, from, to) async {
-          if (from < 2) {
-            await m.createTable(learningPaths);
-          }
-          if (from < 3) {
-            await m.addColumn(students, students.streakDays);
-            await m.addColumn(students, students.lastStreakDate);
-            await m.addColumn(students, students.totalPoints);
-            await m.createTable(earnedBadges);
-            await m.createTable(studentProjects);
-          }
-          if (from < 4) {
-            await m.createTable(websiteProjects);
-          }
-          if (from < 5) {
-            await m.createTable(translationCacheEntries);
-          }
-          if (from < 6) {
-            // Teacher-supplied notes/textbook chunks. Purely additive — the
-            // hardcoded syllabi in assets/curriculum are untouched, and an
-            // upgrade that stops here leaves the app behaving exactly as it
-            // did on schema 5.
-            await m.createTable(topicResources);
-            // createTable does not carry the table's indexes, and a device
-            // that upgraded would otherwise run every retrieval as a full
-            // scan while a freshly installed one (onCreate → createAll) did
-            // not — the same code, quietly slower on exactly the older,
-            // weaker hardware this product targets.
-            await m.create(idxTopicResourcesLookup);
-            await m.create(idxTopicResourcesTitle);
-          }
-          if (from < 7) {
-            // Teacher-created subjects. Also additive: with this table empty
-            // the browse grid shows exactly the 16 bundled subjects.
-            await m.createTable(customSubjects);
-            await m.create(idxCustomSubjectsSubjectId);
-          }
-          if (from < 8) {
-            // One row per chat, indexing the recall files in otic_sessions/.
-            // Additive: SessionSummaries still holds the per-turn rows that
-            // topic progress and the teacher dashboard read, so an upgrade
-            // that stops here loses nothing — the sidebar simply starts
-            // empty and refills as new chats are had.
-            await m.createTable(chatSessions);
-            await m.create(idxChatSessionsRecent);
-          }
-          // ── Schema 9 onward: idempotent from here down ─────────────────
-          //
-          // `m.createTable(x)` always stamps *today's* Dart definition of x,
-          // not the shape x had when it was first added — so any step below
-          // that both creates a table and later ALTERs a column onto it can
-          // collide with itself on a device that jumps several versions in
-          // one boot (`duplicate column name`), and a step that re-runs
-          // after a previous upgrade attempt partially completed and then
-          // crashed can collide on `table already exists`. Both are real,
-          // not hypothetical: the second is exactly what happened on a real
-          // device here — `onUpgrade` has no transaction wrapping these
-          // statements, so the schema-9→10 step (create appBuilderProjects)
-          // had already committed and `user_version` was still 9 when the
-          // schema-11 step below (the `UNIQUE`-column bug, since fixed)
-          // threw and aborted the rest of the upgrade. Every step from here
-          // down checks the database itself — via [_tableExists]/
-          // [_columnExists] — instead of trusting `from`/`to`, so re-running
-          // an upgrade that previously got partway is always safe.
-          if (from < 9) {
-            // Classes/streams. Additive: every existing learner starts
-            // unassigned (class_group_id NULL) and keeps all their progress.
-            if (!await _tableExists('class_groups')) {
-              await m.createTable(classGroups);
-            }
-            if (!await _columnExists('students', 'class_group_id')) {
-              await m.addColumn(students, students.classGroupId);
-            }
-            // Full-text index over teacher material. Built from the rows
-            // already in topic_resources, so notes uploaded before this
-            // upgrade stay searchable. Re-running the rebuild is harmless
-            // (it is idempotent by nature), so this whole block is safe to
-            // repeat even though the CREATE TABLE/TRIGGERs inside it are
-            // already `IF NOT EXISTS`.
-            await _createResourceSearchIndex();
-            await customStatement(
-              "INSERT INTO topic_resources_fts(topic_resources_fts) "
-              "VALUES('rebuild')",
-            );
-          }
-          if (from < 10) {
-            // App Builder generations, saved per student — the same gap
-            // Website Builder already closed via WebsiteProjects. Purely
-            // additive: nothing previously read or wrote this table.
-            if (!await _tableExists('app_builder_projects')) {
-              await m.createTable(appBuilderProjects);
-            }
-          }
-          if (from < 11) {
-            // Scoped class/stream/subject sync over the local network
-            // (lib/collaboration/sync/). classGroups.id and topic_resources
-            // rows already existed and are device-local; the new columns
-            // give them a portable identity/scope/version without touching
-            // anything that already reads or writes these tables.
-            if (!await _columnExists('class_groups', 'group_uuid')) {
-              // No inline UNIQUE — see the doc on ClassGroups.groupUuid for
-              // why (`ALTER TABLE ... ADD COLUMN ... UNIQUE` is rejected by
-              // SQLite outright). Uniqueness is [idxClassGroupsGroupUuid],
-              // created below once every row has a real value.
-              await m.addColumn(classGroups, classGroups.groupUuid);
-            }
-            if (!await _columnExists('topic_resources', 'class_group_uuid')) {
-              await m.addColumn(topicResources, topicResources.classGroupUuid);
-            }
-            if (!await _columnExists('topic_resources', 'updated_at')) {
-              await m.addColumn(topicResources, topicResources.updatedAt);
-            }
-            if (!await _tableExists('sync_state')) {
-              await m.createTable(syncState);
-            }
-            await classGroupDao.backfillGroupUuids();
-            // Never carried by createTable regardless of which branch ran
-            // above (see the standing note on idxTopicResourcesLookup), and
-            // `CREATE UNIQUE INDEX` has no bare `IF NOT EXISTS` guard on
-            // [Migrator.create] — check sqlite's own index list instead.
-            if (!await _indexExists('idx_class_groups_group_uuid')) {
-              await m.create(idxClassGroupsGroupUuid);
-            }
-          }
-          if (from < 12) {
-            // Assignments + rolling year progress
-            // (AcademicScoreTrackerRepository). Additive: no existing
-            // points/progress path (badges, topic_progress) reads or
-            // writes this table.
-            if (!await _tableExists('assignments')) {
-              await m.createTable(assignments);
-              await m.create(idxAssignmentsStudentSubjectTerm);
-            }
-          }
-          if (from < 13) {
-            // "Keep this chat" — see ChatSessions.pinned. Every existing
-            // chat defaults to unpinned, so this changes nothing about
-            // which chats age out until a student actually pins one.
-            if (!await _columnExists('chat_sessions', 'pinned')) {
-              await m.addColumn(chatSessions, chatSessions.pinned);
-            }
-          }
-          if (from < 14) {
-            // Lifetime Practice/Apply counters behind the Achievements
-            // badge progress bars — see BadgeService. Every existing
-            // learner starts these at 0, which reads as a contradiction
-            // next to an already-earned badge (Sharp Mind shown Completed
-            // beside a "0/5 correct" bar) — schema 15 below backfills a
-            // floor from the badges already on record.
-            if (!await _columnExists('students', 'total_practice_attempted')) {
-              await m.addColumn(students, students.totalPracticeAttempted);
-            }
-            if (!await _columnExists('students', 'total_practice_correct')) {
-              await m.addColumn(students, students.totalPracticeCorrect);
-            }
-            if (!await _columnExists('students', 'total_scenarios_completed')) {
-              await m.addColumn(students, students.totalScenariosCompleted);
-            }
-            if (!await _columnExists('students', 'total_lessons_completed')) {
-              await m.addColumn(students, students.totalLessonsCompleted);
-            }
-          }
-          if (from < 15) {
-            // Same standing rule as `if (from < 9)` above: check the
-            // database itself, don't trust `from`. A device could reach
-            // this block already sitting at schema 14 but missing a column
-            // the 14-step added later in development — repeating the
-            // guards here means the UPDATEs below never hit "no such
-            // column" regardless of exactly which shape of v14 a real
-            // install upgraded from.
-            if (!await _columnExists('students', 'total_practice_attempted')) {
-              await m.addColumn(students, students.totalPracticeAttempted);
-            }
-            if (!await _columnExists('students', 'total_practice_correct')) {
-              await m.addColumn(students, students.totalPracticeCorrect);
-            }
-            if (!await _columnExists('students', 'total_scenarios_completed')) {
-              await m.addColumn(students, students.totalScenariosCompleted);
-            }
-            if (!await _columnExists('students', 'total_lessons_completed')) {
-              await m.addColumn(students, students.totalLessonsCompleted);
-            }
+    onCreate: (m) async {
+      await m.createAll();
+      // Not a drift table (drift has no FTS5 table class), so createAll
+      // does not know about it.
+      await _createResourceSearchIndex();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(learningPaths);
+      }
+      if (from < 3) {
+        await m.addColumn(students, students.streakDays);
+        await m.addColumn(students, students.lastStreakDate);
+        await m.addColumn(students, students.totalPoints);
+        await m.createTable(earnedBadges);
+        await m.createTable(studentProjects);
+      }
+      if (from < 4) {
+        await m.createTable(websiteProjects);
+      }
+      if (from < 5) {
+        await m.createTable(translationCacheEntries);
+      }
+      if (from < 6) {
+        // Teacher-supplied notes/textbook chunks. Purely additive — the
+        // hardcoded syllabi in assets/curriculum are untouched, and an
+        // upgrade that stops here leaves the app behaving exactly as it
+        // did on schema 5.
+        await m.createTable(topicResources);
+        // createTable does not carry the table's indexes, and a device
+        // that upgraded would otherwise run every retrieval as a full
+        // scan while a freshly installed one (onCreate → createAll) did
+        // not — the same code, quietly slower on exactly the older,
+        // weaker hardware this product targets.
+        await m.create(idxTopicResourcesLookup);
+        await m.create(idxTopicResourcesTitle);
+      }
+      if (from < 7) {
+        // Teacher-created subjects. Also additive: with this table empty
+        // the browse grid shows exactly the 16 bundled subjects.
+        await m.createTable(customSubjects);
+        await m.create(idxCustomSubjectsSubjectId);
+      }
+      if (from < 8) {
+        // One row per chat, indexing the recall files in otic_sessions/.
+        // Additive: SessionSummaries still holds the per-turn rows that
+        // topic progress and the teacher dashboard read, so an upgrade
+        // that stops here loses nothing — the sidebar simply starts
+        // empty and refills as new chats are had.
+        await m.createTable(chatSessions);
+        await m.create(idxChatSessionsRecent);
+      }
+      // ── Schema 9 onward: idempotent from here down ─────────────────
+      //
+      // `m.createTable(x)` always stamps *today's* Dart definition of x,
+      // not the shape x had when it was first added — so any step below
+      // that both creates a table and later ALTERs a column onto it can
+      // collide with itself on a device that jumps several versions in
+      // one boot (`duplicate column name`), and a step that re-runs
+      // after a previous upgrade attempt partially completed and then
+      // crashed can collide on `table already exists`. Both are real,
+      // not hypothetical: the second is exactly what happened on a real
+      // device here — `onUpgrade` has no transaction wrapping these
+      // statements, so the schema-9→10 step (create appBuilderProjects)
+      // had already committed and `user_version` was still 9 when the
+      // schema-11 step below (the `UNIQUE`-column bug, since fixed)
+      // threw and aborted the rest of the upgrade. Every step from here
+      // down checks the database itself — via [_tableExists]/
+      // [_columnExists] — instead of trusting `from`/`to`, so re-running
+      // an upgrade that previously got partway is always safe.
+      if (from < 9) {
+        // Classes/streams. Additive: every existing learner starts
+        // unassigned (class_group_id NULL) and keeps all their progress.
+        if (!await _tableExists('class_groups')) {
+          await m.createTable(classGroups);
+        }
+        if (!await _columnExists('students', 'class_group_id')) {
+          await m.addColumn(students, students.classGroupId);
+        }
+        // Full-text index over teacher material. Built from the rows
+        // already in topic_resources, so notes uploaded before this
+        // upgrade stay searchable. Re-running the rebuild is harmless
+        // (it is idempotent by nature), so this whole block is safe to
+        // repeat even though the CREATE TABLE/TRIGGERs inside it are
+        // already `IF NOT EXISTS`.
+        await _createResourceSearchIndex();
+        await customStatement(
+          "INSERT INTO topic_resources_fts(topic_resources_fts) "
+          "VALUES('rebuild')",
+        );
+      }
+      if (from < 10) {
+        // App Builder generations, saved per student — the same gap
+        // Website Builder already closed via WebsiteProjects. Purely
+        // additive: nothing previously read or wrote this table.
+        if (!await _tableExists('app_builder_projects')) {
+          await m.createTable(appBuilderProjects);
+        }
+      }
+      if (from < 11) {
+        // Scoped class/stream/subject sync over the local network
+        // (lib/collaboration/sync/). classGroups.id and topic_resources
+        // rows already existed and are device-local; the new columns
+        // give them a portable identity/scope/version without touching
+        // anything that already reads or writes these tables.
+        if (!await _columnExists('class_groups', 'group_uuid')) {
+          // No inline UNIQUE — see the doc on ClassGroups.groupUuid for
+          // why (`ALTER TABLE ... ADD COLUMN ... UNIQUE` is rejected by
+          // SQLite outright). Uniqueness is [idxClassGroupsGroupUuid],
+          // created below once every row has a real value.
+          await m.addColumn(classGroups, classGroups.groupUuid);
+        }
+        if (!await _columnExists('topic_resources', 'class_group_uuid')) {
+          await m.addColumn(topicResources, topicResources.classGroupUuid);
+        }
+        if (!await _columnExists('topic_resources', 'updated_at')) {
+          await m.addColumn(topicResources, topicResources.updatedAt);
+        }
+        if (!await _tableExists('sync_state')) {
+          await m.createTable(syncState);
+        }
+        await classGroupDao.backfillGroupUuids();
+        // Never carried by createTable regardless of which branch ran
+        // above (see the standing note on idxTopicResourcesLookup), and
+        // `CREATE UNIQUE INDEX` has no bare `IF NOT EXISTS` guard on
+        // [Migrator.create] — check sqlite's own index list instead.
+        if (!await _indexExists('idx_class_groups_group_uuid')) {
+          await m.create(idxClassGroupsGroupUuid);
+        }
+      }
+      if (from < 12) {
+        // Assignments + rolling year progress
+        // (AcademicScoreTrackerRepository). Additive: no existing
+        // points/progress path (badges, topic_progress) reads or
+        // writes this table.
+        if (!await _tableExists('assignments')) {
+          await m.createTable(assignments);
+          await m.create(idxAssignmentsStudentSubjectTerm);
+        }
+      }
+      if (from < 13) {
+        // "Keep this chat" — see ChatSessions.pinned. Every existing
+        // chat defaults to unpinned, so this changes nothing about
+        // which chats age out until a student actually pins one.
+        if (!await _columnExists('chat_sessions', 'pinned')) {
+          await m.addColumn(chatSessions, chatSessions.pinned);
+        }
+      }
+      if (from < 14) {
+        // Lifetime Practice/Apply counters behind the Achievements
+        // badge progress bars — see BadgeService. Every existing
+        // learner starts these at 0, which reads as a contradiction
+        // next to an already-earned badge (Sharp Mind shown Completed
+        // beside a "0/5 correct" bar) — schema 15 below backfills a
+        // floor from the badges already on record.
+        if (!await _columnExists('students', 'total_practice_attempted')) {
+          await m.addColumn(students, students.totalPracticeAttempted);
+        }
+        if (!await _columnExists('students', 'total_practice_correct')) {
+          await m.addColumn(students, students.totalPracticeCorrect);
+        }
+        if (!await _columnExists('students', 'total_scenarios_completed')) {
+          await m.addColumn(students, students.totalScenariosCompleted);
+        }
+        if (!await _columnExists('students', 'total_lessons_completed')) {
+          await m.addColumn(students, students.totalLessonsCompleted);
+        }
+      }
+      if (from < 15) {
+        // Same standing rule as `if (from < 9)` above: check the
+        // database itself, don't trust `from`. A device could reach
+        // this block already sitting at schema 14 but missing a column
+        // the 14-step added later in development — repeating the
+        // guards here means the UPDATEs below never hit "no such
+        // column" regardless of exactly which shape of v14 a real
+        // install upgraded from.
+        if (!await _columnExists('students', 'total_practice_attempted')) {
+          await m.addColumn(students, students.totalPracticeAttempted);
+        }
+        if (!await _columnExists('students', 'total_practice_correct')) {
+          await m.addColumn(students, students.totalPracticeCorrect);
+        }
+        if (!await _columnExists('students', 'total_scenarios_completed')) {
+          await m.addColumn(students, students.totalScenariosCompleted);
+        }
+        if (!await _columnExists('students', 'total_lessons_completed')) {
+          await m.addColumn(students, students.totalLessonsCompleted);
+        }
 
-            // Backfill for the schema-14 counters above, for a learner who
-            // earned practice_starter/sharp_mind/scenario_solver under the
-            // old session-scored logic before those counters existed.
-            // Floors only (MAX, never overwrites a higher real count), so
-            // this is safe to re-run and never contradicts activity BadgeService
-            // has already recorded since the schema-14 upgrade. Guarded on
-            // the table existing — always true on a real device (created at
-            // schema 3) — because a synthetic test fixture that jumps
-            // straight to an early schema may not have created it yet.
-            if (await _tableExists('earned_badges')) {
-              await customStatement('''
+        // Backfill for the schema-14 counters above, for a learner who
+        // earned practice_starter/sharp_mind/scenario_solver under the
+        // old session-scored logic before those counters existed.
+        // Floors only (MAX, never overwrites a higher real count), so
+        // this is safe to re-run and never contradicts activity BadgeService
+        // has already recorded since the schema-14 upgrade. Guarded on
+        // the table existing — always true on a real device (created at
+        // schema 3) — because a synthetic test fixture that jumps
+        // straight to an early schema may not have created it yet.
+        if (await _tableExists('earned_badges')) {
+          await customStatement('''
                 UPDATE students SET total_practice_attempted =
                   MAX(total_practice_attempted, 1)
                 WHERE id IN (
@@ -295,7 +301,7 @@ class OticDatabase extends _$OticDatabase {
                   WHERE badge_id = 'practice_starter'
                 )
               ''');
-              await customStatement('''
+          await customStatement('''
                 UPDATE students SET
                   total_practice_correct = MAX(total_practice_correct, 5),
                   total_practice_attempted = MAX(total_practice_attempted, 5)
@@ -304,7 +310,7 @@ class OticDatabase extends _$OticDatabase {
                   WHERE badge_id = 'sharp_mind'
                 )
               ''');
-              await customStatement('''
+          await customStatement('''
                 UPDATE students SET total_scenarios_completed =
                   MAX(total_scenarios_completed, 5)
                 WHERE id IN (
@@ -312,10 +318,43 @@ class OticDatabase extends _$OticDatabase {
                   WHERE badge_id = 'scenario_solver'
                 )
               ''');
-            }
-          }
-        },
-      );
+        }
+      }
+      if (from < 16) {
+        // Class sync restricted to one school / class / stream /
+        // subject: class keys, pinned teacher keys, opt-in note shares,
+        // the device's school + signing key, and a channel digest.
+        // Additive — no share rows exist yet, so nothing is served until
+        // a teacher shares a note, which is the intended starting point.
+        for (final (col, add) in [
+          ('school_id', () => m.addColumn(classGroups, classGroups.schoolId)),
+          ('class_key', () => m.addColumn(classGroups, classGroups.classKey)),
+          (
+            'teacher_public_key',
+            () => m.addColumn(classGroups, classGroups.teacherPublicKey),
+          ),
+          ('joined', () => m.addColumn(classGroups, classGroups.joined)),
+        ]) {
+          if (!await _columnExists('class_groups', col)) await add();
+        }
+        if (!await _columnExists('sync_state', 'channel_digest')) {
+          await m.addColumn(syncState, syncState.channelDigest);
+        }
+        if (!await _columnExists('topic_resources', 'document_title')) {
+          await m.addColumn(topicResources, topicResources.documentTitle);
+        }
+        if (!await _tableExists('resource_shares')) {
+          await m.createTable(resourceShares);
+        }
+        if (!await _indexExists('idx_resource_shares_unique')) {
+          await m.create(idxResourceSharesUnique);
+        }
+        if (!await _tableExists('sync_identity')) {
+          await m.createTable(syncIdentity);
+        }
+      }
+    },
+  );
 
   Future<bool> _tableExists(String name) async {
     final row = await customSelect(

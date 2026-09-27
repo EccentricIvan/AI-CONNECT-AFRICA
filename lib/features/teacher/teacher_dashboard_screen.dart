@@ -69,16 +69,18 @@ class _TeacherDashboardScreenState
     final learnersAsync = ref.watch(allLearnersProvider);
     final classes =
         ref.watch(classGroupsProvider).valueOrNull ?? const <ClassGroup>[];
-    final stats = ref.watch(learnerStatsProvider).valueOrNull ??
+    final stats =
+        ref.watch(learnerStatsProvider).valueOrNull ??
         const <int, LearnerStats>{};
     final classById = {for (final c in classes) c.id: c};
 
     // A class deleted or renamed elsewhere must not leave the filter holding
     // a stale row.
     final _Filter filter = switch (_filter) {
-      _InClass(:final group) => classById[group.id] == null
-          ? const _AllLearners()
-          : _InClass(classById[group.id]!),
+      _InClass(:final group) =>
+        classById[group.id] == null
+            ? const _AllLearners()
+            : _InClass(classById[group.id]!),
       final other => other,
     };
 
@@ -182,7 +184,7 @@ class _TeacherDashboardScreenState
                     message: learners.isEmpty
                         ? 'No learners yet. Use "Add learner" to enrol your class.'
                         : 'No learners here yet. Use "Add learner", or move a '
-                            'learner in from "All learners".',
+                              'learner in from "All learners".',
                   )
                 else
                   for (final s in shown)
@@ -254,18 +256,28 @@ class _TeacherDashboardScreenState
 
     final dao = ref.read(dbProvider).classGroupDao;
     if (existing == null) {
-      final id =
-          await dao.createClass(className: className, streamName: streamName);
+      final id = await dao.createClass(
+        className: className,
+        streamName: streamName,
+      );
       if (!mounted) return;
-      setState(() => _filter = _InClass(ClassGroup(
+      setState(
+        () => _filter = _InClass(
+          ClassGroup(
             id: id,
             className: className,
             streamName: streamName.isEmpty ? null : streamName,
             createdAt: DateTime.now(),
-          )));
+            joined: false,
+          ),
+        ),
+      );
     } else {
-      await dao.renameClass(existing.id,
-          className: className, streamName: streamName);
+      await dao.renameClass(
+        existing.id,
+        className: className,
+        streamName: streamName,
+      );
     }
   }
 
@@ -340,19 +352,19 @@ class _ClassChips extends StatelessWidget {
   final VoidCallback onCreate;
 
   bool _isSelected(_Filter f) => switch ((f, selected)) {
-        (_AllLearners(), _AllLearners()) => true,
-        (_Unassigned(), _Unassigned()) => true,
-        (_InClass(group: final a), _InClass(group: final b)) => a.id == b.id,
-        _ => false,
-      };
+    (_AllLearners(), _AllLearners()) => true,
+    (_Unassigned(), _Unassigned()) => true,
+    (_InClass(group: final a), _InClass(group: final b)) => a.id == b.id,
+    _ => false,
+  };
 
   @override
   Widget build(BuildContext context) {
     Widget chip(String label, _Filter f) => ChoiceChip(
-          label: Text(label),
-          selected: _isSelected(f),
-          onSelected: (_) => onSelected(f),
-        );
+      label: Text(label),
+      selected: _isSelected(f),
+      onSelected: (_) => onSelected(f),
+    );
 
     return Wrap(
       spacing: 8,
@@ -394,32 +406,35 @@ class _ClassSummary extends StatelessWidget {
     final mastery = started.isEmpty
         ? null
         : started.map((r) => r.averageLevel).reduce((a, b) => a + b) /
-            started.length;
+              started.length;
     final sessions = rows.fold<int>(0, (sum, r) => sum + r.sessions);
     final needHelp = learners
-        .where((s) =>
-            needsHelpReason(s, stats[s.id] ?? LearnerStats.empty, now) != null)
+        .where(
+          (s) =>
+              needsHelpReason(s, stats[s.id] ?? LearnerStats.empty, now) !=
+              null,
+        )
         .length;
 
     Widget metric(String value, String label) => Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: colors.textPrimary,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: colors.textSecondary),
-              ),
-            ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
           ),
-        );
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: colors.textSecondary),
+          ),
+        ],
+      ),
+    );
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
@@ -545,8 +560,9 @@ class _LearnerCard extends StatelessWidget {
                               child: LinearProgressIndicator(
                                 value: stats.topics == 0 ? 0 : mastery / 100,
                                 minHeight: 6,
-                                backgroundColor:
-                                    AppColors.primary.withValues(alpha: 0.1),
+                                backgroundColor: AppColors.primary.withValues(
+                                  alpha: 0.1,
+                                ),
                               ),
                             ),
                           ),
@@ -849,9 +865,14 @@ class _TeacherPinCard extends ConsumerWidget {
           borderRadius: BorderRadius.circular(14),
           side: BorderSide(color: ac.border),
         ),
-        leading: const Icon(Icons.lock_outline_rounded, color: AppColors.accentBlue),
+        leading: const Icon(
+          Icons.lock_outline_rounded,
+          color: AppColors.accentBlue,
+        ),
         title: const Text('Teacher PIN'),
-        subtitle: const Text('Keep learners out of the Teacher and Admin areas'),
+        subtitle: const Text(
+          'Keep learners out of the Teacher and Admin areas',
+        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => showTeacherPinSettings(context, ref),
       ),

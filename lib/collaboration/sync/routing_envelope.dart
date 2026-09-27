@@ -67,12 +67,14 @@ class ResourceChunkEnvelope {
     required String contentChunk,
     required String createdAt,
     String? updatedAt,
+    String? documentTitle,
   }) {
     final payload = <String, Object?>{
       'subject_id': subjectId,
       'topic_key': topicKey,
       'term_marker': termMarker,
       'resource_title': resourceTitle,
+      'document_title': documentTitle ?? resourceTitle,
       'content_chunk': contentChunk,
       'created_at': createdAt,
       'updated_at': updatedAt ?? createdAt,
@@ -86,11 +88,11 @@ class ResourceChunkEnvelope {
   }
 
   Map<String, Object?> toJson() => {
-        'routing_key': routingKey,
-        'term': term,
-        'chunk_id': chunkId,
-        'payload': payload,
-      };
+    'routing_key': routingKey,
+    'term': term,
+    'chunk_id': chunkId,
+    'payload': payload,
+  };
 
   /// Parses one array entry from a `/sync/channel` response.
   ///

@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Class sync discovery: lets the nsd plugin hold a multicast lock while
+         looking for the teacher's device. Without it many phones silently drop
+         the mDNS and UDP broadcast packets, and no teacher or classmate shows. -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application

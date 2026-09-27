@@ -39,18 +39,26 @@ bool _hasDocumentStructure(String html) =>
 String _repairTruncatedDocument(String html) {
   var out = html;
 
-  final styleOpen =
-      RegExp(r'<style\b', caseSensitive: false).allMatches(out).length;
-  final styleClose =
-      RegExp(r'</style\s*>', caseSensitive: false).allMatches(out).length;
+  final styleOpen = RegExp(
+    r'<style\b',
+    caseSensitive: false,
+  ).allMatches(out).length;
+  final styleClose = RegExp(
+    r'</style\s*>',
+    caseSensitive: false,
+  ).allMatches(out).length;
   if (styleOpen > styleClose) {
     out = '$out\n</style>';
   }
 
-  final scriptOpen =
-      RegExp(r'<script\b', caseSensitive: false).allMatches(out).length;
-  final scriptClose =
-      RegExp(r'</script\s*>', caseSensitive: false).allMatches(out).length;
+  final scriptOpen = RegExp(
+    r'<script\b',
+    caseSensitive: false,
+  ).allMatches(out).length;
+  final scriptClose = RegExp(
+    r'</script\s*>',
+    caseSensitive: false,
+  ).allMatches(out).length;
   if (scriptOpen > scriptClose) {
     // Soft-close truncated JS so the browser can still parse the DOM below it.
     out = '$out\n}catch(e){}\n</script>';
@@ -74,7 +82,8 @@ String _repairTruncatedDocument(String html) {
 /// Wraps body-only markup in a document. The stylesheet is typography and
 /// spacing only — no components, no layout opinions, nothing that could be
 /// mistaken for the student's own design.
-String _wrapFragment(String fragment) => '''
+String _wrapFragment(String fragment) =>
+    '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -111,6 +120,58 @@ String escapeHtml(String s) => s
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
+
+/// True when [html] shows the reader some actual text. A coder reply that
+/// spent its whole token budget on `<style>` repairs into a valid but empty
+/// document — this is how a caller tells that apart from a real page.
+bool hasVisibleContent(String html, {int minChars = 40}) {
+  final text = html
+      .replaceAll(
+        RegExp(r'<head\b[\s\S]*?</head\s*>', caseSensitive: false),
+        ' ',
+      )
+      .replaceAll(
+        RegExp(r'<(style|script)\b[\s\S]*?</\1\s*>', caseSensitive: false),
+        ' ',
+      )
+      .replaceAll(
+        RegExp(r'<(style|script)\b[\s\S]*$', caseSensitive: false),
+        ' ',
+      )
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll(RegExp(r'\s+'), '');
+  return text.length >= minChars;
+}
+
+/// The page's own name: first `<title>` text, else first `<h1>` text.
+/// Null when neither has any text.
+String? extractPageTitle(String html) {
+  String? clean(String? raw) {
+    if (raw == null) return null;
+    final text = raw
+        .replaceAll(RegExp(r'<[^>]*>'), ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (text.isEmpty) return null;
+    return text.length > 60 ? text.substring(0, 60).trim() : text;
+  }
+
+  final title = RegExp(
+    r'<title[^>]*>([\s\S]*?)</title>',
+    caseSensitive: false,
+  ).firstMatch(html)?.group(1);
+  return clean(title) ??
+      clean(
+        RegExp(
+          r'<h1[^>]*>([\s\S]*?)</h1>',
+          caseSensitive: false,
+        ).firstMatch(html)?.group(1),
+      );
+}
 
 /// Shown when there is genuinely nothing to render yet. Deliberately a status
 /// message rather than a sample page — a fake site here is what made the

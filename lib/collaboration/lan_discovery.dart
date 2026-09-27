@@ -18,6 +18,7 @@ class LanPeer {
     required this.address,
     this.role = 'student',
     this.syncPort,
+    this.schoolTag,
   });
 
   final String id;
@@ -35,6 +36,9 @@ class LanPeer {
   /// `SelectiveSyncManager` should call at [address].
   final int? syncPort;
 
+  /// The peer's school tag (`schoolTag` in class_crypto.dart), or null.
+  final String? schoolTag;
+
   bool get isSyncServer => role == 'teacher' && syncPort != null;
 }
 
@@ -45,6 +49,7 @@ class LanDiscoveryService {
     this.points = 0,
     this.role = 'student',
     this.syncPort,
+    this.schoolTag,
   });
 
   static const _port = 47474;
@@ -64,9 +69,15 @@ class LanDiscoveryService {
   /// running. Left null (and therefore un-announced) otherwise.
   int? syncPort;
 
+  /// This device's school tag, announced so peers can list only their own
+  /// school. Null when the device has no school yet.
+  final String? schoolTag;
+
   /// Random per-session ID so we can ignore our own broadcasts.
-  final String _selfId =
-      Random().nextInt(0xFFFFFFFF).toRadixString(16).padLeft(8, '0');
+  final String _selfId = Random()
+      .nextInt(0xFFFFFFFF)
+      .toRadixString(16)
+      .padLeft(8, '0');
 
   RawDatagramSocket? _socket;
   Timer? _announceTimer;
@@ -84,8 +95,7 @@ class LanDiscoveryService {
   Future<void> start() async {
     if (_socket != null) return;
 
-    final socket =
-        await RawDatagramSocket.bind(InternetAddress.anyIPv4, _port);
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, _port);
     socket.broadcastEnabled = true;
     _socket = socket;
 
@@ -96,8 +106,7 @@ class LanDiscoveryService {
       _handlePacket(dg);
     });
 
-    _announceTimer =
-        Timer.periodic(_announceInterval, (_) => _announce());
+    _announceTimer = Timer.periodic(_announceInterval, (_) => _announce());
     _pruneTimer = Timer.periodic(const Duration(seconds: 4), (_) => _prune());
     _announce();
   }
@@ -113,6 +122,7 @@ class LanDiscoveryService {
       'points': points,
       'role': role,
       if (syncPort != null) 'sync_port': syncPort,
+      if (schoolTag != null) 'school': schoolTag,
     });
     try {
       socket.send(
@@ -141,6 +151,7 @@ class LanDiscoveryService {
         address: dg.address.address,
         role: (data['role'] as String?) ?? 'student',
         syncPort: (data['sync_port'] as num?)?.toInt(),
+        schoolTag: data['school'] as String?,
       );
       _emit();
     } catch (_) {

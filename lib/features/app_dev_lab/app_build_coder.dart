@@ -59,11 +59,15 @@ String? extractDartSource(String raw) {
   var dart = (fenced?.group(1) ?? cleaned).trim();
 
   // Strip accidental think tags if the filter missed them.
-  dart = dart.replaceAll(RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false), '');
+  dart = dart.replaceAll(
+    RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false),
+    '',
+  );
   dart = dart.trim();
   if (dart.isEmpty) return null;
 
-  final looksLikeDart = RegExp(
+  final looksLikeDart =
+      RegExp(
         r'\b(class|Widget|StatefulWidget|StatelessWidget|Scaffold|MaterialApp)\b',
       ).hasMatch(dart) ||
       dart.contains('import \'package:flutter');
@@ -84,7 +88,9 @@ String fallbackAppDart(AppBuildIntent intent) {
   final theme = intent.themePrimary;
   final featureLines = intent.features.isEmpty
       ? "    'Home screen',"
-      : intent.features.map((f) => "    '${f.replaceAll("'", r"\'")}',").join('\n');
+      : intent.features
+            .map((f) => "    '${f.replaceAll("'", r"\'")}',")
+            .join('\n');
 
   return '''
 import 'package:flutter/material.dart';
@@ -180,8 +186,8 @@ String fallbackAppHtml(AppBuildIntent intent) {
   final featureLis = intent.features.isEmpty
       ? '<li>Home screen</li>'
       : intent.features
-          .map((f) => '<li>${f.replaceAll('<', '&lt;')}</li>')
-          .join();
+            .map((f) => '<li>${f.replaceAll('<', '&lt;')}</li>')
+            .join();
   final primary = intent.themePrimary;
 
   // Self-contained: this document carries every class it uses, so it renders
@@ -321,6 +327,7 @@ Future<String?> generateAppHtmlWithCoder({
   required InferenceEngine engine,
   required AppBuildIntent intent,
   void Function(String cumulative)? onToken,
+  int maxTokens = kAppBuildMaxTokens,
 }) async {
   final brief = intent.toHtmlCoderBrief();
   final buf = StringBuffer();
@@ -331,7 +338,7 @@ Future<String?> generateAppHtmlWithCoder({
     final raw = await engine.generate(
       prompt: brief,
       systemPrompt: kAppHtmlSystemPrompt,
-      maxTokens: kAppBuildMaxTokens,
+      maxTokens: maxTokens,
       temperature: kCoderTemperature,
       onToken: (token) {
         buf.write(token);
@@ -370,8 +377,9 @@ String? extractPythonSource(String raw) {
       .trim();
   if (python.isEmpty) return null;
 
-  final looksLikePython =
-      RegExp(r'\b(import|from|def|FastAPI|class)\b').hasMatch(python);
+  final looksLikePython = RegExp(
+    r'\b(import|from|def|FastAPI|class)\b',
+  ).hasMatch(python);
   if (!looksLikePython) return null;
 
   return python;

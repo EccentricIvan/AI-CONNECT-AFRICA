@@ -15,7 +15,10 @@ import 'package:drift/drift.dart';
 ///
 ///   topic_resources(id, subject_id, topic_key, term_marker,
 ///                   resource_title, content_chunk, created_at)
-@TableIndex(name: 'idx_topic_resources_lookup', columns: {#subjectId, #topicKey})
+@TableIndex(
+  name: 'idx_topic_resources_lookup',
+  columns: {#subjectId, #topicKey},
+)
 @TableIndex(name: 'idx_topic_resources_title', columns: {#resourceTitle})
 class TopicResources extends Table {
   @override
@@ -70,6 +73,15 @@ class TopicResources extends Table {
   /// [createdAt], so a resource written before this column existed is still
   /// syncable (just always looks "current" until it is next edited).
   TextColumn get updatedAt => text().nullable()();
+
+  /// The file (or typed note) this row came from, as the teacher named it.
+  ///
+  /// An uploaded file is split at its headings so the tutor can find the
+  /// right pages — each section is its own [resourceTitle]. The teacher
+  /// never sees that split: lists, sharing and deleting all work on this
+  /// document title. Null on rows written before it existed, which then
+  /// stand for themselves (see `COALESCE(document_title, resource_title)`).
+  TextColumn get documentTitle => text().nullable()();
 }
 
 /// `term_marker` value meaning "every term".

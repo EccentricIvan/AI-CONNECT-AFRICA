@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../collaboration/lan_discovery.dart';
+import '../../collaboration/sync/class_crypto.dart' show schoolTag;
 import '../../collaboration/sync/mdns_discovery.dart';
 import '../../collaboration/sync/selective_sync_manager.dart';
 import '../../core/theme/app_colors.dart';
@@ -31,28 +32,42 @@ class _CollaborateScreenState extends ConsumerState<CollaborateScreen> {
   String? _error;
   bool _starting = true;
 
+  /// This device's school tag, once known. With one, only peers of the same
+  /// school are listed; without one (never joined a class) every teacher is
+  /// listed so the student can join.
+  String? _myTag;
+
   /// UDP and mDNS peers, merged and deduplicated by (address, sync port) —
   /// the same teacher server answering on both channels must show once, not
   /// twice.
   List<LanPeer> get _allPeers {
-    final seen = <String>{
+    final sameSchool = [
       for (final p in _peers)
+        if (_myTag == null
+            ? p.isSyncServer || p.schoolTag == null
+            : p.schoolTag == _myTag)
+          p,
+    ];
+    final seen = <String>{
+      for (final p in sameSchool)
         if (p.isSyncServer) '${p.address}:${p.syncPort}',
     };
-    final combined = [..._peers];
+    final combined = [...sameSchool];
     for (final m in _mdnsPeers) {
       final key = '${m.address}:${m.port}';
       if (seen.add(key)) {
-        combined.add(LanPeer(
-          id: 'mdns:$key',
-          name: m.name,
-          topic: '',
-          points: 0,
-          lastSeen: DateTime.now(),
-          address: m.address,
-          role: 'teacher',
-          syncPort: m.port,
-        ));
+        combined.add(
+          LanPeer(
+            id: 'mdns:$key',
+            name: m.name,
+            topic: '',
+            points: 0,
+            lastSeen: DateTime.now(),
+            address: m.address,
+            role: 'teacher',
+            syncPort: m.port,
+          ),
+        );
       }
     }
     return combined;
@@ -76,9 +91,12 @@ class _CollaborateScreenState extends ConsumerState<CollaborateScreen> {
     }
 
     final student = await ref.read(activeStudentProvider.future);
+    final me = await ref.read(dbProvider).classSyncDao.identity();
+    _myTag = schoolTag(me.schoolId);
     final service = LanDiscoveryService(
       displayName: student?.name ?? 'Learner',
       points: student?.totalPoints ?? 0,
+      schoolTag: _myTag,
     );
 
     // Best-effort, additive discovery — mDNS is unsupported on Linux/web
@@ -136,7 +154,7 @@ class _CollaborateScreenState extends ConsumerState<CollaborateScreen> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-appBar: StudioAppBar(
+      appBar: StudioAppBar(
         title: tr(context, 'Nearby learners'),
         subtitle: tr(context, 'Discover classmates on this network'),
         icon: Icons.wifi_tethering_rounded,
@@ -167,12 +185,10 @@ class _PeersView extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (syncPeers.isNotEmpty) ...[
-          _SyncSection(peers: syncPeers, myClass: myClass),
-          const SizedBox(height: 20),
-          const Divider(),
-          const SizedBox(height: 4),
-        ],
+        _SyncSection(peers: syncPeers, myClass: myClass),
+        const SizedBox(height: 20),
+        const Divider(),
+        const SizedBox(height: 4),
         // Status banner
         Container(
           padding: const EdgeInsets.all(16),
@@ -227,10 +243,12 @@ class _PeersView extends ConsumerWidget {
   }
 }
 
-/// Teacher devices on this network currently syncing a class, and this
-/// student's own "Sync now" action — shown only when both exist: a sync
-/// server nobody is assigned to, or a learner with no class assigned, has
-/// nothing useful to offer here.
+/// The learner's class: joining one with the teacher's code, and pulling
+/// its notes from the teacher's device.
+///
+/// Only a class joined with a code can sync — that is what gives this device
+/// the class key and pins the teacher's device, so it receives only its own
+/// class's notes, only from its real teacher.
 class _SyncSection extends ConsumerStatefulWidget {
   const _SyncSection({required this.peers, required this.myClass});
   final List<LanPeer> peers;
@@ -243,19 +261,17 @@ class _SyncSection extends ConsumerStatefulWidget {
 class _SyncSectionState extends ConsumerState<_SyncSection> {
   String? _syncingPeerId;
   final Map<String, SyncResult> _results = {};
+  bool _joining = false;
 
   Future<void> _syncFrom(LanPeer peer) async {
     final group = widget.myClass;
-    if (group == null || group.groupUuid == null || _syncingPeerId != null) {
-      return;
-    }
+    if (group == null || !group.joined || _syncingPeerId != null) return;
     setState(() => _syncingPeerId = peer.id);
     final manager = SelectiveSyncManager(ref.read(dbProvider));
     try {
       final result = await manager.syncClass(
-        teacherAddress: peer.address,
-        teacherPort: peer.syncPort!,
-        classGroupUuid: group.groupUuid!,
+        teacher: (address: peer.address, port: peer.syncPort!),
+        group: group,
       );
       if (!mounted) return;
       setState(() => _results[peer.id] = result);
@@ -265,16 +281,133 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     }
   }
 
+  Future<void> _join() async {
+    final controller = TextEditingController();
+    final typed = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Join a class'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Type the join code your teacher is showing. You only need to do '
+              'this once.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(
+                letterSpacing: 3,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: const InputDecoration(
+                hintText: 'K7M4-P9QX',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (v) => Navigator.pop(ctx, v),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Join'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (typed == null || typed.trim().isEmpty || !mounted) return;
+
+    setState(() => _joining = true);
+    final manager = SelectiveSyncManager(ref.read(dbProvider));
+    try {
+      final result = await manager.joinClass(
+        teachers: [
+          for (final p in widget.peers) (address: p.address, port: p.syncPort!),
+        ],
+        typedCode: typed,
+      );
+      if (!mounted) return;
+      if (!result.ok) {
+        _message(result.error!);
+        return;
+      }
+      final student = await ref.read(activeStudentProvider.future);
+      if (student != null) {
+        await ref
+            .read(dbProvider)
+            .classGroupDao
+            .assignLearner(student.id, result.group!.id);
+        ref.invalidate(activeStudentProvider);
+      }
+      if (!mounted) return;
+      _message(
+        'Joined ${classLabel(result.group!)}'
+        '${(result.schoolName ?? '').isEmpty ? '' : ' at ${result.schoolName}'}. '
+        'Tap Sync now to get your class notes.',
+      );
+    } finally {
+      manager.dispose();
+      if (mounted) setState(() => _joining = false);
+    }
+  }
+
+  void _message(String text) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(text),
+          showCloseIcon: true,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 8),
+        ),
+      );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ac = AppColors.of(context);
     final group = widget.myClass;
+    final joined = group != null && group.joined;
+    final joinButton = OutlinedButton.icon(
+      onPressed: _joining || widget.peers.isEmpty ? null : _join,
+      icon: _joining
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.vpn_key_outlined, size: 18),
+      label: Text(joined ? 'Join a different class' : 'Join a class'),
+    );
 
-    if (group == null) {
-      return const _SyncNotice(
-        text: 'A teacher is syncing class material nearby, but you are not '
-            'assigned to a class yet — ask your teacher to add you under '
-            'Teacher → Classes.',
+    if (!joined) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SyncNotice(
+            text: widget.peers.isEmpty
+                ? 'To get your class’s notes, ask your teacher to start sharing the '
+                      'class (Teacher → Class sync). Then tap Join a class and type '
+                      'the code they show.'
+                      '${Platform.isWindows ? ' If Windows asks whether to allow the '
+                                'app on networks, choose Allow.' : ''}'
+                : 'Your teacher is sharing a class nearby. Tap Join a class and type '
+                      'the code they show — you’ll get only your class’s notes.',
+          ),
+          const SizedBox(height: 10),
+          joinButton,
+        ],
       );
     }
 
@@ -282,10 +415,16 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Class sync available',
+          'My class: ${classLabel(group)}',
           style: TextStyle(fontWeight: FontWeight.w700, color: ac.textPrimary),
         ),
         const SizedBox(height: 8),
+        if (widget.peers.isEmpty)
+          const _SyncNotice(
+            text:
+                'Your teacher isn’t sharing right now. Your class notes stay on '
+                'this device; sync again when they start sharing.',
+          ),
         for (final peer in widget.peers) ...[
           _SyncPeerCard(
             peer: peer,
@@ -296,6 +435,7 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
           ),
           const SizedBox(height: 8),
         ],
+        joinButton,
       ],
     );
   }
@@ -312,13 +452,24 @@ class _SyncNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.accentOrange.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.2)),
+        border: Border.all(
+          color: AppColors.accentOrange.withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.info_outline_rounded, color: AppColors.accentOrange, size: 20),
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.accentOrange,
+            size: 20,
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: const TextStyle(fontSize: 12.5, height: 1.4))),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 12.5, height: 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -357,19 +508,29 @@ class _SyncPeerCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.wifi_tethering_rounded, color: AppColors.accentTeal, size: 20),
+              const Icon(
+                Icons.wifi_tethering_rounded,
+                color: AppColors.accentTeal,
+                size: 20,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   '${peer.name} — $myClassLabel',
-                  style: TextStyle(fontWeight: FontWeight.w600, color: ac.textPrimary),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: ac.textPrimary,
+                  ),
                 ),
               ),
               FilledButton.tonal(
                 onPressed: syncing ? null : onSync,
                 child: syncing
                     ? const SizedBox(
-                        width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
                     : const Text('Sync now'),
               ),
             ],
@@ -378,9 +539,14 @@ class _SyncPeerCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               r.ok
-                  ? '${r.chunksInserted} new note${r.chunksInserted == 1 ? '' : 's'} pulled '
-                      'across ${r.subjectsChecked} subject${r.subjectsChecked == 1 ? '' : 's'}'
-                      '${r.rejected.isEmpty ? '' : ' — ${r.rejected.length} rejected'}.'
+                  ? r.subjectsUpdated == 0 &&
+                            r.subjectsRemoved == 0 &&
+                            r.rejected.isEmpty
+                        ? 'Up to date — ${r.subjectsChecked} subject${r.subjectsChecked == 1 ? '' : 's'}.'
+                        : 'Updated ${r.subjectsUpdated} of ${r.subjectsChecked} '
+                              'subject${r.subjectsChecked == 1 ? '' : 's'}'
+                              '${r.subjectsRemoved == 0 ? '' : ', removed ${r.subjectsRemoved} no longer shared'}'
+                              '${r.rejected.isEmpty ? '' : ' — ${r.rejected.length} problem${r.rejected.length == 1 ? '' : 's'}, those kept as they were'}.'
                   : r.error!,
               style: TextStyle(
                 fontSize: 12,
@@ -446,7 +612,11 @@ class _EmptyPeers extends StatelessWidget {
       padding: const EdgeInsets.all(40),
       child: Column(
         children: [
-          Icon(Icons.wifi_tethering, size: 56, color: Theme.of(context).hintColor),
+          Icon(
+            Icons.wifi_tethering,
+            size: 56,
+            color: Theme.of(context).hintColor,
+          ),
           const SizedBox(height: 16),
           const Text(
             'No learners found yet',
@@ -457,7 +627,10 @@ class _EmptyPeers extends StatelessWidget {
             'Ask a classmate to open the app on the same network — '
             'they will appear here within a few seconds.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
           ),
         ],
       ),

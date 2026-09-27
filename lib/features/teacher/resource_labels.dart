@@ -51,8 +51,7 @@ class ResourceLabels {
       'PDF, Word, or a text file. Everything stays on this device.';
   static const reading = 'Reading your file…';
   static const readFailed = 'That file could not be used';
-  static const importedTopics = 'Sorted into {count} topics';
-  static const importedOneTopic = 'Saved as one topic';
+  static const fileAdded = 'Added “{title}”';
 
   // ── Supporting copy ──────────────────────────────────────────────────
   static const noteTitle = 'Note title';

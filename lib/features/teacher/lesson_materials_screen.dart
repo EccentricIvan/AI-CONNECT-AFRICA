@@ -5,12 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/daos/topic_resource_dao.dart';
 import '../../db/otic_database.dart';
+import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/custom_subject_service.dart';
 import '../../services/offline_storage_service.dart';
 import '../../services/resource_import_service.dart';
 import '../../services/resource_text_extractor.dart';
 import '../../shared/widgets/studio_page.dart';
+import 'class_providers.dart';
 import 'resource_labels.dart';
 
 /// Where a teacher creates subjects and adds the material they teach from.
@@ -52,7 +54,9 @@ class LessonMaterialsScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
             children: [
-              StudioSectionHeader(title: tr(context, ResourceLabels.mySubjects)),
+              StudioSectionHeader(
+                title: tr(context, ResourceLabels.mySubjects),
+              ),
               const SizedBox(height: 12),
               for (final s in subjects)
                 _SubjectTile(subject: s, key: ValueKey(s.subjectId)),
@@ -94,8 +98,9 @@ class LessonMaterialsScreen extends ConsumerWidget {
     controller.dispose();
     if (name == null || !context.mounted) return;
 
-    final result =
-        await ref.read(customSubjectServiceProvider).create(name: name);
+    final result = await ref
+        .read(customSubjectServiceProvider)
+        .create(name: name);
     if (!context.mounted) return;
 
     if (!result.ok) {
@@ -118,6 +123,12 @@ class _SubjectTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final resources = ref.watch(topicResourcesProvider(subject.subjectId));
+    final shares =
+        ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
+        const {};
+    final classes =
+        ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[];
+    final classNames = {for (final c in classes) c.groupUuid: classLabel(c)};
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -141,10 +152,8 @@ class _SubjectTile extends ConsumerWidget {
               padding: EdgeInsets.all(16),
               child: LinearProgressIndicator(),
             ),
-            error: (e, _) => Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text('$e'),
-            ),
+            error: (e, _) =>
+                Padding(padding: const EdgeInsets.all(16), child: Text('$e')),
             data: (list) => Column(
               children: [
                 if (list.isEmpty)
@@ -161,12 +170,33 @@ class _SubjectTile extends ConsumerWidget {
                     leading: const Icon(Icons.description_outlined, size: 20),
                     title: Text(r.resourceTitle),
                     subtitle: Text(
-                      ResourceLabels.termLabel(context, r.termMarker),
+                      '${ResourceLabels.termLabel(context, r.termMarker)} · '
+                      '${_sharedWith(context, shares[r.resourceTitle], classNames)}',
                     ),
-                    trailing: IconButton(
-                      tooltip: tr(context, ResourceLabels.removeResource),
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _remove(context, ref, r),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: tr(context, 'Share with classes'),
+                          icon: Icon(
+                            (shares[r.resourceTitle] ?? const {}).isEmpty
+                                ? Icons.group_add_outlined
+                                : Icons.groups_rounded,
+                          ),
+                          onPressed: () => _share(
+                            context,
+                            ref,
+                            r,
+                            classes,
+                            shares[r.resourceTitle] ?? const {},
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: tr(context, ResourceLabels.removeResource),
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _remove(context, ref, r),
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -233,11 +263,9 @@ class _SubjectTile extends ConsumerWidget {
 
     _toast(context, tr(context, ResourceLabels.reading));
 
-    final report = await ref.read(resourceImportServiceProvider).importFile(
-          path: path,
-          subjectId: subject.subjectId,
-          termMarker: term,
-        );
+    final report = await ref
+        .read(resourceImportServiceProvider)
+        .importFile(path: path, subjectId: subject.subjectId, termMarker: term);
     if (!context.mounted) return;
 
     if (!report.ok) {
@@ -245,12 +273,12 @@ class _SubjectTile extends ConsumerWidget {
       return;
     }
     _refresh(ref);
+    // Name the file the teacher added — never how it was split inside.
     _toast(
       context,
-      report.topics.length > 1
-          ? trFill(context, ResourceLabels.importedTopics,
-              {'count': '${report.topics.length}'})
-          : tr(context, ResourceLabels.importedOneTopic),
+      trFill(context, ResourceLabels.fileAdded, {
+        'title': report.documentTitle,
+      }),
     );
   }
 
@@ -311,7 +339,9 @@ class _SubjectTile extends ConsumerWidget {
     final term = await _askTerm(context);
     if (term == null || !context.mounted) return;
 
-    final report = await ref.read(resourceImportServiceProvider).importText(
+    final report = await ref
+        .read(resourceImportServiceProvider)
+        .importText(
           title: title,
           content: body,
           subjectId: subject.subjectId,
@@ -325,6 +355,106 @@ class _SubjectTile extends ConsumerWidget {
     }
     _refresh(ref);
     _toast(context, tr(context, ResourceLabels.noteSaved));
+  }
+
+  String _sharedWith(
+    BuildContext context,
+    Set<String>? uuids,
+    Map<String?, String> classNames,
+  ) {
+    final names = [
+      for (final u in uuids ?? const <String>{})
+        if (classNames[u] != null) classNames[u]!,
+    ]..sort();
+    return names.isEmpty
+        ? tr(context, 'Not shared with any class')
+        : trFill(context, 'Shared with {classes}', {
+            'classes': names.join(', '),
+          });
+  }
+
+  /// Which classes/streams receive this note when they sync. Only this
+  /// subject's note goes, only to the ticked classes.
+  Future<void> _share(
+    BuildContext context,
+    WidgetRef ref,
+    ResourceSummary resource,
+    List<ClassGroup> classes,
+    Set<String> current,
+  ) async {
+    if (classes.isEmpty) {
+      _toast(
+        context,
+        tr(context, 'Create a class first (Teacher → Add class).'),
+      );
+      return;
+    }
+    final chosen = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) {
+        final picked = {...current};
+        return StatefulBuilder(
+          builder: (ctx, setState) => AlertDialog(
+            title: Text(
+              trFill(ctx, 'Share “{title}” with', {
+                'title': resource.resourceTitle,
+              }),
+            ),
+            content: SizedBox(
+              width: 380,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final c in classes)
+                    CheckboxListTile(
+                      value: picked.contains(c.groupUuid),
+                      title: Text(classLabel(c)),
+                      onChanged: (on) => setState(
+                        () => on == true
+                            ? picked.add(c.groupUuid!)
+                            : picked.remove(c.groupUuid),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Text(
+                      tr(
+                        ctx,
+                        'Only learners who joined a ticked class get this note, '
+                        'and only for this subject.',
+                      ),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).hintColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(tr(ctx, ResourceLabels.cancel)),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, picked),
+                child: Text(tr(ctx, 'Save')),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (chosen == null) return;
+    await ref
+        .read(dbProvider)
+        .classSyncDao
+        .setShares(
+          subjectId: subject.subjectId,
+          documentTitle: resource.resourceTitle,
+          classUuids: chosen,
+        );
   }
 
   Future<void> _remove(

@@ -27,7 +27,9 @@ void main() {
     db = OticDatabase.forTesting(DatabaseConnection(NativeDatabase.memory()));
     SharedPreferences.setMockInitialValues({});
     certsDir = await Directory.systemTemp.createTemp('wiper_test_certs');
-    final projectsDir = await Directory.systemTemp.createTemp('wiper_test_projects');
+    final projectsDir = await Directory.systemTemp.createTemp(
+      'wiper_test_projects',
+    );
     projects = ProjectStore(root: () async => projectsDir);
     wiper = LearnerDataWiper(
       db,
@@ -43,132 +45,170 @@ void main() {
 
   /// Every student-scoped table, seeded with one row for [studentId].
   Future<void> seedStudentRows(int studentId) async {
-    await db.into(db.sessionSummaries).insert(SessionSummariesCompanion.insert(
-          studentId: studentId,
-          topic: 'Algebra',
-          summary: 'Covered linear equations.',
-        ));
-    await db.into(db.topicProgress).insert(TopicProgressCompanion.insert(
-          studentId: studentId,
-          topic: 'Algebra',
-        ));
-    await db.into(db.learningPaths).insert(LearningPathsCompanion.insert(
-          studentId: studentId,
-          topic: 'Algebra',
-          title: 'Algebra path',
-          description: 'desc',
-        ));
-    await db.into(db.earnedBadges).insert(EarnedBadgesCompanion.insert(
-          studentId: studentId,
-          badgeId: 'first_lesson',
-          badgeName: 'First Step',
-        ));
-    await db.into(db.studentProjects).insert(StudentProjectsCompanion.insert(
-          studentId: studentId,
-          title: 'My essay',
-          topic: 'Algebra',
-          projectType: 'essay',
-        ));
-    await db.into(db.websiteProjects).insert(WebsiteProjectsCompanion.insert(
-          studentId: studentId,
-          title: 'My site',
-        ));
-    await db.into(db.appBuilderProjects).insert(
-        AppBuilderProjectsCompanion.insert(
-          studentId: studentId,
-          title: 'My app',
-          appTypeId: 'todo',
-          appTypeName: 'Todo',
-          htmlContent: '<html></html>',
-        ));
-    await db.into(db.assignments).insert(AssignmentsCompanion.insert(
-          studentId: studentId,
-          subjectId: 'algebra',
-          termMarker: 1,
-          title: 'Homework',
-          assignedAt: '2026-01-01T00:00:00Z',
-        ));
-    await db.into(db.chatSessions).insert(ChatSessionsCompanion.insert(
-          id: 'session-$studentId',
-          studentId: studentId,
-          title: 'A chat',
-        ));
+    await db
+        .into(db.sessionSummaries)
+        .insert(
+          SessionSummariesCompanion.insert(
+            studentId: studentId,
+            topic: 'Algebra',
+            summary: 'Covered linear equations.',
+          ),
+        );
+    await db
+        .into(db.topicProgress)
+        .insert(
+          TopicProgressCompanion.insert(studentId: studentId, topic: 'Algebra'),
+        );
+    await db
+        .into(db.learningPaths)
+        .insert(
+          LearningPathsCompanion.insert(
+            studentId: studentId,
+            topic: 'Algebra',
+            title: 'Algebra path',
+            description: 'desc',
+          ),
+        );
+    await db
+        .into(db.earnedBadges)
+        .insert(
+          EarnedBadgesCompanion.insert(
+            studentId: studentId,
+            badgeId: 'first_lesson',
+            badgeName: 'First Step',
+          ),
+        );
+    await db
+        .into(db.studentProjects)
+        .insert(
+          StudentProjectsCompanion.insert(
+            studentId: studentId,
+            title: 'My essay',
+            topic: 'Algebra',
+            projectType: 'essay',
+          ),
+        );
+    await db
+        .into(db.websiteProjects)
+        .insert(
+          WebsiteProjectsCompanion.insert(
+            studentId: studentId,
+            title: 'My site',
+          ),
+        );
+    await db
+        .into(db.appBuilderProjects)
+        .insert(
+          AppBuilderProjectsCompanion.insert(
+            studentId: studentId,
+            title: 'My app',
+            appTypeId: 'todo',
+            appTypeName: 'Todo',
+            htmlContent: '<html></html>',
+          ),
+        );
+    await db
+        .into(db.assignments)
+        .insert(
+          AssignmentsCompanion.insert(
+            studentId: studentId,
+            subjectId: 'algebra',
+            termMarker: 1,
+            title: 'Homework',
+            assignedAt: '2026-01-01T00:00:00Z',
+          ),
+        );
+    await db
+        .into(db.chatSessions)
+        .insert(
+          ChatSessionsCompanion.insert(
+            id: 'session-$studentId',
+            studentId: studentId,
+            title: 'A chat',
+          ),
+        );
   }
 
   /// Row counts, per scoped table, for one student — every table this
   /// wiper is supposed to touch, in the same order as [seedStudentRows].
   Future<Map<String, int>> countsFor(int studentId) async {
     return {
-      'session_summaries': (await (db.select(db.sessionSummaries)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'topic_progress': (await (db.select(db.topicProgress)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'learning_paths': (await (db.select(db.learningPaths)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'earned_badges': (await (db.select(db.earnedBadges)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'student_projects': (await (db.select(db.studentProjects)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'website_projects': (await (db.select(db.websiteProjects)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'app_builder_projects': (await (db.select(db.appBuilderProjects)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'assignments': (await (db.select(db.assignments)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
-      'chat_sessions': (await (db.select(db.chatSessions)
-                ..where((t) => t.studentId.equals(studentId)))
-              .get())
-          .length,
+      'session_summaries': (await (db.select(
+        db.sessionSummaries,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'topic_progress': (await (db.select(
+        db.topicProgress,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'learning_paths': (await (db.select(
+        db.learningPaths,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'earned_badges': (await (db.select(
+        db.earnedBadges,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'student_projects': (await (db.select(
+        db.studentProjects,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'website_projects': (await (db.select(
+        db.websiteProjects,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'app_builder_projects': (await (db.select(
+        db.appBuilderProjects,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'assignments': (await (db.select(
+        db.assignments,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
+      'chat_sessions': (await (db.select(
+        db.chatSessions,
+      )..where((t) => t.studentId.equals(studentId))).get()).length,
     };
   }
 
   /// Seeds one row in every table that must survive a wipe untouched.
   Future<void> seedResourceRows() async {
-    await db.into(db.topicResources).insert(TopicResourcesCompanion.insert(
-          subjectId: 'chemistry',
-          topicKey: 'acids',
-          resourceTitle: 'Acid notes',
-          contentChunk: 'Acids donate protons.',
-          createdAt: '2026-01-01T00:00:00Z',
-        ));
-    await db.into(db.customSubjects).insert(CustomSubjectsCompanion.insert(
-          subjectId: 'my_subject',
-          name: 'My Subject',
-          createdAt: '2026-01-01T00:00:00Z',
-        ));
-    await db.into(db.classGroups).insert(ClassGroupsCompanion.insert(
-          className: 'S2',
-        ));
-    await db.into(db.translationCacheEntries).insert(
-        TranslationCacheEntriesCompanion.insert(
-          cacheKey: 'k1',
-          langCode: 'sw',
-          direction: 'to_en',
-          modelTag: 'm1',
-          sourceText: 'jambo',
-          translatedText: 'hello',
-        ));
-    await db.into(db.syncState).insert(SyncStateCompanion.insert(
-          classGroupUuid: 'uuid-1',
-          subjectId: 'chemistry',
-          lastSyncedAt: '2026-01-01T00:00:00Z',
-        ));
+    await db
+        .into(db.topicResources)
+        .insert(
+          TopicResourcesCompanion.insert(
+            subjectId: 'chemistry',
+            topicKey: 'acids',
+            resourceTitle: 'Acid notes',
+            contentChunk: 'Acids donate protons.',
+            createdAt: '2026-01-01T00:00:00Z',
+          ),
+        );
+    await db
+        .into(db.customSubjects)
+        .insert(
+          CustomSubjectsCompanion.insert(
+            subjectId: 'my_subject',
+            name: 'My Subject',
+            createdAt: '2026-01-01T00:00:00Z',
+          ),
+        );
+    await db
+        .into(db.classGroups)
+        .insert(ClassGroupsCompanion.insert(className: 'S2'));
+    await db
+        .into(db.translationCacheEntries)
+        .insert(
+          TranslationCacheEntriesCompanion.insert(
+            cacheKey: 'k1',
+            langCode: 'sw',
+            direction: 'to_en',
+            modelTag: 'm1',
+            sourceText: 'jambo',
+            translatedText: 'hello',
+          ),
+        );
+    await db
+        .into(db.syncState)
+        .insert(
+          SyncStateCompanion.insert(
+            classGroupUuid: 'uuid-1',
+            subjectId: 'chemistry',
+            lastSyncedAt: '2026-01-01T00:00:00Z',
+          ),
+        );
   }
 
   Future<void> expectResourceRowsIntact() async {
@@ -176,9 +216,13 @@ void main() {
     expect((await db.select(db.customSubjects).get()).length, 1);
     expect((await db.select(db.classGroups).get()).length, 1);
     expect((await db.select(db.translationCacheEntries).get()).length, 1);
-    expect((await db.select(db.syncState).get()).length, 1,
-        reason: 'wiping sync_state while keeping topic_resources would make '
-            'the next sync needlessly re-pull everything');
+    expect(
+      (await db.select(db.syncState).get()).length,
+      1,
+      reason:
+          'wiping sync_state while keeping topic_resources would make '
+          'the next sync needlessly re-pull everything',
+    );
   }
 
   test('wipeStudent deletes only that student across every scoped table, '
@@ -203,39 +247,57 @@ void main() {
     await wiper.wipeStudent(aId);
 
     expect(await db.studentDao.getStudentById(aId), isNull);
-    expect(await db.studentDao.getStudentById(bId), isNotNull,
-        reason: 'a shared-device wipe must never touch another learner');
+    expect(
+      await db.studentDao.getStudentById(bId),
+      isNotNull,
+      reason: 'a shared-device wipe must never touch another learner',
+    );
 
     final aCounts = await countsFor(aId);
     final bCounts = await countsFor(bId);
     for (final table in aCounts.keys) {
-      expect(aCounts[table], 0,
-          reason: '$table still has a row for the wiped student');
-      expect(bCounts[table], 1,
-          reason: "$table lost the other student's row");
+      expect(
+        aCounts[table],
+        0,
+        reason: '$table still has a row for the wiped student',
+      );
+      expect(bCounts[table], 1, reason: "$table lost the other student's row");
     }
 
     await expectResourceRowsIntact();
 
     expect(prefs.getInt('active_student_id'), isNull);
     expect(prefs.getBool('lesson_done_s${aId}_chemistry_0_0'), isNull);
-    expect(prefs.getBool('lesson_done_s${bId}_chemistry_0_0'), isTrue,
-        reason: "another learner's own scoped checkmark must survive");
-    expect(prefs.getBool('lesson_done_chemistry_0_0'), isTrue,
-        reason: 'the legacy shared key is not attributable to one learner, '
-            'so a single-student wipe must leave it alone');
-    expect(prefs.getString('student_name'), 'Brian',
-        reason: "the router's onboarding-done flag stays set to a "
-            "surviving learner, but must not keep naming the deleted one — "
-            "that would itself be the deleted learner's data surviving "
-            'their own wipe');
+    expect(
+      prefs.getBool('lesson_done_s${bId}_chemistry_0_0'),
+      isTrue,
+      reason: "another learner's own scoped checkmark must survive",
+    );
+    expect(
+      prefs.getBool('lesson_done_chemistry_0_0'),
+      isTrue,
+      reason:
+          'the legacy shared key is not attributable to one learner, '
+          'so a single-student wipe must leave it alone',
+    );
+    expect(
+      prefs.getString('student_name'),
+      'Brian',
+      reason:
+          "the router's onboarding-done flag stays set to a "
+          "surviving learner, but must not keep naming the deleted one — "
+          "that would itself be the deleted learner's data surviving "
+          'their own wipe',
+    );
   });
 
   test('wipeStudent deletes only that learner\'s project folders', () async {
-    final amina = await db.studentDao
-        .createStudent(StudentsCompanion.insert(name: 'Amina'));
-    final brian = await db.studentDao
-        .createStudent(StudentsCompanion.insert(name: 'Brian'));
+    final amina = await db.studentDao.createStudent(
+      StudentsCompanion.insert(name: 'Amina'),
+    );
+    final brian = await db.studentDao.createStudent(
+      StudentsCompanion.insert(name: 'Brian'),
+    );
     for (final (id, name) in [(amina, 'Amina'), (brian, 'Brian')]) {
       await projects.save(
         studentId: id,
@@ -252,29 +314,35 @@ void main() {
     expect((await projects.list(brian)).single.title, 'Brian site');
   });
 
-  test('a stale active_student_id (e.g. from a learner deleted before this '
-      'wiper existed) does not clear student_name while a learner remains',
-      () async {
-    final aId = await db.studentDao.createStudent(
-      StudentsCompanion.insert(name: 'Amina'),
-    );
-    final bId = await db.studentDao.createStudent(
-      StudentsCompanion.insert(name: 'Brian'),
-    );
-    final prefs = await SharedPreferences.getInstance();
-    // Points at neither learner being wiped nor a real row — the shape a
-    // pre-existing device could actually be in.
-    await prefs.setInt('active_student_id', 9999);
-    await prefs.setString('student_name', 'Amina');
+  test(
+    'a stale active_student_id (e.g. from a learner deleted before this '
+    'wiper existed) does not clear student_name while a learner remains',
+    () async {
+      final aId = await db.studentDao.createStudent(
+        StudentsCompanion.insert(name: 'Amina'),
+      );
+      final bId = await db.studentDao.createStudent(
+        StudentsCompanion.insert(name: 'Brian'),
+      );
+      final prefs = await SharedPreferences.getInstance();
+      // Points at neither learner being wiped nor a real row — the shape a
+      // pre-existing device could actually be in.
+      await prefs.setInt('active_student_id', 9999);
+      await prefs.setString('student_name', 'Amina');
 
-    await wiper.wipeStudent(aId);
+      await wiper.wipeStudent(aId);
 
-    expect(prefs.getString('student_name'), 'Brian',
-        reason: 'Brian still exists — the flag must not read as "no one '
+      expect(
+        prefs.getString('student_name'),
+        'Brian',
+        reason:
+            'Brian still exists — the flag must not read as "no one '
             'active" just because the saved id is stale, and must not '
-            "keep naming Amina, the learner this call just deleted");
-    expect(await db.studentDao.getStudentById(bId), isNotNull);
-  });
+            "keep naming Amina, the learner this call just deleted",
+      );
+      expect(await db.studentDao.getStudentById(bId), isNotNull);
+    },
+  );
 
   test('wipeStudent on the last remaining learner clears the onboarding '
       'flag too, not just the row', () async {
@@ -286,9 +354,13 @@ void main() {
 
     await wiper.wipeStudent(aId);
 
-    expect(prefs.getString('student_name'), isNull,
-        reason: 'no learner remains, so the router must not read this as '
-            '"onboarding already done"');
+    expect(
+      prefs.getString('student_name'),
+      isNull,
+      reason:
+          'no learner remains, so the router must not read this as '
+          '"onboarding already done"',
+    );
   });
 
   test('wipeAll clears every learner and every scoped table, but leaves '
@@ -322,13 +394,20 @@ void main() {
     await expectResourceRowsIntact();
 
     expect(prefs.getInt('active_student_id'), isNull);
-    expect(prefs.getString('student_name'), isNull,
-        reason: "the router's onboarding-done flag must not survive a "
-            'wipeAll, or /onboarding bounces straight back to home with '
-            'zero students');
+    expect(
+      prefs.getString('student_name'),
+      isNull,
+      reason:
+          "the router's onboarding-done flag must not survive a "
+          'wipeAll, or /onboarding bounces straight back to home with '
+          'zero students',
+    );
     expect(prefs.getBool('lesson_done_s${aId}_chemistry_0_0'), isNull);
-    expect(prefs.getBool('lesson_done_chemistry_0_0'), isNull,
-        reason: 'no student remains for the legacy shared key to apply to');
+    expect(
+      prefs.getBool('lesson_done_chemistry_0_0'),
+      isNull,
+      reason: 'no student remains for the legacy shared key to apply to',
+    );
   });
 
   test('onboarding after wipeAll inserts a fresh profile instead of editing '
@@ -344,9 +423,9 @@ void main() {
     // cleared both the students table and the active_student_id pref it
     // falls back to, the guard sees nothing and takes the insert path
     // rather than silently reviving/editing the wiped row.
-    final container = ProviderContainer(overrides: [
-      dbProvider.overrideWithValue(db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [dbProvider.overrideWithValue(db)],
+    );
     addTearDown(container.dispose);
     await container
         .read(studentNotifierProvider.notifier)
@@ -362,21 +441,37 @@ void main() {
     final aId = await db.studentDao.createStudent(
       StudentsCompanion.insert(name: 'Amina'),
     );
-    final firstMark =
-        await LessonProgress().markCompleteFor(aId, 'chemistry', 0, 0);
+    final firstMark = await LessonProgress().markCompleteFor(
+      aId,
+      'chemistry',
+      0,
+      0,
+    );
     expect(firstMark, isTrue);
-    final repeatMark =
-        await LessonProgress().markCompleteFor(aId, 'chemistry', 0, 0);
+    final repeatMark = await LessonProgress().markCompleteFor(
+      aId,
+      'chemistry',
+      0,
+      0,
+    );
     expect(repeatMark, isFalse, reason: 'sanity check: already marked');
 
     await wiper.wipeAll();
 
-    final afterWipe =
-        await LessonProgress().markCompleteFor(aId, 'chemistry', 0, 0);
-    expect(afterWipe, isTrue,
-        reason: 'wipeAll must clear the lesson_done_s<id>_… key, or a '
-            'badge/counter that reads it stays wrongly silent for the id '
-            'if it is ever reused');
+    final afterWipe = await LessonProgress().markCompleteFor(
+      aId,
+      'chemistry',
+      0,
+      0,
+    );
+    expect(
+      afterWipe,
+      isTrue,
+      reason:
+          'wipeAll must clear the lesson_done_s<id>_… key, or a '
+          'badge/counter that reads it stays wrongly silent for the id '
+          'if it is ever reused',
+    );
   });
 
   test('every table in the schema is classified as either wiped or kept — '
@@ -387,13 +482,18 @@ void main() {
       'class_groups',
       'translation_cache_entries',
       'sync_state',
+      // Class sync: which notes go to which class, and this device's
+      // school + signing key — device resources, not any learner's data.
+      'resource_shares',
+      'sync_identity',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);
     expect(
       actual.difference(classified),
       isEmpty,
-      reason: 'a table exists that this test has not classified as wiped '
+      reason:
+          'a table exists that this test has not classified as wiped '
           'or kept — decide which it is before shipping',
     );
     expect(
@@ -419,11 +519,18 @@ void main() {
 
       await wiper.wipeStudent(johnId);
 
-      expect(await johnCert.exists(), isFalse,
-          reason: "John's own certificate must be deleted");
-      expect(await johnPaulCert.exists(), isTrue,
-          reason: "John's shorter name must not delete John Paul's "
-              'certificate just because it shares the prefix');
+      expect(
+        await johnCert.exists(),
+        isFalse,
+        reason: "John's own certificate must be deleted",
+      );
+      expect(
+        await johnPaulCert.exists(),
+        isTrue,
+        reason:
+            "John's shorter name must not delete John Paul's "
+            'certificate just because it shares the prefix',
+      );
     });
 
     test('wipeStudent leaves both files alone when two learners sanitize '
@@ -439,9 +546,13 @@ void main() {
 
       await wiper.wipeStudent(firstId);
 
-      expect(await cert.exists(), isTrue,
-          reason: 'the file cannot be attributed to either Amina, so it '
-              'must be left for a wipeAll instead of guessed at');
+      expect(
+        await cert.exists(),
+        isTrue,
+        reason:
+            'the file cannot be attributed to either Amina, so it '
+            'must be left for a wipeAll instead of guessed at',
+      );
     });
 
     test('wipeAll deletes every certificate PDF, including one left behind '

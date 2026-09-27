@@ -23,6 +23,31 @@ final learnerStatsProvider = StreamProvider<Map<int, LearnerStats>>((ref) {
   return ref.watch(dbProvider).classGroupDao.watchLearnerStats();
 });
 
+/// This device's school and class-sync identity (null until first read).
+final syncIdentityProvider = StreamProvider<SyncIdentityData?>((ref) {
+  if (kIsWeb) return Stream.value(null);
+  final dao = ref.watch(dbProvider).classSyncDao;
+  // Make sure the row (and this device's signing key) exists.
+  dao.identity();
+  return dao.watchIdentity();
+});
+
+/// Classes this device created — the only ones it may share notes with.
+final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) {
+  if (kIsWeb) return Stream.value(const []);
+  return ref.watch(dbProvider).classSyncDao.watchOwnedClasses();
+});
+
+/// For one subject: each note title → the classes it is shared with.
+final noteSharesProvider =
+    StreamProvider.family<Map<String, Set<String>>, String>((ref, subjectId) {
+      if (kIsWeb) return Stream.value(const {});
+      return ref
+          .watch(dbProvider)
+          .classSyncDao
+          .watchSharesForSubject(subjectId);
+    });
+
 /// "S2 East", or just "S2" for a class with no streams.
 String classLabel(ClassGroup group) {
   final stream = group.streamName?.trim() ?? '';

@@ -4897,6 +4897,17 @@ class $TopicResourcesTable extends TopicResources
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _documentTitleMeta = const VerificationMeta(
+    'documentTitle',
+  );
+  @override
+  late final GeneratedColumn<String> documentTitle = GeneratedColumn<String>(
+    'document_title',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -4908,6 +4919,7 @@ class $TopicResourcesTable extends TopicResources
     createdAt,
     classGroupUuid,
     updatedAt,
+    documentTitle,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4991,6 +5003,15 @@ class $TopicResourcesTable extends TopicResources
         updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
       );
     }
+    if (data.containsKey('document_title')) {
+      context.handle(
+        _documentTitleMeta,
+        documentTitle.isAcceptableOrUnknown(
+          data['document_title']!,
+          _documentTitleMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -5035,6 +5056,10 @@ class $TopicResourcesTable extends TopicResources
       updatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}updated_at'],
+      ),
+      documentTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}document_title'],
       ),
     );
   }
@@ -5094,6 +5119,15 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
   /// [createdAt], so a resource written before this column existed is still
   /// syncable (just always looks "current" until it is next edited).
   final String? updatedAt;
+
+  /// The file (or typed note) this row came from, as the teacher named it.
+  ///
+  /// An uploaded file is split at its headings so the tutor can find the
+  /// right pages — each section is its own [resourceTitle]. The teacher
+  /// never sees that split: lists, sharing and deleting all work on this
+  /// document title. Null on rows written before it existed, which then
+  /// stand for themselves (see `COALESCE(document_title, resource_title)`).
+  final String? documentTitle;
   const TopicResource({
     required this.id,
     required this.subjectId,
@@ -5104,6 +5138,7 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
     required this.createdAt,
     this.classGroupUuid,
     this.updatedAt,
+    this.documentTitle,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5120,6 +5155,9 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
     }
     if (!nullToAbsent || updatedAt != null) {
       map['updated_at'] = Variable<String>(updatedAt);
+    }
+    if (!nullToAbsent || documentTitle != null) {
+      map['document_title'] = Variable<String>(documentTitle);
     }
     return map;
   }
@@ -5139,6 +5177,9 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
       updatedAt: updatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(updatedAt),
+      documentTitle: documentTitle == null && nullToAbsent
+          ? const Value.absent()
+          : Value(documentTitle),
     );
   }
 
@@ -5157,6 +5198,7 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
       createdAt: serializer.fromJson<String>(json['createdAt']),
       classGroupUuid: serializer.fromJson<String?>(json['classGroupUuid']),
       updatedAt: serializer.fromJson<String?>(json['updatedAt']),
+      documentTitle: serializer.fromJson<String?>(json['documentTitle']),
     );
   }
   @override
@@ -5172,6 +5214,7 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
       'createdAt': serializer.toJson<String>(createdAt),
       'classGroupUuid': serializer.toJson<String?>(classGroupUuid),
       'updatedAt': serializer.toJson<String?>(updatedAt),
+      'documentTitle': serializer.toJson<String?>(documentTitle),
     };
   }
 
@@ -5185,6 +5228,7 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
     String? createdAt,
     Value<String?> classGroupUuid = const Value.absent(),
     Value<String?> updatedAt = const Value.absent(),
+    Value<String?> documentTitle = const Value.absent(),
   }) => TopicResource(
     id: id ?? this.id,
     subjectId: subjectId ?? this.subjectId,
@@ -5197,6 +5241,9 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
         ? classGroupUuid.value
         : this.classGroupUuid,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    documentTitle: documentTitle.present
+        ? documentTitle.value
+        : this.documentTitle,
   );
   TopicResource copyWithCompanion(TopicResourcesCompanion data) {
     return TopicResource(
@@ -5217,6 +5264,9 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
           ? data.classGroupUuid.value
           : this.classGroupUuid,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      documentTitle: data.documentTitle.present
+          ? data.documentTitle.value
+          : this.documentTitle,
     );
   }
 
@@ -5231,7 +5281,8 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
           ..write('contentChunk: $contentChunk, ')
           ..write('createdAt: $createdAt, ')
           ..write('classGroupUuid: $classGroupUuid, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('documentTitle: $documentTitle')
           ..write(')'))
         .toString();
   }
@@ -5247,6 +5298,7 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
     createdAt,
     classGroupUuid,
     updatedAt,
+    documentTitle,
   );
   @override
   bool operator ==(Object other) =>
@@ -5260,7 +5312,8 @@ class TopicResource extends DataClass implements Insertable<TopicResource> {
           other.contentChunk == this.contentChunk &&
           other.createdAt == this.createdAt &&
           other.classGroupUuid == this.classGroupUuid &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.documentTitle == this.documentTitle);
 }
 
 class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
@@ -5273,6 +5326,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
   final Value<String> createdAt;
   final Value<String?> classGroupUuid;
   final Value<String?> updatedAt;
+  final Value<String?> documentTitle;
   const TopicResourcesCompanion({
     this.id = const Value.absent(),
     this.subjectId = const Value.absent(),
@@ -5283,6 +5337,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
     this.createdAt = const Value.absent(),
     this.classGroupUuid = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.documentTitle = const Value.absent(),
   });
   TopicResourcesCompanion.insert({
     this.id = const Value.absent(),
@@ -5294,6 +5349,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
     required String createdAt,
     this.classGroupUuid = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.documentTitle = const Value.absent(),
   }) : subjectId = Value(subjectId),
        topicKey = Value(topicKey),
        resourceTitle = Value(resourceTitle),
@@ -5309,6 +5365,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
     Expression<String>? createdAt,
     Expression<String>? classGroupUuid,
     Expression<String>? updatedAt,
+    Expression<String>? documentTitle,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -5320,6 +5377,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
       if (createdAt != null) 'created_at': createdAt,
       if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (documentTitle != null) 'document_title': documentTitle,
     });
   }
 
@@ -5333,6 +5391,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
     Value<String>? createdAt,
     Value<String?>? classGroupUuid,
     Value<String?>? updatedAt,
+    Value<String?>? documentTitle,
   }) {
     return TopicResourcesCompanion(
       id: id ?? this.id,
@@ -5344,6 +5403,7 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
       createdAt: createdAt ?? this.createdAt,
       classGroupUuid: classGroupUuid ?? this.classGroupUuid,
       updatedAt: updatedAt ?? this.updatedAt,
+      documentTitle: documentTitle ?? this.documentTitle,
     );
   }
 
@@ -5377,6 +5437,9 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<String>(updatedAt.value);
     }
+    if (documentTitle.present) {
+      map['document_title'] = Variable<String>(documentTitle.value);
+    }
     return map;
   }
 
@@ -5391,7 +5454,8 @@ class TopicResourcesCompanion extends UpdateCompanion<TopicResource> {
           ..write('contentChunk: $contentChunk, ')
           ..write('createdAt: $createdAt, ')
           ..write('classGroupUuid: $classGroupUuid, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('documentTitle: $documentTitle')
           ..write(')'))
         .toString();
   }
@@ -6475,6 +6539,52 @@ class $ClassGroupsTable extends ClassGroups
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _schoolIdMeta = const VerificationMeta(
+    'schoolId',
+  );
+  @override
+  late final GeneratedColumn<String> schoolId = GeneratedColumn<String>(
+    'school_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _classKeyMeta = const VerificationMeta(
+    'classKey',
+  );
+  @override
+  late final GeneratedColumn<String> classKey = GeneratedColumn<String>(
+    'class_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _teacherPublicKeyMeta = const VerificationMeta(
+    'teacherPublicKey',
+  );
+  @override
+  late final GeneratedColumn<String> teacherPublicKey = GeneratedColumn<String>(
+    'teacher_public_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _joinedMeta = const VerificationMeta('joined');
+  @override
+  late final GeneratedColumn<bool> joined = GeneratedColumn<bool>(
+    'joined',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("joined" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6482,6 +6592,10 @@ class $ClassGroupsTable extends ClassGroups
     streamName,
     createdAt,
     groupUuid,
+    schoolId,
+    classKey,
+    teacherPublicKey,
+    joined,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6524,6 +6638,33 @@ class $ClassGroupsTable extends ClassGroups
         groupUuid.isAcceptableOrUnknown(data['group_uuid']!, _groupUuidMeta),
       );
     }
+    if (data.containsKey('school_id')) {
+      context.handle(
+        _schoolIdMeta,
+        schoolId.isAcceptableOrUnknown(data['school_id']!, _schoolIdMeta),
+      );
+    }
+    if (data.containsKey('class_key')) {
+      context.handle(
+        _classKeyMeta,
+        classKey.isAcceptableOrUnknown(data['class_key']!, _classKeyMeta),
+      );
+    }
+    if (data.containsKey('teacher_public_key')) {
+      context.handle(
+        _teacherPublicKeyMeta,
+        teacherPublicKey.isAcceptableOrUnknown(
+          data['teacher_public_key']!,
+          _teacherPublicKeyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('joined')) {
+      context.handle(
+        _joinedMeta,
+        joined.isAcceptableOrUnknown(data['joined']!, _joinedMeta),
+      );
+    }
     return context;
   }
 
@@ -6553,6 +6694,22 @@ class $ClassGroupsTable extends ClassGroups
         DriftSqlType.string,
         data['${effectivePrefix}group_uuid'],
       ),
+      schoolId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_id'],
+      ),
+      classKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_key'],
+      ),
+      teacherPublicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}teacher_public_key'],
+      ),
+      joined: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}joined'],
+      )!,
     );
   }
 
@@ -6579,12 +6736,33 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
   /// never reused. Nullable only so a fresh column can exist before a
   /// backfill runs; every row written from here on gets one.
   final String? groupUuid;
+
+  /// School this class belongs to ([SyncIdentity.schoolId]). A student
+  /// device refuses to join a class from a different school than its own.
+  final String? schoolId;
+
+  /// The class/stream's shared secret. Minted on the teacher's device the
+  /// first time the class is synced, copied to a student device at join.
+  /// Only holders can ask for, or read, the class's notes.
+  final String? classKey;
+
+  /// On a joined class: the teacher device's Ed25519 public key, pinned at
+  /// join. Replies not signed by it are rejected.
+  final String? teacherPublicKey;
+
+  /// True on a student device for a class it joined from a teacher; false
+  /// for a class this device created. Only created classes are ever served.
+  final bool joined;
   const ClassGroup({
     required this.id,
     required this.className,
     this.streamName,
     required this.createdAt,
     this.groupUuid,
+    this.schoolId,
+    this.classKey,
+    this.teacherPublicKey,
+    required this.joined,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6598,6 +6776,16 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     if (!nullToAbsent || groupUuid != null) {
       map['group_uuid'] = Variable<String>(groupUuid);
     }
+    if (!nullToAbsent || schoolId != null) {
+      map['school_id'] = Variable<String>(schoolId);
+    }
+    if (!nullToAbsent || classKey != null) {
+      map['class_key'] = Variable<String>(classKey);
+    }
+    if (!nullToAbsent || teacherPublicKey != null) {
+      map['teacher_public_key'] = Variable<String>(teacherPublicKey);
+    }
+    map['joined'] = Variable<bool>(joined);
     return map;
   }
 
@@ -6612,6 +6800,16 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       groupUuid: groupUuid == null && nullToAbsent
           ? const Value.absent()
           : Value(groupUuid),
+      schoolId: schoolId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(schoolId),
+      classKey: classKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(classKey),
+      teacherPublicKey: teacherPublicKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(teacherPublicKey),
+      joined: Value(joined),
     );
   }
 
@@ -6626,6 +6824,10 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       streamName: serializer.fromJson<String?>(json['streamName']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       groupUuid: serializer.fromJson<String?>(json['groupUuid']),
+      schoolId: serializer.fromJson<String?>(json['schoolId']),
+      classKey: serializer.fromJson<String?>(json['classKey']),
+      teacherPublicKey: serializer.fromJson<String?>(json['teacherPublicKey']),
+      joined: serializer.fromJson<bool>(json['joined']),
     );
   }
   @override
@@ -6637,6 +6839,10 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       'streamName': serializer.toJson<String?>(streamName),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'groupUuid': serializer.toJson<String?>(groupUuid),
+      'schoolId': serializer.toJson<String?>(schoolId),
+      'classKey': serializer.toJson<String?>(classKey),
+      'teacherPublicKey': serializer.toJson<String?>(teacherPublicKey),
+      'joined': serializer.toJson<bool>(joined),
     };
   }
 
@@ -6646,12 +6852,22 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     Value<String?> streamName = const Value.absent(),
     DateTime? createdAt,
     Value<String?> groupUuid = const Value.absent(),
+    Value<String?> schoolId = const Value.absent(),
+    Value<String?> classKey = const Value.absent(),
+    Value<String?> teacherPublicKey = const Value.absent(),
+    bool? joined,
   }) => ClassGroup(
     id: id ?? this.id,
     className: className ?? this.className,
     streamName: streamName.present ? streamName.value : this.streamName,
     createdAt: createdAt ?? this.createdAt,
     groupUuid: groupUuid.present ? groupUuid.value : this.groupUuid,
+    schoolId: schoolId.present ? schoolId.value : this.schoolId,
+    classKey: classKey.present ? classKey.value : this.classKey,
+    teacherPublicKey: teacherPublicKey.present
+        ? teacherPublicKey.value
+        : this.teacherPublicKey,
+    joined: joined ?? this.joined,
   );
   ClassGroup copyWithCompanion(ClassGroupsCompanion data) {
     return ClassGroup(
@@ -6662,6 +6878,12 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           : this.streamName,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       groupUuid: data.groupUuid.present ? data.groupUuid.value : this.groupUuid,
+      schoolId: data.schoolId.present ? data.schoolId.value : this.schoolId,
+      classKey: data.classKey.present ? data.classKey.value : this.classKey,
+      teacherPublicKey: data.teacherPublicKey.present
+          ? data.teacherPublicKey.value
+          : this.teacherPublicKey,
+      joined: data.joined.present ? data.joined.value : this.joined,
     );
   }
 
@@ -6672,14 +6894,27 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           ..write('className: $className, ')
           ..write('streamName: $streamName, ')
           ..write('createdAt: $createdAt, ')
-          ..write('groupUuid: $groupUuid')
+          ..write('groupUuid: $groupUuid, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('classKey: $classKey, ')
+          ..write('teacherPublicKey: $teacherPublicKey, ')
+          ..write('joined: $joined')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, className, streamName, createdAt, groupUuid);
+  int get hashCode => Object.hash(
+    id,
+    className,
+    streamName,
+    createdAt,
+    groupUuid,
+    schoolId,
+    classKey,
+    teacherPublicKey,
+    joined,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6688,7 +6923,11 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           other.className == this.className &&
           other.streamName == this.streamName &&
           other.createdAt == this.createdAt &&
-          other.groupUuid == this.groupUuid);
+          other.groupUuid == this.groupUuid &&
+          other.schoolId == this.schoolId &&
+          other.classKey == this.classKey &&
+          other.teacherPublicKey == this.teacherPublicKey &&
+          other.joined == this.joined);
 }
 
 class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
@@ -6697,12 +6936,20 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
   final Value<String?> streamName;
   final Value<DateTime> createdAt;
   final Value<String?> groupUuid;
+  final Value<String?> schoolId;
+  final Value<String?> classKey;
+  final Value<String?> teacherPublicKey;
+  final Value<bool> joined;
   const ClassGroupsCompanion({
     this.id = const Value.absent(),
     this.className = const Value.absent(),
     this.streamName = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.groupUuid = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.classKey = const Value.absent(),
+    this.teacherPublicKey = const Value.absent(),
+    this.joined = const Value.absent(),
   });
   ClassGroupsCompanion.insert({
     this.id = const Value.absent(),
@@ -6710,6 +6957,10 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     this.streamName = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.groupUuid = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.classKey = const Value.absent(),
+    this.teacherPublicKey = const Value.absent(),
+    this.joined = const Value.absent(),
   }) : className = Value(className);
   static Insertable<ClassGroup> custom({
     Expression<int>? id,
@@ -6717,6 +6968,10 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Expression<String>? streamName,
     Expression<DateTime>? createdAt,
     Expression<String>? groupUuid,
+    Expression<String>? schoolId,
+    Expression<String>? classKey,
+    Expression<String>? teacherPublicKey,
+    Expression<bool>? joined,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -6724,6 +6979,10 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       if (streamName != null) 'stream_name': streamName,
       if (createdAt != null) 'created_at': createdAt,
       if (groupUuid != null) 'group_uuid': groupUuid,
+      if (schoolId != null) 'school_id': schoolId,
+      if (classKey != null) 'class_key': classKey,
+      if (teacherPublicKey != null) 'teacher_public_key': teacherPublicKey,
+      if (joined != null) 'joined': joined,
     });
   }
 
@@ -6733,6 +6992,10 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Value<String?>? streamName,
     Value<DateTime>? createdAt,
     Value<String?>? groupUuid,
+    Value<String?>? schoolId,
+    Value<String?>? classKey,
+    Value<String?>? teacherPublicKey,
+    Value<bool>? joined,
   }) {
     return ClassGroupsCompanion(
       id: id ?? this.id,
@@ -6740,6 +7003,10 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       streamName: streamName ?? this.streamName,
       createdAt: createdAt ?? this.createdAt,
       groupUuid: groupUuid ?? this.groupUuid,
+      schoolId: schoolId ?? this.schoolId,
+      classKey: classKey ?? this.classKey,
+      teacherPublicKey: teacherPublicKey ?? this.teacherPublicKey,
+      joined: joined ?? this.joined,
     );
   }
 
@@ -6761,6 +7028,18 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     if (groupUuid.present) {
       map['group_uuid'] = Variable<String>(groupUuid.value);
     }
+    if (schoolId.present) {
+      map['school_id'] = Variable<String>(schoolId.value);
+    }
+    if (classKey.present) {
+      map['class_key'] = Variable<String>(classKey.value);
+    }
+    if (teacherPublicKey.present) {
+      map['teacher_public_key'] = Variable<String>(teacherPublicKey.value);
+    }
+    if (joined.present) {
+      map['joined'] = Variable<bool>(joined.value);
+    }
     return map;
   }
 
@@ -6771,7 +7050,11 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
           ..write('className: $className, ')
           ..write('streamName: $streamName, ')
           ..write('createdAt: $createdAt, ')
-          ..write('groupUuid: $groupUuid')
+          ..write('groupUuid: $groupUuid, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('classKey: $classKey, ')
+          ..write('teacherPublicKey: $teacherPublicKey, ')
+          ..write('joined: $joined')
           ..write(')'))
         .toString();
   }
@@ -7503,6 +7786,17 @@ class $SyncStateTable extends SyncState
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _channelDigestMeta = const VerificationMeta(
+    'channelDigest',
+  );
+  @override
+  late final GeneratedColumn<String> channelDigest = GeneratedColumn<String>(
+    'channel_digest',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7510,6 +7804,7 @@ class $SyncStateTable extends SyncState
     subjectId,
     lastSyncedAt,
     rejectedCount,
+    channelDigest,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7565,6 +7860,15 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('channel_digest')) {
+      context.handle(
+        _channelDigestMeta,
+        channelDigest.isAcceptableOrUnknown(
+          data['channel_digest']!,
+          _channelDigestMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -7594,6 +7898,10 @@ class $SyncStateTable extends SyncState
         DriftSqlType.int,
         data['${effectivePrefix}rejected_count'],
       )!,
+      channelDigest: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}channel_digest'],
+      ),
     );
   }
 
@@ -7620,12 +7928,18 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
   /// routing key, …) across every sync so far — surfaced in the sync UI so
   /// a persistently high count is visible instead of silently swallowed.
   final int rejectedCount;
+
+  /// The channel digest (see `channelDigest`) this device last replaced its
+  /// copy of the channel with. The next sync skips the channel while the
+  /// teacher's digest still matches.
+  final String? channelDigest;
   const SyncStateData({
     required this.id,
     required this.classGroupUuid,
     required this.subjectId,
     required this.lastSyncedAt,
     required this.rejectedCount,
+    this.channelDigest,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7635,6 +7949,9 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     map['subject_id'] = Variable<String>(subjectId);
     map['last_synced_at'] = Variable<String>(lastSyncedAt);
     map['rejected_count'] = Variable<int>(rejectedCount);
+    if (!nullToAbsent || channelDigest != null) {
+      map['channel_digest'] = Variable<String>(channelDigest);
+    }
     return map;
   }
 
@@ -7645,6 +7962,9 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       subjectId: Value(subjectId),
       lastSyncedAt: Value(lastSyncedAt),
       rejectedCount: Value(rejectedCount),
+      channelDigest: channelDigest == null && nullToAbsent
+          ? const Value.absent()
+          : Value(channelDigest),
     );
   }
 
@@ -7659,6 +7979,7 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       subjectId: serializer.fromJson<String>(json['subjectId']),
       lastSyncedAt: serializer.fromJson<String>(json['lastSyncedAt']),
       rejectedCount: serializer.fromJson<int>(json['rejectedCount']),
+      channelDigest: serializer.fromJson<String?>(json['channelDigest']),
     );
   }
   @override
@@ -7670,6 +7991,7 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       'subjectId': serializer.toJson<String>(subjectId),
       'lastSyncedAt': serializer.toJson<String>(lastSyncedAt),
       'rejectedCount': serializer.toJson<int>(rejectedCount),
+      'channelDigest': serializer.toJson<String?>(channelDigest),
     };
   }
 
@@ -7679,12 +8001,16 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     String? subjectId,
     String? lastSyncedAt,
     int? rejectedCount,
+    Value<String?> channelDigest = const Value.absent(),
   }) => SyncStateData(
     id: id ?? this.id,
     classGroupUuid: classGroupUuid ?? this.classGroupUuid,
     subjectId: subjectId ?? this.subjectId,
     lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     rejectedCount: rejectedCount ?? this.rejectedCount,
+    channelDigest: channelDigest.present
+        ? channelDigest.value
+        : this.channelDigest,
   );
   SyncStateData copyWithCompanion(SyncStateCompanion data) {
     return SyncStateData(
@@ -7699,6 +8025,9 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       rejectedCount: data.rejectedCount.present
           ? data.rejectedCount.value
           : this.rejectedCount,
+      channelDigest: data.channelDigest.present
+          ? data.channelDigest.value
+          : this.channelDigest,
     );
   }
 
@@ -7709,14 +8038,21 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
           ..write('classGroupUuid: $classGroupUuid, ')
           ..write('subjectId: $subjectId, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
-          ..write('rejectedCount: $rejectedCount')
+          ..write('rejectedCount: $rejectedCount, ')
+          ..write('channelDigest: $channelDigest')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, classGroupUuid, subjectId, lastSyncedAt, rejectedCount);
+  int get hashCode => Object.hash(
+    id,
+    classGroupUuid,
+    subjectId,
+    lastSyncedAt,
+    rejectedCount,
+    channelDigest,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -7725,7 +8061,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
           other.classGroupUuid == this.classGroupUuid &&
           other.subjectId == this.subjectId &&
           other.lastSyncedAt == this.lastSyncedAt &&
-          other.rejectedCount == this.rejectedCount);
+          other.rejectedCount == this.rejectedCount &&
+          other.channelDigest == this.channelDigest);
 }
 
 class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
@@ -7734,12 +8071,14 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
   final Value<String> subjectId;
   final Value<String> lastSyncedAt;
   final Value<int> rejectedCount;
+  final Value<String?> channelDigest;
   const SyncStateCompanion({
     this.id = const Value.absent(),
     this.classGroupUuid = const Value.absent(),
     this.subjectId = const Value.absent(),
     this.lastSyncedAt = const Value.absent(),
     this.rejectedCount = const Value.absent(),
+    this.channelDigest = const Value.absent(),
   });
   SyncStateCompanion.insert({
     this.id = const Value.absent(),
@@ -7747,6 +8086,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     required String subjectId,
     required String lastSyncedAt,
     this.rejectedCount = const Value.absent(),
+    this.channelDigest = const Value.absent(),
   }) : classGroupUuid = Value(classGroupUuid),
        subjectId = Value(subjectId),
        lastSyncedAt = Value(lastSyncedAt);
@@ -7756,6 +8096,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     Expression<String>? subjectId,
     Expression<String>? lastSyncedAt,
     Expression<int>? rejectedCount,
+    Expression<String>? channelDigest,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -7763,6 +8104,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
       if (subjectId != null) 'subject_id': subjectId,
       if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
       if (rejectedCount != null) 'rejected_count': rejectedCount,
+      if (channelDigest != null) 'channel_digest': channelDigest,
     });
   }
 
@@ -7772,6 +8114,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     Value<String>? subjectId,
     Value<String>? lastSyncedAt,
     Value<int>? rejectedCount,
+    Value<String?>? channelDigest,
   }) {
     return SyncStateCompanion(
       id: id ?? this.id,
@@ -7779,6 +8122,7 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
       subjectId: subjectId ?? this.subjectId,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       rejectedCount: rejectedCount ?? this.rejectedCount,
+      channelDigest: channelDigest ?? this.channelDigest,
     );
   }
 
@@ -7800,6 +8144,9 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     if (rejectedCount.present) {
       map['rejected_count'] = Variable<int>(rejectedCount.value);
     }
+    if (channelDigest.present) {
+      map['channel_digest'] = Variable<String>(channelDigest.value);
+    }
     return map;
   }
 
@@ -7810,7 +8157,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
           ..write('classGroupUuid: $classGroupUuid, ')
           ..write('subjectId: $subjectId, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
-          ..write('rejectedCount: $rejectedCount')
+          ..write('rejectedCount: $rejectedCount, ')
+          ..write('channelDigest: $channelDigest')
           ..write(')'))
         .toString();
   }
@@ -8336,6 +8684,631 @@ class AssignmentsCompanion extends UpdateCompanion<Assignment> {
   }
 }
 
+class $ResourceSharesTable extends ResourceShares
+    with TableInfo<$ResourceSharesTable, ResourceShare> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ResourceSharesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _documentTitleMeta = const VerificationMeta(
+    'documentTitle',
+  );
+  @override
+  late final GeneratedColumn<String> documentTitle = GeneratedColumn<String>(
+    'document_title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    subjectId,
+    documentTitle,
+    classGroupUuid,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'resource_shares';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ResourceShare> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('document_title')) {
+      context.handle(
+        _documentTitleMeta,
+        documentTitle.isAcceptableOrUnknown(
+          data['document_title']!,
+          _documentTitleMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_documentTitleMeta);
+    }
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_classGroupUuidMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ResourceShare map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ResourceShare(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      documentTitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}document_title'],
+      )!,
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      )!,
+    );
+  }
+
+  @override
+  $ResourceSharesTable createAlias(String alias) {
+    return $ResourceSharesTable(attachedDatabase, alias);
+  }
+}
+
+class ResourceShare extends DataClass implements Insertable<ResourceShare> {
+  final int id;
+  final String subjectId;
+
+  /// `COALESCE(topic_resources.document_title, resource_title)` of the note.
+  final String documentTitle;
+
+  /// [ClassGroups.groupUuid] of a class this device created.
+  final String classGroupUuid;
+  const ResourceShare({
+    required this.id,
+    required this.subjectId,
+    required this.documentTitle,
+    required this.classGroupUuid,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['document_title'] = Variable<String>(documentTitle);
+    map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    return map;
+  }
+
+  ResourceSharesCompanion toCompanion(bool nullToAbsent) {
+    return ResourceSharesCompanion(
+      id: Value(id),
+      subjectId: Value(subjectId),
+      documentTitle: Value(documentTitle),
+      classGroupUuid: Value(classGroupUuid),
+    );
+  }
+
+  factory ResourceShare.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ResourceShare(
+      id: serializer.fromJson<int>(json['id']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      documentTitle: serializer.fromJson<String>(json['documentTitle']),
+      classGroupUuid: serializer.fromJson<String>(json['classGroupUuid']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'documentTitle': serializer.toJson<String>(documentTitle),
+      'classGroupUuid': serializer.toJson<String>(classGroupUuid),
+    };
+  }
+
+  ResourceShare copyWith({
+    int? id,
+    String? subjectId,
+    String? documentTitle,
+    String? classGroupUuid,
+  }) => ResourceShare(
+    id: id ?? this.id,
+    subjectId: subjectId ?? this.subjectId,
+    documentTitle: documentTitle ?? this.documentTitle,
+    classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+  );
+  ResourceShare copyWithCompanion(ResourceSharesCompanion data) {
+    return ResourceShare(
+      id: data.id.present ? data.id.value : this.id,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      documentTitle: data.documentTitle.present
+          ? data.documentTitle.value
+          : this.documentTitle,
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResourceShare(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('documentTitle: $documentTitle, ')
+          ..write('classGroupUuid: $classGroupUuid')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, subjectId, documentTitle, classGroupUuid);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ResourceShare &&
+          other.id == this.id &&
+          other.subjectId == this.subjectId &&
+          other.documentTitle == this.documentTitle &&
+          other.classGroupUuid == this.classGroupUuid);
+}
+
+class ResourceSharesCompanion extends UpdateCompanion<ResourceShare> {
+  final Value<int> id;
+  final Value<String> subjectId;
+  final Value<String> documentTitle;
+  final Value<String> classGroupUuid;
+  const ResourceSharesCompanion({
+    this.id = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.documentTitle = const Value.absent(),
+    this.classGroupUuid = const Value.absent(),
+  });
+  ResourceSharesCompanion.insert({
+    this.id = const Value.absent(),
+    required String subjectId,
+    required String documentTitle,
+    required String classGroupUuid,
+  }) : subjectId = Value(subjectId),
+       documentTitle = Value(documentTitle),
+       classGroupUuid = Value(classGroupUuid);
+  static Insertable<ResourceShare> custom({
+    Expression<int>? id,
+    Expression<String>? subjectId,
+    Expression<String>? documentTitle,
+    Expression<String>? classGroupUuid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (documentTitle != null) 'document_title': documentTitle,
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
+    });
+  }
+
+  ResourceSharesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? subjectId,
+    Value<String>? documentTitle,
+    Value<String>? classGroupUuid,
+  }) {
+    return ResourceSharesCompanion(
+      id: id ?? this.id,
+      subjectId: subjectId ?? this.subjectId,
+      documentTitle: documentTitle ?? this.documentTitle,
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (documentTitle.present) {
+      map['document_title'] = Variable<String>(documentTitle.value);
+    }
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ResourceSharesCompanion(')
+          ..write('id: $id, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('documentTitle: $documentTitle, ')
+          ..write('classGroupUuid: $classGroupUuid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncIdentityTable extends SyncIdentity
+    with TableInfo<$SyncIdentityTable, SyncIdentityData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncIdentityTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _schoolIdMeta = const VerificationMeta(
+    'schoolId',
+  );
+  @override
+  late final GeneratedColumn<String> schoolId = GeneratedColumn<String>(
+    'school_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _schoolNameMeta = const VerificationMeta(
+    'schoolName',
+  );
+  @override
+  late final GeneratedColumn<String> schoolName = GeneratedColumn<String>(
+    'school_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _signingSeedMeta = const VerificationMeta(
+    'signingSeed',
+  );
+  @override
+  late final GeneratedColumn<String> signingSeed = GeneratedColumn<String>(
+    'signing_seed',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, schoolId, schoolName, signingSeed];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_identity';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncIdentityData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('school_id')) {
+      context.handle(
+        _schoolIdMeta,
+        schoolId.isAcceptableOrUnknown(data['school_id']!, _schoolIdMeta),
+      );
+    }
+    if (data.containsKey('school_name')) {
+      context.handle(
+        _schoolNameMeta,
+        schoolName.isAcceptableOrUnknown(data['school_name']!, _schoolNameMeta),
+      );
+    }
+    if (data.containsKey('signing_seed')) {
+      context.handle(
+        _signingSeedMeta,
+        signingSeed.isAcceptableOrUnknown(
+          data['signing_seed']!,
+          _signingSeedMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_signingSeedMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncIdentityData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncIdentityData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      schoolId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_id'],
+      ),
+      schoolName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_name'],
+      ),
+      signingSeed: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signing_seed'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncIdentityTable createAlias(String alias) {
+    return $SyncIdentityTable(attachedDatabase, alias);
+  }
+}
+
+class SyncIdentityData extends DataClass
+    implements Insertable<SyncIdentityData> {
+  final int id;
+  final String? schoolId;
+  final String? schoolName;
+  final String signingSeed;
+  const SyncIdentityData({
+    required this.id,
+    this.schoolId,
+    this.schoolName,
+    required this.signingSeed,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    if (!nullToAbsent || schoolId != null) {
+      map['school_id'] = Variable<String>(schoolId);
+    }
+    if (!nullToAbsent || schoolName != null) {
+      map['school_name'] = Variable<String>(schoolName);
+    }
+    map['signing_seed'] = Variable<String>(signingSeed);
+    return map;
+  }
+
+  SyncIdentityCompanion toCompanion(bool nullToAbsent) {
+    return SyncIdentityCompanion(
+      id: Value(id),
+      schoolId: schoolId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(schoolId),
+      schoolName: schoolName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(schoolName),
+      signingSeed: Value(signingSeed),
+    );
+  }
+
+  factory SyncIdentityData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncIdentityData(
+      id: serializer.fromJson<int>(json['id']),
+      schoolId: serializer.fromJson<String?>(json['schoolId']),
+      schoolName: serializer.fromJson<String?>(json['schoolName']),
+      signingSeed: serializer.fromJson<String>(json['signingSeed']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'schoolId': serializer.toJson<String?>(schoolId),
+      'schoolName': serializer.toJson<String?>(schoolName),
+      'signingSeed': serializer.toJson<String>(signingSeed),
+    };
+  }
+
+  SyncIdentityData copyWith({
+    int? id,
+    Value<String?> schoolId = const Value.absent(),
+    Value<String?> schoolName = const Value.absent(),
+    String? signingSeed,
+  }) => SyncIdentityData(
+    id: id ?? this.id,
+    schoolId: schoolId.present ? schoolId.value : this.schoolId,
+    schoolName: schoolName.present ? schoolName.value : this.schoolName,
+    signingSeed: signingSeed ?? this.signingSeed,
+  );
+  SyncIdentityData copyWithCompanion(SyncIdentityCompanion data) {
+    return SyncIdentityData(
+      id: data.id.present ? data.id.value : this.id,
+      schoolId: data.schoolId.present ? data.schoolId.value : this.schoolId,
+      schoolName: data.schoolName.present
+          ? data.schoolName.value
+          : this.schoolName,
+      signingSeed: data.signingSeed.present
+          ? data.signingSeed.value
+          : this.signingSeed,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncIdentityData(')
+          ..write('id: $id, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('signingSeed: $signingSeed')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, schoolId, schoolName, signingSeed);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncIdentityData &&
+          other.id == this.id &&
+          other.schoolId == this.schoolId &&
+          other.schoolName == this.schoolName &&
+          other.signingSeed == this.signingSeed);
+}
+
+class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
+  final Value<int> id;
+  final Value<String?> schoolId;
+  final Value<String?> schoolName;
+  final Value<String> signingSeed;
+  const SyncIdentityCompanion({
+    this.id = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.schoolName = const Value.absent(),
+    this.signingSeed = const Value.absent(),
+  });
+  SyncIdentityCompanion.insert({
+    this.id = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.schoolName = const Value.absent(),
+    required String signingSeed,
+  }) : signingSeed = Value(signingSeed);
+  static Insertable<SyncIdentityData> custom({
+    Expression<int>? id,
+    Expression<String>? schoolId,
+    Expression<String>? schoolName,
+    Expression<String>? signingSeed,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (schoolId != null) 'school_id': schoolId,
+      if (schoolName != null) 'school_name': schoolName,
+      if (signingSeed != null) 'signing_seed': signingSeed,
+    });
+  }
+
+  SyncIdentityCompanion copyWith({
+    Value<int>? id,
+    Value<String?>? schoolId,
+    Value<String?>? schoolName,
+    Value<String>? signingSeed,
+  }) {
+    return SyncIdentityCompanion(
+      id: id ?? this.id,
+      schoolId: schoolId ?? this.schoolId,
+      schoolName: schoolName ?? this.schoolName,
+      signingSeed: signingSeed ?? this.signingSeed,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (schoolId.present) {
+      map['school_id'] = Variable<String>(schoolId.value);
+    }
+    if (schoolName.present) {
+      map['school_name'] = Variable<String>(schoolName.value);
+    }
+    if (signingSeed.present) {
+      map['signing_seed'] = Variable<String>(signingSeed.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncIdentityCompanion(')
+          ..write('id: $id, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('signingSeed: $signingSeed')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -8362,6 +9335,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
       $AppBuilderProjectsTable(this);
   late final $SyncStateTable syncState = $SyncStateTable(this);
   late final $AssignmentsTable assignments = $AssignmentsTable(this);
+  late final $ResourceSharesTable resourceShares = $ResourceSharesTable(this);
+  late final $SyncIdentityTable syncIdentity = $SyncIdentityTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -8390,6 +9365,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     'idx_assignments_student_subject_term',
     'CREATE INDEX idx_assignments_student_subject_term ON assignments (student_id, subject_id, term_marker)',
   );
+  late final Index idxResourceSharesUnique = Index(
+    'idx_resource_shares_unique',
+    'CREATE UNIQUE INDEX idx_resource_shares_unique ON resource_shares (subject_id, document_title, class_group_uuid)',
+  );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
   late final PathDao pathDao = PathDao(this as OticDatabase);
@@ -8414,6 +9393,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   );
   late final SyncStateDao syncStateDao = SyncStateDao(this as OticDatabase);
   late final AssignmentDao assignmentDao = AssignmentDao(this as OticDatabase);
+  late final ClassSyncDao classSyncDao = ClassSyncDao(this as OticDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -8434,6 +9414,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     appBuilderProjects,
     syncState,
     assignments,
+    resourceShares,
+    syncIdentity,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -8441,6 +9423,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxClassGroupsGroupUuid,
     idxSyncStateChannel,
     idxAssignmentsStudentSubjectTerm,
+    idxResourceSharesUnique,
   ];
 }
 
@@ -10828,6 +11811,7 @@ typedef $$TopicResourcesTableCreateCompanionBuilder =
       required String createdAt,
       Value<String?> classGroupUuid,
       Value<String?> updatedAt,
+      Value<String?> documentTitle,
     });
 typedef $$TopicResourcesTableUpdateCompanionBuilder =
     TopicResourcesCompanion Function({
@@ -10840,6 +11824,7 @@ typedef $$TopicResourcesTableUpdateCompanionBuilder =
       Value<String> createdAt,
       Value<String?> classGroupUuid,
       Value<String?> updatedAt,
+      Value<String?> documentTitle,
     });
 
 class $$TopicResourcesTableFilterComposer
@@ -10893,6 +11878,11 @@ class $$TopicResourcesTableFilterComposer
 
   ColumnFilters<String> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -10950,6 +11940,11 @@ class $$TopicResourcesTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TopicResourcesTableAnnotationComposer
@@ -10995,6 +11990,11 @@ class $$TopicResourcesTableAnnotationComposer
 
   GeneratedColumn<String> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
+    builder: (column) => column,
+  );
 }
 
 class $$TopicResourcesTableTableManager
@@ -11039,6 +12039,7 @@ class $$TopicResourcesTableTableManager
                 Value<String> createdAt = const Value.absent(),
                 Value<String?> classGroupUuid = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
+                Value<String?> documentTitle = const Value.absent(),
               }) => TopicResourcesCompanion(
                 id: id,
                 subjectId: subjectId,
@@ -11049,6 +12050,7 @@ class $$TopicResourcesTableTableManager
                 createdAt: createdAt,
                 classGroupUuid: classGroupUuid,
                 updatedAt: updatedAt,
+                documentTitle: documentTitle,
               ),
           createCompanionCallback:
               ({
@@ -11061,6 +12063,7 @@ class $$TopicResourcesTableTableManager
                 required String createdAt,
                 Value<String?> classGroupUuid = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
+                Value<String?> documentTitle = const Value.absent(),
               }) => TopicResourcesCompanion.insert(
                 id: id,
                 subjectId: subjectId,
@@ -11071,6 +12074,7 @@ class $$TopicResourcesTableTableManager
                 createdAt: createdAt,
                 classGroupUuid: classGroupUuid,
                 updatedAt: updatedAt,
+                documentTitle: documentTitle,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -11614,6 +12618,10 @@ typedef $$ClassGroupsTableCreateCompanionBuilder =
       Value<String?> streamName,
       Value<DateTime> createdAt,
       Value<String?> groupUuid,
+      Value<String?> schoolId,
+      Value<String?> classKey,
+      Value<String?> teacherPublicKey,
+      Value<bool> joined,
     });
 typedef $$ClassGroupsTableUpdateCompanionBuilder =
     ClassGroupsCompanion Function({
@@ -11622,6 +12630,10 @@ typedef $$ClassGroupsTableUpdateCompanionBuilder =
       Value<String?> streamName,
       Value<DateTime> createdAt,
       Value<String?> groupUuid,
+      Value<String?> schoolId,
+      Value<String?> classKey,
+      Value<String?> teacherPublicKey,
+      Value<bool> joined,
     });
 
 class $$ClassGroupsTableFilterComposer
@@ -11655,6 +12667,26 @@ class $$ClassGroupsTableFilterComposer
 
   ColumnFilters<String> get groupUuid => $composableBuilder(
     column: $table.groupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classKey => $composableBuilder(
+    column: $table.classKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get teacherPublicKey => $composableBuilder(
+    column: $table.teacherPublicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get joined => $composableBuilder(
+    column: $table.joined,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11692,6 +12724,26 @@ class $$ClassGroupsTableOrderingComposer
     column: $table.groupUuid,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get classKey => $composableBuilder(
+    column: $table.classKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get teacherPublicKey => $composableBuilder(
+    column: $table.teacherPublicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get joined => $composableBuilder(
+    column: $table.joined,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ClassGroupsTableAnnotationComposer
@@ -11719,6 +12771,20 @@ class $$ClassGroupsTableAnnotationComposer
 
   GeneratedColumn<String> get groupUuid =>
       $composableBuilder(column: $table.groupUuid, builder: (column) => column);
+
+  GeneratedColumn<String> get schoolId =>
+      $composableBuilder(column: $table.schoolId, builder: (column) => column);
+
+  GeneratedColumn<String> get classKey =>
+      $composableBuilder(column: $table.classKey, builder: (column) => column);
+
+  GeneratedColumn<String> get teacherPublicKey => $composableBuilder(
+    column: $table.teacherPublicKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get joined =>
+      $composableBuilder(column: $table.joined, builder: (column) => column);
 }
 
 class $$ClassGroupsTableTableManager
@@ -11757,12 +12823,20 @@ class $$ClassGroupsTableTableManager
                 Value<String?> streamName = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> groupUuid = const Value.absent(),
+                Value<String?> schoolId = const Value.absent(),
+                Value<String?> classKey = const Value.absent(),
+                Value<String?> teacherPublicKey = const Value.absent(),
+                Value<bool> joined = const Value.absent(),
               }) => ClassGroupsCompanion(
                 id: id,
                 className: className,
                 streamName: streamName,
                 createdAt: createdAt,
                 groupUuid: groupUuid,
+                schoolId: schoolId,
+                classKey: classKey,
+                teacherPublicKey: teacherPublicKey,
+                joined: joined,
               ),
           createCompanionCallback:
               ({
@@ -11771,12 +12845,20 @@ class $$ClassGroupsTableTableManager
                 Value<String?> streamName = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<String?> groupUuid = const Value.absent(),
+                Value<String?> schoolId = const Value.absent(),
+                Value<String?> classKey = const Value.absent(),
+                Value<String?> teacherPublicKey = const Value.absent(),
+                Value<bool> joined = const Value.absent(),
               }) => ClassGroupsCompanion.insert(
                 id: id,
                 className: className,
                 streamName: streamName,
                 createdAt: createdAt,
                 groupUuid: groupUuid,
+                schoolId: schoolId,
+                classKey: classKey,
+                teacherPublicKey: teacherPublicKey,
+                joined: joined,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -12141,6 +13223,7 @@ typedef $$SyncStateTableCreateCompanionBuilder =
       required String subjectId,
       required String lastSyncedAt,
       Value<int> rejectedCount,
+      Value<String?> channelDigest,
     });
 typedef $$SyncStateTableUpdateCompanionBuilder =
     SyncStateCompanion Function({
@@ -12149,6 +13232,7 @@ typedef $$SyncStateTableUpdateCompanionBuilder =
       Value<String> subjectId,
       Value<String> lastSyncedAt,
       Value<int> rejectedCount,
+      Value<String?> channelDigest,
     });
 
 class $$SyncStateTableFilterComposer
@@ -12182,6 +13266,11 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<int> get rejectedCount => $composableBuilder(
     column: $table.rejectedCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get channelDigest => $composableBuilder(
+    column: $table.channelDigest,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12219,6 +13308,11 @@ class $$SyncStateTableOrderingComposer
     column: $table.rejectedCount,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get channelDigest => $composableBuilder(
+    column: $table.channelDigest,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncStateTableAnnotationComposer
@@ -12248,6 +13342,11 @@ class $$SyncStateTableAnnotationComposer
 
   GeneratedColumn<int> get rejectedCount => $composableBuilder(
     column: $table.rejectedCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get channelDigest => $composableBuilder(
+    column: $table.channelDigest,
     builder: (column) => column,
   );
 }
@@ -12288,12 +13387,14 @@ class $$SyncStateTableTableManager
                 Value<String> subjectId = const Value.absent(),
                 Value<String> lastSyncedAt = const Value.absent(),
                 Value<int> rejectedCount = const Value.absent(),
+                Value<String?> channelDigest = const Value.absent(),
               }) => SyncStateCompanion(
                 id: id,
                 classGroupUuid: classGroupUuid,
                 subjectId: subjectId,
                 lastSyncedAt: lastSyncedAt,
                 rejectedCount: rejectedCount,
+                channelDigest: channelDigest,
               ),
           createCompanionCallback:
               ({
@@ -12302,12 +13403,14 @@ class $$SyncStateTableTableManager
                 required String subjectId,
                 required String lastSyncedAt,
                 Value<int> rejectedCount = const Value.absent(),
+                Value<String?> channelDigest = const Value.absent(),
               }) => SyncStateCompanion.insert(
                 id: id,
                 classGroupUuid: classGroupUuid,
                 subjectId: subjectId,
                 lastSyncedAt: lastSyncedAt,
                 rejectedCount: rejectedCount,
+                channelDigest: channelDigest,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -12593,6 +13696,370 @@ typedef $$AssignmentsTableProcessedTableManager =
       Assignment,
       PrefetchHooks Function()
     >;
+typedef $$ResourceSharesTableCreateCompanionBuilder =
+    ResourceSharesCompanion Function({
+      Value<int> id,
+      required String subjectId,
+      required String documentTitle,
+      required String classGroupUuid,
+    });
+typedef $$ResourceSharesTableUpdateCompanionBuilder =
+    ResourceSharesCompanion Function({
+      Value<int> id,
+      Value<String> subjectId,
+      Value<String> documentTitle,
+      Value<String> classGroupUuid,
+    });
+
+class $$ResourceSharesTableFilterComposer
+    extends Composer<_$OticDatabase, $ResourceSharesTable> {
+  $$ResourceSharesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ResourceSharesTableOrderingComposer
+    extends Composer<_$OticDatabase, $ResourceSharesTable> {
+  $$ResourceSharesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ResourceSharesTableAnnotationComposer
+    extends Composer<_$OticDatabase, $ResourceSharesTable> {
+  $$ResourceSharesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get documentTitle => $composableBuilder(
+    column: $table.documentTitle,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
+}
+
+class $$ResourceSharesTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $ResourceSharesTable,
+          ResourceShare,
+          $$ResourceSharesTableFilterComposer,
+          $$ResourceSharesTableOrderingComposer,
+          $$ResourceSharesTableAnnotationComposer,
+          $$ResourceSharesTableCreateCompanionBuilder,
+          $$ResourceSharesTableUpdateCompanionBuilder,
+          (
+            ResourceShare,
+            BaseReferences<_$OticDatabase, $ResourceSharesTable, ResourceShare>,
+          ),
+          ResourceShare,
+          PrefetchHooks Function()
+        > {
+  $$ResourceSharesTableTableManager(
+    _$OticDatabase db,
+    $ResourceSharesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ResourceSharesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ResourceSharesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ResourceSharesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> documentTitle = const Value.absent(),
+                Value<String> classGroupUuid = const Value.absent(),
+              }) => ResourceSharesCompanion(
+                id: id,
+                subjectId: subjectId,
+                documentTitle: documentTitle,
+                classGroupUuid: classGroupUuid,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String subjectId,
+                required String documentTitle,
+                required String classGroupUuid,
+              }) => ResourceSharesCompanion.insert(
+                id: id,
+                subjectId: subjectId,
+                documentTitle: documentTitle,
+                classGroupUuid: classGroupUuid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ResourceSharesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $ResourceSharesTable,
+      ResourceShare,
+      $$ResourceSharesTableFilterComposer,
+      $$ResourceSharesTableOrderingComposer,
+      $$ResourceSharesTableAnnotationComposer,
+      $$ResourceSharesTableCreateCompanionBuilder,
+      $$ResourceSharesTableUpdateCompanionBuilder,
+      (
+        ResourceShare,
+        BaseReferences<_$OticDatabase, $ResourceSharesTable, ResourceShare>,
+      ),
+      ResourceShare,
+      PrefetchHooks Function()
+    >;
+typedef $$SyncIdentityTableCreateCompanionBuilder =
+    SyncIdentityCompanion Function({
+      Value<int> id,
+      Value<String?> schoolId,
+      Value<String?> schoolName,
+      required String signingSeed,
+    });
+typedef $$SyncIdentityTableUpdateCompanionBuilder =
+    SyncIdentityCompanion Function({
+      Value<int> id,
+      Value<String?> schoolId,
+      Value<String?> schoolName,
+      Value<String> signingSeed,
+    });
+
+class $$SyncIdentityTableFilterComposer
+    extends Composer<_$OticDatabase, $SyncIdentityTable> {
+  $$SyncIdentityTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncIdentityTableOrderingComposer
+    extends Composer<_$OticDatabase, $SyncIdentityTable> {
+  $$SyncIdentityTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncIdentityTableAnnotationComposer
+    extends Composer<_$OticDatabase, $SyncIdentityTable> {
+  $$SyncIdentityTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get schoolId =>
+      $composableBuilder(column: $table.schoolId, builder: (column) => column);
+
+  GeneratedColumn<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => column,
+  );
+}
+
+class $$SyncIdentityTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $SyncIdentityTable,
+          SyncIdentityData,
+          $$SyncIdentityTableFilterComposer,
+          $$SyncIdentityTableOrderingComposer,
+          $$SyncIdentityTableAnnotationComposer,
+          $$SyncIdentityTableCreateCompanionBuilder,
+          $$SyncIdentityTableUpdateCompanionBuilder,
+          (
+            SyncIdentityData,
+            BaseReferences<
+              _$OticDatabase,
+              $SyncIdentityTable,
+              SyncIdentityData
+            >,
+          ),
+          SyncIdentityData,
+          PrefetchHooks Function()
+        > {
+  $$SyncIdentityTableTableManager(_$OticDatabase db, $SyncIdentityTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncIdentityTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncIdentityTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncIdentityTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> schoolId = const Value.absent(),
+                Value<String?> schoolName = const Value.absent(),
+                Value<String> signingSeed = const Value.absent(),
+              }) => SyncIdentityCompanion(
+                id: id,
+                schoolId: schoolId,
+                schoolName: schoolName,
+                signingSeed: signingSeed,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String?> schoolId = const Value.absent(),
+                Value<String?> schoolName = const Value.absent(),
+                required String signingSeed,
+              }) => SyncIdentityCompanion.insert(
+                id: id,
+                schoolId: schoolId,
+                schoolName: schoolName,
+                signingSeed: signingSeed,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncIdentityTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $SyncIdentityTable,
+      SyncIdentityData,
+      $$SyncIdentityTableFilterComposer,
+      $$SyncIdentityTableOrderingComposer,
+      $$SyncIdentityTableAnnotationComposer,
+      $$SyncIdentityTableCreateCompanionBuilder,
+      $$SyncIdentityTableUpdateCompanionBuilder,
+      (
+        SyncIdentityData,
+        BaseReferences<_$OticDatabase, $SyncIdentityTable, SyncIdentityData>,
+      ),
+      SyncIdentityData,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -12630,4 +14097,8 @@ class $OticDatabaseManager {
       $$SyncStateTableTableManager(_db, _db.syncState);
   $$AssignmentsTableTableManager get assignments =>
       $$AssignmentsTableTableManager(_db, _db.assignments);
+  $$ResourceSharesTableTableManager get resourceShares =>
+      $$ResourceSharesTableTableManager(_db, _db.resourceShares);
+  $$SyncIdentityTableTableManager get syncIdentity =>
+      $$SyncIdentityTableTableManager(_db, _db.syncIdentity);
 }

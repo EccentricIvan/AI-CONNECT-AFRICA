@@ -1,265 +1,42 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ai_core/inference/runtime_config.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../../services/ai_coder_service.dart';
 import '../../shared/coding/code_autocorrect.dart' show CodeAutocorrectKind;
 import '../../shared/coding/code_instruction_edit.dart';
-import '../../shared/coding/html_images.dart' show maskEmbeddedImages;
-import '../../shared/coding/interactive_html.dart' show escapeHtml;
+import '../../shared/coding/html_images.dart'
+    show PickedImage, applyPickedImages, maskEmbeddedImages;
+import '../../shared/coding/interactive_html.dart'
+    show escapeHtml, extractPageTitle, hasVisibleContent;
 import '../../shared/widgets/code_instruction_bar.dart';
 import '../../shared/widgets/html_preview.dart';
 import '../../services/projects/project_providers.dart';
 import '../projects/project_actions.dart';
 import '../projects/project_files_sheet.dart';
 import '../projects/scaffold/project_scaffold.dart';
+import '../projects/widgets/image_instruction_runner.dart';
 import '../projects/widgets/project_tools_bar.dart';
 import '../create/dev_l10n.dart';
 import '../settings/coder_package_prompt.dart';
 import 'app_build_coder.dart';
-
-class _AppType {
-  const _AppType(
-    this.id,
-    this.name,
-    this.featureOptions, {
-    this.templateId = 'generic',
-    this.autoFields = const {},
-  });
-  final String id;
-  final String name;
-  final List<String> featureOptions;
-
-  /// Screen template under `assets/templates/apps/` this type builds from.
-  final String templateId;
-
-  /// Sample copy pools filled in at build time, so a student's screen looks
-  /// like a real product instead of empty placeholders.
-  final Map<String, List<String>> autoFields;
-}
+import 'app_type_catalog.dart';
+import 'app_type_classifier.dart';
+import 'app_type_picker.dart';
 
 class _QField {
   const _QField(this.key, this.question, this.hint);
   final String key, question, hint;
 }
 
-final _rng = Random();
-String _pick(List<String> options) => options[_rng.nextInt(options.length)];
-
-const _appTypes = [
-  _AppType('notes', 'School Notes', [
-    'Note list',
-    'Add note form',
-    'Search notes',
-    'Favorite notes',
-  ]),
-  _AppType('budget', 'Budget Tracker', [
-    'Expense list',
-    'Add expense',
-    'Category totals',
-    'Savings goal',
-  ]),
-  _AppType('quiz', 'Quiz Game', [
-    'Question screen',
-    'Score tracker',
-    'Multiple choice',
-    'Restart quiz',
-  ]),
-  _AppType('habits', 'Habit Tracker', [
-    'Daily checklist',
-    'Streak counter',
-    'Add habit',
-    'Weekly progress',
-  ]),
-  _AppType('todo', 'To-Do List', [
-    'Task list',
-    'Add task',
-    'Mark done',
-    'Priority tags',
-  ]),
-  _AppType('market', 'Local Market', [
-    'Product cards',
-    'Seller contact',
-    'Search items',
-    'Favorites',
-  ]),
-  _AppType(
-    'farm',
-    'Farm / Crop Monitor',
-    ['Field list', 'Weather today', 'Crop health', 'Harvest log'],
-    templateId: 'farm',
-    autoFields: {
-      'owner_name': ['Annca', 'Harris', 'Joseph', 'Amina'],
-      'location': ['Mukono, Uganda', 'Central Valley', 'Jinja, Uganda', 'Nakuru, Kenya'],
-      'temperature': ['24°C', '32°C', '27°C'],
-      'humidity': ['85%', '78%', '64%'],
-      'rainfall': ['8 mm', '0 mm', '12 mm'],
-      'wind': ['13 km/h', '7 m/s', '9 km/h'],
-      'crop1': ['Maize', 'Rice', 'Carrots'],
-      'crop2': ['Beans', 'Wheat', 'Vegetable'],
-      'crop3': ['Coffee', 'Potato', 'Fruit'],
-      'field1_name': ['My Garden Field', 'North Field', 'Riverside Plot'],
-      'field1_note': ['Healthy growth, irrigation on schedule.', 'Ready for harvest in two weeks.'],
-      'field2_name': ['East Field', 'Hill Plot', 'Lower Field'],
-      'field2_note': ['Watch for pests this week.', 'Newly planted, germinating well.'],
-      'total_area': ['12 ha', '45 acres', '8 ha'],
-      'plant_age': ['45 days', '2 months', '18 days'],
-      'soil_quality': ['75%', '82%', '68%'],
-      'yield_amount': ['15 tons', '22 tons', '9 tons'],
-    },
-  ),
-  _AppType(
-    'shop',
-    'Online Shop / Store',
-    ['Product grid', 'Search items', 'Cart & checkout', 'Favorites'],
-    templateId: 'shop',
-    autoFields: {
-      'location': ['Kampala Road, 21', 'Main Street, Nairobi', 'Plot 8, Entebbe'],
-      'cat1': ['Home', 'Furniture', 'Fabrics'],
-      'cat2': ['Clothes', 'Fashion', 'Shoes'],
-      'cat3': ['Electronics', 'Lighting', 'Phones'],
-      'cat4': ['Plants', 'Decor', 'Garden'],
-      'promo_title': ['Pay in instalments', 'Free delivery this week', 'Save up to 30%'],
-      'promo_note': ['No deposit needed on selected items.', 'On every order above 50,000 UGX.'],
-      'product1_name': ['Swivel chair', 'Woven basket', 'Cushion cover'],
-      'product1_price': ['120,000 UGX', '35,000 UGX', '18,000 UGX'],
-      'product2_name': ['Table lamp', 'Glass tumbler', 'Wall clock'],
-      'product2_price': ['45,000 UGX', '9,000 UGX', '60,000 UGX'],
-    },
-  ),
-  _AppType(
-    'learn',
-    'Learning / Course App',
-    ['Course list', 'Lesson player', 'Progress tracker', 'Quizzes'],
-    templateId: 'learn',
-    autoFields: {
-      'learner_name': ['Sofia', 'Jerel', 'Amina', 'Daniel'],
-      'banner_title': ['Find your lesson for today', 'Learn something new today', 'Pick up where you left off'],
-      'banner_note': ['Over 100 offline lessons across every subject on your device.', 'Short lessons that work with no internet at all.'],
-      'cat1': ['Design', 'Art', 'Writing'],
-      'cat2': ['Coding', 'Web Design', 'ICT'],
-      'cat3': ['Maths', 'Numbers', 'Algebra'],
-      'cat4': ['Science', 'Biology', 'Physics'],
-      'course1_name': ['Intro to Web Design', 'Algebra Basics', 'Biology Foundations'],
-      'course1_meta': ['12 lessons · 6h 30m', '18 lessons · 4h 10m'],
-      'course2_name': ['JavaScript Fundamentals', 'Chemistry Basics', 'Creative Writing'],
-      'course2_meta': ['24 lessons · 8h 41m', '9 lessons · 3h 05m'],
-    },
-  ),
-  _AppType(
-    'pos',
-    'Shop Till / Sales Point',
-    ['Register sale', 'Product list', 'Daily totals', 'Receipts'],
-    templateId: 'pos',
-    autoFields: {
-      'owner_name': ['June', 'Peter', 'Sarah', 'Moses'],
-      'shop_name': ['The Craft Shop', 'Corner Store', 'Netro Creative'],
-      'today': ['Monday, 1 February', 'Today', 'Tuesday, 14 March'],
-      'receipts': ['4', '19', '27'],
-      'total_sales': ['362,290', '1,240,000', '86,400'],
-      'menu_label': ['Menu', 'Products', 'Stock'],
-    },
-  ),
-  _AppType(
-    'social',
-    'Community / Social App',
-    ['Feed', 'Groups', 'Discover', 'Profile'],
-    templateId: 'social',
-    autoFields: {
-      'community_tag': ['Community & Culture', 'Made for creators', 'Connect and share'],
-      'tab1': ['Following', 'For you', 'Trending'],
-      'tab2': ['Discover', 'Nearby', 'Popular'],
-      'tab3': ['Groups', 'Events', 'Saved'],
-      'post1_title': ['Culture Festival Highlights', 'Market Day Recap', 'Sunset Over the Hills'],
-      'post1_author': ['Amara K.', 'Kwame O.', 'Zanele M.'],
-      'post1_likes': ['1.5K', '820', '2.3K'],
-      'post2_title': ['DIY Traditional Fashion', 'Weekend Craft Fair', 'New Fabric Drop'],
-      'post2_author': ['Tendai M.', 'Aisha B.', 'Kofi A.'],
-      'post2_likes': ['183K', '4.2K', '9.6K'],
-      'post3_title': ['A Map of Our Roots', 'Where We Come From', 'Community Stories'],
-      'post3_author': ['Chidi N.', 'Fatima Y.', 'Noma S.'],
-      'post3_likes': ['100K', '15K', '6.8K'],
-      'post4_title': ['My First Vlog', 'Behind the Scenes', 'A Day in the Village'],
-      'post4_author': ['Nia F.', 'Emeka T.', 'Layla R.'],
-      'post4_likes': ['2.7M', '340K', '58K'],
-    },
-  ),
-  _AppType(
-    'eduplatform',
-    'Course Marketplace App',
-    ['Course catalog', 'Mentor profiles', 'Lesson progress', 'Enroll'],
-    templateId: 'eduplatform',
-    autoFields: {
-      'course1_name': ['Figma Master Class for Beginners', 'Intro to Bootstrap', 'UI/UX Fundamentals'],
-      'course1_tutor': ['Trolentik Korlen', 'Jane Achan', 'Marlin Reyes'],
-      'course1_due': ['28 lessons', 'Due Nov 2', '6h 30m'],
-      'course1_level': ['Beginner', 'Intermediate'],
-      'course2_name': ['Web Design Fundamentals', 'JavaScript Basics', 'Graphic Design Pro'],
-      'course2_tutor': ['Simons Lee', 'Peter Okot', 'Jesica Nabb'],
-      'course2_due': ['24 lessons', 'Due Nov 9', '8h 20m'],
-      'course2_level': ['Intermediate', 'Beginner'],
-      'course3_name': ['App Development', 'Prototype with Figma', 'Mobile UI Essentials'],
-      'course3_tutor': ['Marlin Torres', 'Grace Auma', 'David Oduya'],
-      'course3_due': ['15 lessons', 'Due Nov 16', '46 min'],
-      'course3_level': ['Advanced', 'Beginner'],
-      'mentor1_name': ['Marlin', 'Grace', 'David'],
-      'mentor1_subject': ['UI/UX Design', 'Mathematics', 'Web Design'],
-      'mentor2_name': ['Simons', 'Peter', 'Jesica'],
-      'mentor2_subject': ['Web Design', 'Physics', 'Graphic Design'],
-      'mentor3_name': ['Jesica', 'David', 'Simons'],
-      'mentor3_subject': ['UI/UX Design', 'App Dev', 'Illustration'],
-    },
-  ),
-  _AppType(
-    'orders',
-    'Order Pipeline App',
-    ['Order stages', 'Revenue chart', 'Client details', 'Notifications'],
-    templateId: 'orders',
-    autoFields: {
-      'stage1_name': ['Leads', 'New enquiries', 'Quotes sent'],
-      'stage1_count': ['4', '9', '6'],
-      'stage1_new': ['2', '3', '1'],
-      'stage2_name': ['Paid — Ready to Start', 'Confirmed orders', 'Deposit received'],
-      'stage2_count': ['23', '14', '31'],
-      'stage2_new': ['3', '2', '5'],
-      'stage3_name': ['In Progress', 'In Tailoring', 'Being Prepared'],
-      'stage3_count': ['4', '7', '3'],
-      'stage3_new': ['1', '2', '1'],
-      'stage4_name': ['Ready to Send', 'Waiting for Feedback', 'Completed'],
-      'stage4_count': ['3', '8', '12'],
-      'revenue_total': ['\$3,780,113', '\$1,240,500', '\$842,900'],
-      'revenue_today': ['\$604,355', '\$92,300', '\$38,600'],
-    },
-  ),
-  _AppType(
-    'products',
-    'Product & Sales Tracker',
-    ['Product list', 'Sales chart', 'Stock levels', 'Add product'],
-    templateId: 'products',
-    autoFields: {
-      'owner_role': ['Owner', 'Shop Manager', 'Store Admin'],
-      'product_count': ['6', '18', '42'],
-      'sales_count': ['19', '54', '112'],
-      'revenue': ['\$224', '\$1,840', '\$6,200'],
-      'returns': ['4', '2', '9'],
-      'chart_title': ["Today's sales", 'This week', 'Hourly sales'],
-      'product1_name': ['Black Shine Shampoo', 'Sunsilk Conditioner', 'Herbal Soap Bar'],
-      'product1_stock': ['340', '88', '210'],
-      'product1_price': ['699', '850', '250'],
-      'product2_name': ['Gaming Headphone', 'Wireless Earbuds', 'Bluetooth Speaker'],
-      'product2_stock': ['88', '15,888', '46'],
-      'product2_price': ['1000', '15888', '1200'],
-      'product3_name': ['Daily Soap', 'Body Lotion', 'Hand Sanitizer'],
-      'product3_stock': ['150', '60', '300'],
-      'product3_price': ['699', '450', '150'],
-    },
-  ),
-];
+/// Longest description passed into the coder brief — leaves room in
+/// [kCoderMaxPromptChars] for the system prompt and the rest of the brief.
+const _kMaxDescriptionChars = 800;
 
 const _askFields = [
   _QField('app_name', "What should we call your app?", 'e.g. StudySpark'),
@@ -298,8 +75,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   final Map<String, String> _answers = {};
   final List<String> _selectedFeatures = [];
 
-  _AppType? _appType;
+  AppTypeEntry? _appType;
   int _fieldIndex = -1;
+
+  /// Waiting for the learner to describe an app (or pick one from the list).
   bool _choosingType = true;
   bool _choosingColor = false;
   bool _choosingFeatures = false;
@@ -308,6 +87,17 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   bool _showStudio = false;
   String _buildNote = '';
   bool _autocorrectBusy = false;
+
+  /// English form of the learner's description, when this build came from
+  /// free text. Empty on the guided (pick-from-list) path.
+  String _description = '';
+
+  /// Page title of the last free-text build, fixed at build time so later
+  /// edits don't rename the project folder on every save.
+  String? _builtTitle;
+
+  /// Pictures attached before Build, placed on the page once it exists.
+  List<PickedImage> _pendingImages = const [];
 
   /// This build's folder under Projects › Applications once saved; later
   /// saves rewrite the same folder instead of making a new one.
@@ -324,19 +114,11 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
 
   Future<void> _startIntro() async {
     await _sayBot(
-      "Hi! Let's build a simple mobile app you can preview in the browser. 📱\n\n"
-      "What kind of app do you want?",
-    );
-    await _sayBot(
-      // Circled numerals (U+2460-U+246D): one glyph per number past 10, where
-      // keycap emoji would need two boxes and knock the column out of line.
-      "① School Notes\n② Budget Tracker\n③ Quiz Game\n"
-      "④ Habit Tracker\n⑤ To-Do List\n⑥ Local Market\n"
-      "⑦ Farm / Crop Monitor\n⑧ Online Shop / Store\n"
-      "⑨ Learning / Course App\n⑩ Shop Till / Sales Point\n"
-      "⑪ Community / Social App\n⑫ Course Marketplace\n"
-      "⑬ Order Pipeline\n⑭ Product & Sales Tracker\n\n"
-      "Type the number or name!",
+      "Hi! Tell me about the app you want to build, in your own words. 📱\n\n"
+      "Say who it's for and what it should do — for example: "
+      "\"an app for my class to track who paid school fees\".\n\n"
+      "I'll write the app and its backend for you. You can add pictures "
+      "with the 🖼 button, or tap ☰ to pick from a list instead.",
     );
   }
 
@@ -382,7 +164,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     if (!mounted) return;
 
     if (_choosingType) {
-      await _handleTypeChoice(english);
+      await _handleDescription(english);
     } else if (_choosingColor) {
       await _handleColorChoice(english);
     } else if (_fieldIndex >= 0 && _fieldIndex < _askFields.length) {
@@ -392,52 +174,66 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     }
   }
 
-  Future<void> _handleTypeChoice(String text) async {
-    final lower = text.toLowerCase();
-    _AppType? chosen;
+  /// Clears what a previous build recorded, so a new description or list
+  /// pick starts from nothing.
+  void _resetWizard() {
+    _answers.clear();
+    _selectedFeatures.clear();
+    _fieldIndex = -1;
+    _colorKey = '1';
+    _choosingColor = false;
+    _choosingFeatures = false;
+    _description = '';
+    _builtTitle = null;
+  }
 
-    // A typed number wins outright — substring matching cannot be used for
-    // digits, because "10" contains "1" and would resolve to the first type.
-    final digits = RegExp(r'^\s*(\d{1,2})\s*$').firstMatch(lower)?.group(1);
-    final picked = digits == null ? null : int.tryParse(digits);
-    if (picked != null && picked >= 1 && picked <= _appTypes.length) {
-      chosen = _appTypes[picked - 1];
-    }
-
-    // Specific phrases first so "shop till" is not eaten by "shop".
-    const matchers = <int, List<String>>{
-      9: ['till', 'sales point', 'pos', 'cashier', 'register'],
-      13: ['sales tracker', 'product tracker', 'inventory'],
-      12: ['order pipeline', 'pipeline', 'orders'],
-      11: ['course marketplace', 'marketplace', 'mentor'],
-      10: ['social', 'community', 'feed'],
-      6: ['farm', 'crop', 'agri', 'harvest', 'garden'],
-      7: ['online shop', 'store', 'ecommerce', 'e-commerce', 'shop'],
-      8: ['learn', 'course', 'lesson', 'study', 'education'],
-      0: ['note', 'school notes'],
-      1: ['budget', 'money', 'expense'],
-      2: ['quiz', 'game'],
-      3: ['habit'],
-      4: ['todo', 'to-do', 'task'],
-      5: ['market', 'sell'],
-    };
-
-    if (chosen == null) {
-      for (final e in matchers.entries) {
-        for (final k in e.value) {
-          if (lower.contains(k)) {
-            chosen = _appTypes[e.key];
-            break;
-          }
-        }
-        if (chosen != null) break;
-      }
-    }
-
-    if (chosen == null) {
-      await _sayBot("I didn't catch that. Type 1–14 or the app name.");
+  /// Free-text entry: the description is the whole spec. It is classified
+  /// locally (no model call) only to choose which backend and fallback
+  /// template the build uses; the page itself is written by the coder model.
+  Future<void> _handleDescription(String english) async {
+    final text = english.trim();
+    if (text.split(RegExp(r'\s+')).length < 3) {
+      await _sayBot(
+        "Tell me a little more — who is the app for, and what should it do? "
+        "Or tap ☰ to pick from a list.",
+      );
       return;
     }
+    _resetWizard();
+    final type = classifyAppType(text);
+    _appType = type;
+    _description = text.length > _kMaxDescriptionChars
+        ? text.substring(0, _kMaxDescriptionChars)
+        : text;
+    _colorKey = _colorKeyMentionedIn(text) ?? '1';
+    _choosingType = false;
+    await _sayBot(
+      type == kGenericAppType
+          ? "Got it! ✍️ Writing your app now…"
+          : "Got it! ✍️ Writing your app now — it'll store its data like a "
+                "${type.name}.",
+    );
+    await _buildApp();
+  }
+
+  /// A colour the learner named in their description ("a green app…").
+  String? _colorKeyMentionedIn(String text) {
+    final lower = text.toLowerCase();
+    for (final e in _colorThemes.entries) {
+      final word = e.value['name']!.toLowerCase().split(' ').last;
+      if (RegExp('\\b$word\\b').hasMatch(lower)) return e.key;
+    }
+    return null;
+  }
+
+  /// Guided entry: the list picker, then the original colour → name/purpose
+  /// → features questions and the template build, with no model call.
+  Future<void> _pickFromList() async {
+    if (_building) return;
+    final chosen = await showAppTypePicker(context);
+    if (chosen == null || !mounted) return;
+    _resetWizard();
+    _addUser(chosen.name);
     _appType = chosen;
     _choosingType = false;
     _choosingColor = true;
@@ -447,6 +243,12 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
       "① Ocean Blue\n② Forest Green\n③ Royal Purple\n"
       "④ Sunset Orange\n⑤ Rose Pink\n\nType a number!",
     );
+  }
+
+  Future<void> _attachPictures() async {
+    final picked = await pickPictures(context);
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _pendingImages = [..._pendingImages, ...picked]);
   }
 
   Future<void> _handleColorChoice(String text) async {
@@ -462,7 +264,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     _colorKey = key;
     _choosingColor = false;
     _fieldIndex = 0;
-    await _sayBot("${_colorThemes[key]!['name']} selected. ✨ Two quick details:");
+    await _sayBot(
+      "${_colorThemes[key]!['name']} selected. ✨ Two quick details:",
+    );
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await _askCurrentField();
   }
@@ -480,7 +284,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     if (_fieldIndex >= _askFields.length) {
       _choosingFeatures = true;
       final opts = _appType!.featureOptions;
-      final listed = opts.asMap().entries
+      final listed = opts
+          .asMap()
+          .entries
           .map((e) => '${e.key + 1}️⃣ ${e.value}')
           .join('\n');
       await _sayBot(
@@ -532,6 +338,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
       themePrimary: theme['primary']!,
       answers: Map<String, String>.from(_answers),
       features: List<String>.from(_selectedFeatures),
+      description: _description,
     );
   }
 
@@ -545,6 +352,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   String get _appTitle {
     final name = _answers['app_name']?.trim();
     if (name != null && name.isNotEmpty) return name;
+    final built = _builtTitle;
+    if (built != null && built.isNotEmpty) return built;
     return _appType?.name ?? 'My app';
   }
 
@@ -564,7 +373,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   Future<ProjectFolder?> _saveToProjects({bool quiet = false}) {
     _saveAgain = true;
     if (!quiet) _saveLoud = true;
-    return _saveInFlight ??= _drainSaves().whenComplete(() => _saveInFlight = null);
+    return _saveInFlight ??= _drainSaves().whenComplete(
+      () => _saveInFlight = null,
+    );
   }
 
   Future<ProjectFolder?> _drainSaves() async {
@@ -610,13 +421,21 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
         template: intent.appTypeId,
         templateName: intent.appTypeName,
         features: intent.features,
-        answers: intent.answers,
+        answers: {
+          ...intent.answers,
+          if (intent.description.isNotEmpty) 'description': intent.description,
+        },
       );
       if (!mounted) return saved?.folder;
       if (saved == null) {
         if (!quiet) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(tr(context, 'Create a learner profile to save projects.'))));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                tr(context, 'Create a learner profile to save projects.'),
+              ),
+            ),
+          );
         }
         return null;
       }
@@ -625,20 +444,31 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
         _savedLabel = saved.breadcrumb;
       });
       if (!quiet) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(trFill(context, 'Saved “{name}” to Projects', {'name': saved.breadcrumb})),
-          action: SnackBarAction(
-            label: tr(context, 'Open'),
-            onPressed: () => context.push('/projects'),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              trFill(context, 'Saved “{name}” to Projects', {
+                'name': saved.breadcrumb,
+              }),
+            ),
+            action: SnackBarAction(
+              label: tr(context, 'Open'),
+              onPressed: () => context.push('/projects'),
+            ),
           ),
-        ));
+        );
       }
       return saved.folder;
     } catch (e) {
       debugPrint('app project save failed: $e');
       if (mounted && !quiet) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(tr(context, "Couldn't save your project. Try again."))));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              tr(context, "Couldn't save your project. Try again."),
+            ),
+          ),
+        );
       }
       return null;
     }
@@ -730,7 +560,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              tr(context, "Couldn't apply that — try describing it a different way."),
+              tr(
+                context,
+                "Couldn't apply that — try describing it a different way.",
+              ),
             ),
           ),
         );
@@ -742,7 +575,53 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(tr(context, 'Something went wrong. Please try again.'))),
+        SnackBar(
+          content: Text(tr(context, 'Something went wrong. Please try again.')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _autocorrectBusy = false);
+    }
+  }
+
+  /// A picture from the Tell-AI bar plus what to do with it ("make it the
+  /// logo", "use its colours", "put it in the about section").
+  Future<void> _applyImageInstruction(
+    String instruction,
+    List<PickedImage> images,
+  ) async {
+    if (_autocorrectBusy) return;
+    final before = _codeController.text;
+    if (before.trim().isEmpty) return;
+    setState(() => _autocorrectBusy = true);
+    try {
+      final done = await runImageInstruction(
+        context: context,
+        ref: ref,
+        html: before,
+        instruction: instruction,
+        images: images,
+      );
+      if (!mounted) return;
+      if (done == null) {
+        showInstructionNoticeSnack(
+          context,
+          tr(
+            context,
+            "That didn't change the app — try saying where the picture should go.",
+          ),
+        );
+        return;
+      }
+      if (done.html == before) {
+        showInstructionNoticeSnack(context, done.message);
+        return;
+      }
+      _replaceCode(done.html, undo: before);
+      showInstructionAppliedSnack(
+        context,
+        onUndo: _undoLastInstruction,
+        message: done.message,
       );
     } finally {
       if (mounted) setState(() => _autocorrectBusy = false);
@@ -754,21 +633,30 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
   /// feature list is markup this method builds itself, so it goes in raw.
   Future<String> _assembleAppHtml(AppBuildIntent intent) async {
     final type = _appType!;
-    var html = await rootBundle
-        .loadString('assets/templates/apps/${type.templateId}.html');
+    var html = await rootBundle.loadString(
+      'assets/templates/apps/${type.templateId}.html',
+    );
 
     final appName = intent.appName.trim().isEmpty ? 'My App' : intent.appName;
+    final description = intent.description.trim();
+    final purpose = intent.purpose.trim().isNotEmpty
+        ? intent.purpose
+        : description.isNotEmpty
+        ? (description.length > 140
+              ? '${description.substring(0, 140)}…'
+              : description)
+        : type.name;
     final tokens = <String, String>{
       'app_name': appName,
       'type_name': type.name,
-      'purpose': intent.purpose.trim().isEmpty ? type.name : intent.purpose,
+      'purpose': purpose,
       'primary': intent.themePrimary,
       'initial': appName.trim().substring(0, 1).toUpperCase(),
       'stat1': '3',
       'stat2': '12',
       'stat3': '48',
       for (final entry in type.autoFields.entries)
-        entry.key: _pick(entry.value),
+        entry.key: pickAutoField(entry.value),
     };
 
     for (final entry in tokens.entries) {
@@ -786,6 +674,37 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     return html.replaceAll('{{features}}', list.toString());
   }
 
+  /// The coder model writes the whole page from the learner's description.
+  /// Null when the model isn't installed, refuses, fails, or runs out of
+  /// tokens before writing any visible content — the caller then falls back
+  /// to the template for the classified type.
+  Future<String?> _writeAppWithCoder(AppBuildIntent intent) async {
+    final coderOk = await promptAndFetchCoderPackage(context, ref);
+    if (!coderOk || !mounted) return null;
+    try {
+      final engine = await ref.read(programmingEngineProvider.future);
+      final html = await AiCoderService(engine: engine).generateAppHtml(
+        intent: intent,
+        maxTokens: kAppFreeTextBuildMaxTokens,
+        onToken: (cumulative) {
+          if (!mounted) return;
+          setState(
+            () => _buildNote = trFill(
+              context,
+              'Writing your app… {n} characters so far',
+              {'n': '${cumulative.length}'},
+            ),
+          );
+        },
+      );
+      if (html == null || !hasVisibleContent(html)) return null;
+      return html;
+    } catch (e) {
+      debugPrint('free-text app build failed: $e');
+      return null;
+    }
+  }
+
   Future<void> _buildApp() async {
     if (_appType == null) return;
     if (!mounted) return;
@@ -799,21 +718,40 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     });
 
     final intent = _currentIntent();
-    final html = await _assembleAppHtml(intent);
-
+    final fromDescription = intent.description.isNotEmpty;
+    final generated = fromDescription ? await _writeAppWithCoder(intent) : null;
+    var html = generated ?? await _assembleAppHtml(intent);
     if (!mounted) return;
-    _codeController.text = html;
 
-    final ready = tr(
-      context,
-      'Your app preview is ready! 🎉 Toggle Preview / Code to view or edit.',
-    );
+    if (_pendingImages.isNotEmpty) {
+      html = applyPickedImages(
+        html,
+        _pendingImages,
+        heading: tr(context, 'Gallery'),
+      );
+    }
+    _codeController.text = html;
+    _builtTitle = fromDescription ? extractPageTitle(html) : null;
+
+    final ready = fromDescription && generated == null
+        ? tr(
+            context,
+            "I couldn't write a custom version this time, so I started you from "
+            'a ready-made design. Change it with the bar under the code. 🎉',
+          )
+        : tr(
+            context,
+            'Your app preview is ready! 🎉 Toggle Preview / Code to view or edit.',
+          );
 
     setState(() {
       _messages.add(_ChatMsg(ready, true));
       _building = false;
       _showStudio = true;
       _buildNote = '';
+      _pendingImages = const [];
+      // The chat is ready for the next idea once this one is built.
+      _choosingType = true;
     });
     _scrollDown();
     // Every build is a project: saved straight away into Projects ›
@@ -856,19 +794,23 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'backend',
-                  child: Row(children: [
-                    const Icon(Icons.dns_outlined, size: 18),
-                    const SizedBox(width: 10),
-                    Text(tr(context, 'View project files')),
-                  ]),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.dns_outlined, size: 18),
+                      const SizedBox(width: 10),
+                      Text(tr(context, 'View project files')),
+                    ],
+                  ),
                 ),
                 PopupMenuItem(
                   value: 'export',
-                  child: Row(children: [
-                    const Icon(Icons.ios_share_outlined, size: 18),
-                    const SizedBox(width: 10),
-                    Text(tr(context, 'Export project (.zip)')),
-                  ]),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.ios_share_outlined, size: 18),
+                      const SizedBox(width: 10),
+                      Text(tr(context, 'Export project (.zip)')),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -897,8 +839,9 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                 context,
                 _showStudio
                     ? 'Edit the code on the left — the preview on the right updates as you type. Use Reload or Full screen in the preview bar.'
-                    : 'Answer the prompts to record features. Build makes your app, '
-                        'then opens Preview Layout | View Source Code.',
+                    : 'Describe the app you want and OTIC writes it — the screens '
+                          'and a backend that saves its data. Prefer choosing? Tap ☰ '
+                          'to pick from a list.',
               ),
               style: const TextStyle(fontSize: 12, height: 1.35),
             ),
@@ -920,6 +863,8 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                 toolbar: CodeInstructionBar(
                   busy: _autocorrectBusy,
                   onSubmit: _applyInstruction,
+                  onPickImages: () => pickPictures(context),
+                  onSubmitWithImages: _applyImageInstruction,
                 ),
               ),
             ),
@@ -927,8 +872,10 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 itemCount: _messages.length,
                 itemBuilder: (_, i) {
                   final msg = _messages[i];
@@ -966,29 +913,65 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
                 ),
                 color: Theme.of(context).colorScheme.surface,
               ),
-              padding: const EdgeInsets.fromLTRB(16, 10, 12, 16),
-              child: Row(
+              padding: const EdgeInsets.fromLTRB(8, 10, 12, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      onSubmitted: (_) => _onSend(),
-                      decoration: InputDecoration(
-                        hintText: _choosingType
-                            ? tr(context, 'Type 1–6 or an app name…')
-                            : tr(context, 'Type your answer...'),
-                        border: InputBorder.none,
+                  if (_choosingType && _pendingImages.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 0, 6),
+                      child: InputChip(
+                        avatar: const Icon(Icons.image_outlined, size: 18),
+                        label: Text(
+                          trFill(
+                            context,
+                            '{n} picture(s) will go on your app',
+                            {'n': '${_pendingImages.length}'},
+                          ),
+                        ),
+                        onDeleted: () =>
+                            setState(() => _pendingImages = const []),
                       ),
-                      textInputAction: TextInputAction.send,
                     ),
-                  ),
-                  IconButton.filled(
-                    onPressed: _onSend,
-                    icon: const Icon(Icons.arrow_upward),
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                    ),
+                  Row(
+                    children: [
+                      if (_choosingType) ...[
+                        IconButton(
+                          tooltip: tr(context, 'Pick from a list'),
+                          onPressed: _pickFromList,
+                          icon: const Icon(Icons.list_alt_outlined),
+                        ),
+                        IconButton(
+                          tooltip: tr(context, 'Add pictures'),
+                          onPressed: _attachPictures,
+                          icon: const Icon(Icons.add_photo_alternate_outlined),
+                        ),
+                      ],
+                      Expanded(
+                        child: TextField(
+                          controller: _controller,
+                          onSubmitted: (_) => _onSend(),
+                          minLines: 1,
+                          maxLines: _choosingType ? 4 : 1,
+                          decoration: InputDecoration(
+                            hintText: _choosingType
+                                ? tr(context, 'Describe your app…')
+                                : tr(context, 'Type your answer...'),
+                            border: InputBorder.none,
+                          ),
+                          textInputAction: TextInputAction.send,
+                        ),
+                      ),
+                      IconButton.filled(
+                        onPressed: _onSend,
+                        icon: const Icon(Icons.arrow_upward),
+                        style: IconButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -1015,8 +998,9 @@ class _ChatBubble extends StatelessWidget {
     return Align(
       alignment: isBot ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
-        constraints:
-            BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.8),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.8,
+        ),
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -1029,8 +1013,9 @@ class _ChatBubble extends StatelessWidget {
             bottomLeft: const Radius.circular(16),
             bottomRight: const Radius.circular(16),
           ),
-          border:
-              isBot ? Border.all(color: Theme.of(context).dividerColor) : null,
+          border: isBot
+              ? Border.all(color: Theme.of(context).dividerColor)
+              : null,
         ),
         child: Text(
           text,

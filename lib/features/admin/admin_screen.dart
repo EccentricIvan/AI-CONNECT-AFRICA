@@ -13,6 +13,7 @@ import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../teacher/class_providers.dart';
 import '../teacher/teacher_pin.dart';
 
 /// Admin dashboard — device, user, and update management.
@@ -54,7 +55,8 @@ class AdminScreen extends ConsumerWidget {
                   icon: Icons.apps,
                   label: 'App version',
                   value: packageInfoAsync.when(
-                    data: (info) => 'Version ${info.version} (build ${info.buildNumber})',
+                    data: (info) =>
+                        'Version ${info.version} (build ${info.buildNumber})',
                     loading: () => 'Loading…',
                     error: (_, __) => 'Unknown',
                   ),
@@ -66,6 +68,11 @@ class AdminScreen extends ConsumerWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 20),
+
+            // ── School ───────────────────────────────────────────────────
+            const _SectionTitle('School'),
+            const _SchoolCard(),
             const SizedBox(height: 20),
 
             // ── AI Model ─────────────────────────────────────────────────
@@ -115,7 +122,9 @@ class AdminScreen extends ConsumerWidget {
                             Icons.person_off,
                             color: Theme.of(context).hintColor,
                           ),
-                          title: const Text('No student profiles on this device'),
+                          title: const Text(
+                            'No student profiles on this device',
+                          ),
                         ),
                       ],
                     )
@@ -141,7 +150,10 @@ class AdminScreen extends ConsumerWidget {
                     Icons.info_outline,
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
-                  title: const Text('How to update', style: TextStyle(fontSize: 14)),
+                  title: const Text(
+                    'How to update',
+                    style: TextStyle(fontSize: 14),
+                  ),
                   subtitle: const Text(
                     '1. Receive the update package on a USB drive\n'
                     '2. Copy the new app installer to this device\n'
@@ -169,18 +181,20 @@ class AdminScreen extends ConsumerWidget {
                     title: Text(
                       'Reset all student data',
                       style: TextStyle(
-                        color: pinSet ? Colors.red : Theme.of(context).hintColor,
+                        color: pinSet
+                            ? Colors.red
+                            : Theme.of(context).hintColor,
                       ),
                     ),
                     subtitle: Text(
                       pinSet
                           ? 'Deletes every learner profile, their progress, '
-                              'badges, projects and chat sessions on this '
-                              'device. Curriculum, teacher notes/subjects, '
-                              'classes and installed learning packages are untouched.'
+                                'badges, projects and chat sessions on this '
+                                'device. Curriculum, teacher notes/subjects, '
+                                'classes and installed learning packages are untouched.'
                           : 'Set a Teacher PIN first (Teacher → Teacher '
-                              'PIN) — this stays locked until this device '
-                              'requires one to reach Teacher/Admin at all.',
+                                'PIN) — this stays locked until this device '
+                                'requires one to reach Teacher/Admin at all.',
                     ),
                     enabled: pinSet,
                     onTap: pinSet ? () => _confirmResetAll(context, ref) : null,
@@ -370,6 +384,75 @@ class _StudentRow extends ConsumerWidget {
   }
 }
 
+/// The school this device belongs to. Class sync only ever shares notes
+/// between devices of the same school, so a teacher's device needs one
+/// before it can share; a student's device takes it from the first class it
+/// joins.
+class _SchoolCard extends ConsumerWidget {
+  const _SchoolCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final identity = ref.watch(syncIdentityProvider).valueOrNull;
+    final name = identity?.schoolName;
+    final hasSchool = identity?.schoolId != null && (name ?? '').isNotEmpty;
+    return _InfoCard(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.school_outlined),
+          title: Text(hasSchool ? name! : 'No school set'),
+          subtitle: Text(
+            hasSchool
+                ? 'Class notes are only shared with devices of this school.'
+                : 'Set the school before teachers share class notes. A student '
+                      'device gets it automatically when it joins a class.',
+          ),
+          trailing: TextButton(
+            onPressed: () => _edit(context, ref, name),
+            child: Text(hasSchool ? 'Rename' : 'Set school'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _edit(
+    BuildContext context,
+    WidgetRef ref,
+    String? current,
+  ) async {
+    final controller = TextEditingController(text: current ?? '');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('School name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(
+            hintText: 'e.g. Bright Future Academy',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.trim().isEmpty) return;
+    await ref.read(dbProvider).classSyncDao.setSchoolName(name);
+  }
+}
+
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.title);
   final String title;
@@ -424,11 +507,18 @@ class _InfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       dense: true,
-      leading: Icon(icon, color: Theme.of(context).colorScheme.onSurfaceVariant, size: 20),
+      leading: Icon(
+        icon,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+        size: 20,
+      ),
       title: Text(label, style: const TextStyle(fontSize: 13)),
       subtitle: Text(
         value,
-        style: TextStyle(fontSize: 12, color: valueColor ?? Theme.of(context).hintColor),
+        style: TextStyle(
+          fontSize: 12,
+          color: valueColor ?? Theme.of(context).hintColor,
+        ),
       ),
     );
   }

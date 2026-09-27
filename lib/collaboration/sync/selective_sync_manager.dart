@@ -5,12 +5,19 @@ import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
 
 import '../../db/otic_database.dart';
+import 'class_crypto.dart';
 import 'routing_envelope.dart';
+import 'teacher_sync_server.dart'
+    show
+        kChannelPath,
+        kClassHeader,
+        kHandshakePath,
+        kJoinPath,
+        kMacHeader,
+        kNonceHeader;
 
 /// One malformed or mismatched block, kept for a post-sync report rather
-/// than only a running count — a teacher/parent looking at "3 rejected"
-/// with no detail cannot tell a hash mismatch (possible corruption) from a
-/// stale server (harmless, self-resolving).
+/// than only a running count.
 class RejectedChunk {
   const RejectedChunk({required this.reason, this.routingKey});
   final String reason;
@@ -24,273 +31,367 @@ class SyncResult {
     required this.subjectsUpdated,
     required this.chunksInserted,
     required this.rejected,
+    this.subjectsRemoved = 0,
     this.error,
   });
 
   final int subjectsChecked;
   final int subjectsUpdated;
   final int chunksInserted;
+  final int subjectsRemoved;
   final List<RejectedChunk> rejected;
 
-  /// Set only when the whole run failed before touching any subject (e.g.
-  /// the teacher server was unreachable, or the class id it reported is
-  /// unknown to it) — a single subject's failure never reaches here, since
-  /// [syncClass] isolates subjects from each other (see its loop).
+  /// Set only when the whole run failed before touching any subject.
   final String? error;
 
   bool get ok => error == null;
 }
 
-/// Pulls scoped class/stream/subject material from a [TeacherSyncServer] on
-/// the same local network into this device's own `topic_resources`.
+/// A teacher sync server seen on the network.
+typedef TeacherEndpoint = ({String address, int port});
+
+/// Outcome of typing a join code.
+class JoinResult {
+  const JoinResult.joined(ClassGroup this.group, this.schoolName)
+    : error = null;
+  const JoinResult.failed(String this.error) : group = null, schoolName = null;
+
+  final ClassGroup? group;
+  final String? schoolName;
+  final String? error;
+  bool get ok => group != null;
+}
+
+/// A student device's side of class sync: joining a class with the
+/// teacher's code, then pulling that class's shared notes.
 ///
-/// Isolation is the design, not an afterthought: a channel that fails (bad
-/// JSON, unreachable, wrong routing key) never stops the next channel; a
-/// chunk that fails its hash check never stops the next chunk. A sync that
-/// discovers a nasty file (or a nasty peer) should end with an honest
-/// [SyncResult] the caller can show, not a stack trace and half-written data.
+/// Each subject is replaced as a whole, in one transaction, and only when
+/// every chunk checks out — a teacher's edits and removals arrive exactly,
+/// and a bad reply never leaves half a subject behind. A failing subject
+/// never stops the next one.
 class SelectiveSyncManager {
-  SelectiveSyncManager(this._db, {http.Client? client})
-      : _client = client ?? http.Client();
+  SelectiveSyncManager(
+    this._db, {
+    http.Client? client,
+    this.joinRounds = kJoinKdfRounds,
+  }) : _client = client ?? http.Client();
 
   final OticDatabase _db;
   final http.Client _client;
 
-  /// Chunks written to `topic_resources` per `batch()` transaction — small
-  /// and yielded between, so a large first sync does not hold the UI isolate
-  /// for one long uninterrupted write on a 4 GB device.
-  static const _writeBatchSize = 50;
+  /// PBKDF2 rounds for join codes — lowered only in tests.
+  final int joinRounds;
 
   static const _timeout = Duration(seconds: 20);
 
-  /// Syncs every subject [classGroupUuid] has material for, from the teacher
-  /// server at `http://$teacherAddress:$teacherPort`.
-  Future<SyncResult> syncClass({
-    required String teacherAddress,
-    required int teacherPort,
-    required String classGroupUuid,
-  }) async {
-    final base = 'http://$teacherAddress:$teacherPort';
+  // ── Join ────────────────────────────────────────────────────────────────
 
-    final List<SubjectHandshake> subjects;
+  /// Tries [typedCode] against each teacher on the network. The code never
+  /// leaves this device: only a proof derived from it does.
+  Future<JoinResult> joinClass({
+    required List<TeacherEndpoint> teachers,
+    required String typedCode,
+  }) async {
+    final code = normalizeJoinCode(typedCode);
+    if (code == null) {
+      return const JoinResult.failed(
+        'That isn’t a join code — it has 8 letters and numbers, like K7M4-P9QX.',
+      );
+    }
+    if (teachers.isEmpty) {
+      return const JoinResult.failed(
+        'No teacher is sharing a class on this Wi-Fi right now.',
+      );
+    }
+    final salt = newNonce();
+    final secret = await joinSecret(code, salt, rounds: joinRounds);
+    final proof = await joinProof(secret, salt);
+
+    for (final t in teachers) {
+      final Map<String, Object?> bundle;
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('http://${t.address}:${t.port}/$kJoinPath'),
+              headers: const {'content-type': 'application/json'},
+              body: jsonEncode({'nonce': salt, 'proof': proof}),
+            )
+            .timeout(_timeout);
+        if (response.statusCode != 200) continue;
+        final opened = await openJoinBundle(
+          secret,
+          salt,
+          (jsonDecode(response.body) as Map)['bundle'],
+        );
+        if (opened is! Map) continue;
+        bundle = Map<String, Object?>.from(opened);
+      } catch (_) {
+        continue;
+      }
+      return _acceptBundle(bundle);
+    }
+    return const JoinResult.failed(
+      'No teacher accepted that code. Check it, and that the code hasn’t expired.',
+    );
+  }
+
+  Future<JoinResult> _acceptBundle(Map<String, Object?> b) async {
+    final schoolId = b['school_id'], schoolName = b['school_name'];
+    final uuid = b['class_group_uuid'], className = b['class_name'];
+    final classKey = b['class_key'], teacherKey = b['teacher_public_key'];
+    final stream = b['stream_name'];
+    if (schoolId is! String ||
+        uuid is! String ||
+        className is! String ||
+        classKey is! String ||
+        teacherKey is! String) {
+      return const JoinResult.failed(
+        'The teacher’s device sent incomplete class details.',
+      );
+    }
+    final school = schoolName is String ? schoolName : '';
+
+    final me = await _db.classSyncDao.identity();
+    if (me.schoolId != null && me.schoolId != schoolId) {
+      return JoinResult.failed(
+        'This device belongs to ${me.schoolName ?? 'another school'}. '
+        'That class is at ${school.isEmpty ? 'a different school' : school}, so it can’t be joined here.',
+      );
+    }
+    final group = await _db.classSyncDao.upsertJoinedClass(
+      groupUuid: uuid,
+      className: className,
+      streamName: stream is String && stream.isNotEmpty ? stream : null,
+      schoolId: schoolId,
+      classKey: classKey,
+      teacherPublicKey: teacherKey,
+    );
+    if (group == null) {
+      return const JoinResult.failed(
+        'This device is the teacher’s own device for that class.',
+      );
+    }
+    await _db.classSyncDao.adoptSchool(schoolId: schoolId, schoolName: school);
+    return JoinResult.joined(group, school);
+  }
+
+  // ── Sync ────────────────────────────────────────────────────────────────
+
+  /// Pulls every subject [group] has shared notes in from [teacher].
+  Future<SyncResult> syncClass({
+    required TeacherEndpoint teacher,
+    required ClassGroup group,
+  }) async {
+    final uuid = group.groupUuid, classKey = group.classKey;
+    final teacherKey = group.teacherPublicKey, schoolId = group.schoolId;
+    if (!group.joined ||
+        uuid == null ||
+        classKey == null ||
+        teacherKey == null ||
+        schoolId == null) {
+      return const SyncResult(
+        subjectsChecked: 0,
+        subjectsUpdated: 0,
+        chunksInserted: 0,
+        rejected: [],
+        error: 'Join this class with your teacher’s code first.',
+      );
+    }
+    Future<Map<String, Object?>> call(String path, Map<String, Object?> body) =>
+        _signedCall(
+          teacher,
+          path,
+          body,
+          uuid: uuid,
+          classKey: classKey,
+          teacherKey: teacherKey,
+        );
+
+    final Map<String, int> subjectsSeen;
+    final Map<String, String> digests;
     try {
-      subjects = await _handshake(base, classGroupUuid);
+      final hello = await call(kHandshakePath, {'school_id': schoolId});
+      digests = {};
+      for (final s in (hello['subjects'] as List? ?? const [])) {
+        if (s is Map && s['subject_id'] is String && s['digest'] is String) {
+          digests[s['subject_id'] as String] = s['digest'] as String;
+        }
+      }
+      subjectsSeen = {for (final s in digests.keys) s: 0};
     } catch (e) {
       return SyncResult(
         subjectsChecked: 0,
         subjectsUpdated: 0,
         chunksInserted: 0,
         rejected: const [],
-        error: 'Could not reach the teacher device: $e',
+        error: e is SyncTrustError
+            ? 'That device isn’t your class’s teacher: ${e.message}.'
+            : 'Could not sync with the teacher’s device. Make sure it is still sharing '
+                  '${group.className}${group.streamName == null ? '' : ' ${group.streamName}'}.',
       );
     }
 
+    final removed = await _db.classSyncDao.dropChannelsExcept(
+      uuid,
+      subjectsSeen.keys.toSet(),
+    );
     var updated = 0;
     var inserted = 0;
     final rejected = <RejectedChunk>[];
 
-    for (final subject in subjects) {
+    for (final entry in digests.entries) {
+      final subject = entry.key;
+      final routingKey = '$uuid/$subject';
       try {
-        final local = await _db.syncStateDao.get(
-          classGroupUuid: classGroupUuid,
-          subjectId: subject.subjectId,
-        );
-        final since = local?.lastSyncedAt;
-        // Plain string compare is correct here — every version this app
-        // writes is ISO-8601 UTC with the same fixed-width format, which
-        // sorts identically to a real date comparison.
-        if (since != null && since.compareTo(subject.version) >= 0) {
-          continue; // Already at (or somehow past) this version.
+        if (await _db.classSyncDao.channelDigestFor(uuid, subject) ==
+            entry.value) {
+          continue;
         }
 
-        final channelResult = await _pullChannel(
-          base: base,
-          classGroupUuid: classGroupUuid,
-          subjectId: subject.subjectId,
-          since: since,
-        );
-        rejected.addAll(channelResult.rejected);
-        if (channelResult.rows.isNotEmpty) {
-          await _writeBatched(channelResult.rows);
-          inserted += channelResult.rows.length;
+        final reply = await call(kChannelPath, {
+          'school_id': schoolId,
+          'subject_id': subject,
+        });
+        final rows = <TopicResourcesCompanion>[];
+        final ids = <String>[];
+        final bad = <RejectedChunk>[];
+        for (final raw in (reply['chunks'] as List? ?? const [])) {
+          try {
+            final envelope = ResourceChunkEnvelope.fromJson(raw);
+            rows.add(_ingest(envelope, routingKey, uuid, subject));
+            ids.add(envelope.chunkId);
+          } on FormatException catch (e) {
+            bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
+          } on StateError catch (e) {
+            bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
+          }
         }
-
-        await _db.syncStateDao.recordSync(
-          classGroupUuid: classGroupUuid,
-          subjectId: subject.subjectId,
-          syncedAtIso: subject.version,
-          rejectedThisRun: channelResult.rejected.length,
+        final digest = await channelDigest(ids);
+        if (bad.isEmpty &&
+            (digest != reply['digest'] || digest != entry.value)) {
+          bad.add(
+            RejectedChunk(
+              reason: 'the notes changed while syncing — sync again',
+              routingKey: routingKey,
+            ),
+          );
+        }
+        if (bad.isNotEmpty) {
+          // All or nothing: keep the copy this device already has.
+          rejected.addAll(bad);
+          continue;
+        }
+        await _db.classSyncDao.replaceChannel(
+          classUuid: uuid,
+          subjectId: subject,
+          rows: rows,
+          digest: digest,
         );
-        if (channelResult.rows.isNotEmpty) updated++;
+        updated++;
+        inserted += rows.length;
       } catch (e) {
-        // One subject's channel failing (bad JSON, dropped connection mid
-        // pull) must not stop the rest — a phone that walks out of hotspot
-        // range partway through should keep whatever it already got.
-        rejected.add(RejectedChunk(
-          reason: 'channel failed: $e',
-          routingKey: '$classGroupUuid/${subject.subjectId}',
-        ));
+        rejected.add(
+          RejectedChunk(
+            reason: e is SyncTrustError ? e.message : 'subject failed: $e',
+            routingKey: routingKey,
+          ),
+        );
       }
     }
 
     return SyncResult(
-      subjectsChecked: subjects.length,
+      subjectsChecked: digests.length,
       subjectsUpdated: updated,
       chunksInserted: inserted,
+      subjectsRemoved: removed,
       rejected: rejected,
     );
   }
 
-  Future<List<SubjectHandshake>> _handshake(
-    String base,
-    String classGroupUuid,
-  ) async {
-    final response = await _client
-        .post(
-          Uri.parse('$base/api/v1/sync/handshake'),
-          headers: const {'content-type': 'application/json'},
-          body: jsonEncode({'class_group_uuid': classGroupUuid}),
-        )
-        .timeout(_timeout);
-    if (response.statusCode != 200) {
-      throw StateError('handshake failed (${response.statusCode})');
-    }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map || decoded['subjects'] is! List) {
-      throw const FormatException('malformed handshake response');
-    }
-    final subjects = <SubjectHandshake>[];
-    for (final raw in decoded['subjects'] as List) {
-      if (raw is! Map) continue;
-      final id = raw['subject_id'];
-      final version = raw['version'];
-      if (id is String && id.isNotEmpty && version is String) {
-        subjects.add(SubjectHandshake(subjectId: id, version: version));
-      }
-    }
-    return subjects;
-  }
-
-  Future<_ChannelPull> _pullChannel({
-    required String base,
-    required String classGroupUuid,
-    required String subjectId,
-    String? since,
+  Future<Map<String, Object?>> _signedCall(
+    TeacherEndpoint teacher,
+    String path,
+    Map<String, Object?> body, {
+    required String uuid,
+    required String classKey,
+    required String teacherKey,
   }) async {
+    final raw = jsonEncode(body);
+    final nonce = newNonce();
     final response = await _client
         .post(
-          Uri.parse('$base/api/v1/sync/channel'),
-          headers: const {'content-type': 'application/json'},
-          body: jsonEncode({
-            'class_group_uuid': classGroupUuid,
-            'subject_id': subjectId,
-            if (since != null) 'since': since,
-          }),
+          Uri.parse('http://${teacher.address}:${teacher.port}/$path'),
+          headers: {
+            'content-type': 'application/json',
+            kClassHeader: uuid,
+            kNonceHeader: nonce,
+            kMacHeader: await requestMac(
+              classKey: classKey,
+              path: path,
+              nonce: nonce,
+              body: raw,
+            ),
+          },
+          body: raw,
         )
         .timeout(_timeout);
     if (response.statusCode != 200) {
-      throw StateError('channel pull failed (${response.statusCode})');
+      throw StateError(
+        'the teacher’s device refused this request (${response.statusCode})',
+      );
     }
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map || decoded['chunks'] is! List) {
-      throw const FormatException('malformed channel response');
-    }
-
-    final expectedRoutingKey = '$classGroupUuid/$subjectId';
-    final rows = <TopicResourcesCompanion>[];
-    final rejected = <RejectedChunk>[];
-
-    for (final raw in decoded['chunks'] as List) {
-      try {
-        final row = _ingestEnvelope(raw, expectedRoutingKey, classGroupUuid);
-        rows.add(row);
-      } on FormatException catch (e) {
-        rejected.add(RejectedChunk(reason: e.message));
-      } on StateError catch (e) {
-        rejected.add(
-          RejectedChunk(reason: e.message, routingKey: expectedRoutingKey),
-        );
-      }
-    }
-    return _ChannelPull(rows: rows, rejected: rejected);
+    final opened = await openReply(
+      classKey: classKey,
+      teacherPublicKey: teacherKey,
+      requestNonce: nonce,
+      sealed: jsonDecode(response.body),
+    );
+    if (opened is! Map) throw const SyncTrustError('reply is not an object');
+    return Map<String, Object?>.from(opened);
   }
 
-  /// One block's fail-safe boundary: a malformed envelope, a routing key
-  /// that does not match the channel it arrived on, or a payload whose hash
-  /// does not match its own `chunk_id` are all rejected individually —
-  /// never thrown past this method to abort the rest of the channel.
-  TopicResourcesCompanion _ingestEnvelope(
-    Object? raw,
+  /// One chunk's checks: its routing key names this class+subject, and its
+  /// content matches its own hash.
+  TopicResourcesCompanion _ingest(
+    ResourceChunkEnvelope envelope,
     String expectedRoutingKey,
-    String classGroupUuid,
+    String classUuid,
+    String subjectId,
   ) {
-    final envelope = ResourceChunkEnvelope.fromJson(raw);
-
     if (envelope.routingKey != expectedRoutingKey) {
       throw StateError(
-        'routing key mismatch: expected $expectedRoutingKey, '
-        'got ${envelope.routingKey}',
+        'routing key mismatch: expected $expectedRoutingKey, got ${envelope.routingKey}',
       );
     }
     if (!envelope.hashMatches) {
-      throw StateError('chunk_id does not match payload — possible '
-          'corruption or tampering');
+      throw StateError('chunk content does not match its id');
     }
-
-    final payload = envelope.payload;
-    final subjectId = payload['subject_id'];
-    final topicKey = payload['topic_key'];
-    final termMarker = payload['term_marker'];
-    final resourceTitle = payload['resource_title'];
-    final contentChunk = payload['content_chunk'];
-    final createdAt = payload['created_at'];
-    final updatedAt = payload['updated_at'];
-
-    if (subjectId is! String ||
+    final p = envelope.payload;
+    final topicKey = p['topic_key'], termMarker = p['term_marker'];
+    final title = p['resource_title'], content = p['content_chunk'];
+    final createdAt = p['created_at'], updatedAt = p['updated_at'];
+    if (p['subject_id'] != subjectId ||
         topicKey is! String ||
         termMarker is! int ||
-        resourceTitle is! String ||
-        contentChunk is! String ||
+        title is! String ||
+        content is! String ||
         createdAt is! String) {
       throw const FormatException('payload missing or mistyped fields');
     }
-
     return TopicResourcesCompanion.insert(
       subjectId: subjectId,
       topicKey: topicKey,
       termMarker: Value(termMarker),
-      resourceTitle: resourceTitle,
-      contentChunk: contentChunk,
+      resourceTitle: title,
+      contentChunk: content,
       createdAt: createdAt,
-      classGroupUuid: Value(classGroupUuid),
+      classGroupUuid: Value(classUuid),
       updatedAt: Value(updatedAt is String ? updatedAt : createdAt),
+      documentTitle: Value(
+        p['document_title'] is String ? p['document_title'] as String : title,
+      ),
     );
   }
 
-  Future<void> _writeBatched(List<TopicResourcesCompanion> rows) async {
-    for (var i = 0; i < rows.length; i += _writeBatchSize) {
-      final slice = rows.sublist(
-        i,
-        i + _writeBatchSize > rows.length ? rows.length : i + _writeBatchSize,
-      );
-      await _db.topicResourceDao.insertChunks(slice);
-      // Yield between batches so a big first sync stays responsive rather
-      // than running every insert back-to-back inside one microtask chain.
-      await Future<void>.delayed(Duration.zero);
-    }
-  }
-
   void dispose() => _client.close();
-}
-
-class SubjectHandshake {
-  const SubjectHandshake({required this.subjectId, required this.version});
-  final String subjectId;
-  final String version;
-}
-
-class _ChannelPull {
-  const _ChannelPull({required this.rows, required this.rejected});
-  final List<TopicResourcesCompanion> rows;
-  final List<RejectedChunk> rejected;
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../l10n/app_locale.dart';
+import '../coding/html_images.dart' show PickedImage;
 
 /// Result message for an applied instruction: what changed, an Undo, and an
 /// X to dismiss it.
@@ -23,10 +24,7 @@ void showInstructionAppliedSnack(
         closeIconColor: Colors.white,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 8),
-        action: SnackBarAction(
-          label: tr(context, 'Undo'),
-          onPressed: onUndo,
-        ),
+        action: SnackBarAction(label: tr(context, 'Undo'), onPressed: onUndo),
       ),
     );
 }
@@ -57,10 +55,18 @@ class CodeInstructionBar extends StatefulWidget {
     this.hintText,
     this.icon = Icons.auto_awesome,
     this.tooltip,
+    this.onPickImages,
+    this.onSubmitWithImages,
   });
 
   final bool busy;
   final ValueChanged<String> onSubmit;
+
+  /// When set (with [onSubmitWithImages]), the bar gets a picture button:
+  /// the learner attaches pictures and says what to do with them.
+  final Future<List<PickedImage>> Function()? onPickImages;
+  final void Function(String instruction, List<PickedImage> images)?
+  onSubmitWithImages;
 
   /// Defaults to "Tell AI what to change". Sections where the model explains
   /// rather than edits override it, so the bar never promises an edit it will
@@ -76,6 +82,10 @@ class CodeInstructionBar extends StatefulWidget {
 
 class _CodeInstructionBarState extends State<CodeInstructionBar> {
   final _controller = TextEditingController();
+  List<PickedImage> _images = const [];
+
+  bool get _canAttach =>
+      widget.onPickImages != null && widget.onSubmitWithImages != null;
 
   @override
   void dispose() {
@@ -84,16 +94,37 @@ class _CodeInstructionBarState extends State<CodeInstructionBar> {
   }
 
   void _send() {
+    if (widget.busy) return;
     final text = _controller.text.trim();
-    if (text.isEmpty || widget.busy) return;
+    if (_images.isNotEmpty && _canAttach) {
+      widget.onSubmitWithImages!(text, _images);
+      setState(() => _images = const []);
+      _controller.clear();
+      return;
+    }
+    if (text.isEmpty) return;
     widget.onSubmit(text);
     _controller.clear();
   }
 
+  Future<void> _attach() async {
+    final picked = await widget.onPickImages!();
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _images = [..._images, ...picked]);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Row(
+    final row = Row(
       children: [
+        if (_canAttach) ...[
+          IconButton(
+            tooltip: tr(context, 'Add a picture and say what to do with it'),
+            onPressed: widget.busy ? null : _attach,
+            icon: const Icon(Icons.add_photo_alternate_outlined),
+          ),
+          const SizedBox(width: 4),
+        ],
         Expanded(
           child: TextField(
             controller: _controller,
@@ -102,13 +133,20 @@ class _CodeInstructionBarState extends State<CodeInstructionBar> {
             textInputAction: TextInputAction.send,
             decoration: InputDecoration(
               isDense: true,
-              hintText: tr(context, widget.hintText ?? 'Tell AI what to change'),
+              hintText: _images.isNotEmpty
+                  ? tr(
+                      context,
+                      'Say what to do with the picture — e.g. make it the logo',
+                    )
+                  : tr(context, widget.hintText ?? 'Tell AI what to change'),
               prefixIcon: Icon(widget.icon, size: 18),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
             ),
           ),
         ),
@@ -127,6 +165,42 @@ class _CodeInstructionBarState extends State<CodeInstructionBar> {
                 )
               : const Icon(Icons.arrow_upward),
         ),
+      ],
+    );
+    if (_images.isEmpty) return row;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < _images.length; i++)
+                InputChip(
+                  avatar: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: Image.memory(
+                      _images[i].bytes,
+                      width: 24,
+                      height: 24,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.image_outlined, size: 18),
+                    ),
+                  ),
+                  label: Text(_images[i].name, overflow: TextOverflow.ellipsis),
+                  onDeleted: widget.busy
+                      ? null
+                      : () =>
+                            setState(() => _images = [..._images]..removeAt(i)),
+                ),
+            ],
+          ),
+        ),
+        row,
       ],
     );
   }

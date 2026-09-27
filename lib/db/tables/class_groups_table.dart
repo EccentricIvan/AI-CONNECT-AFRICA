@@ -25,8 +25,7 @@ class ClassGroups extends Table {
 
   /// Null when the class has no streams.
   TextColumn get streamName => text().nullable()();
-  DateTimeColumn get createdAt =>
-      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 
   /// Portable identity for this class/stream, independent of [id].
   ///
@@ -37,4 +36,23 @@ class ClassGroups extends Table {
   /// never reused. Nullable only so a fresh column can exist before a
   /// backfill runs; every row written from here on gets one.
   TextColumn get groupUuid => text().nullable()();
+
+  // ── Class sync (lib/collaboration/sync/) ───────────────────────────────
+
+  /// School this class belongs to ([SyncIdentity.schoolId]). A student
+  /// device refuses to join a class from a different school than its own.
+  TextColumn get schoolId => text().nullable()();
+
+  /// The class/stream's shared secret. Minted on the teacher's device the
+  /// first time the class is synced, copied to a student device at join.
+  /// Only holders can ask for, or read, the class's notes.
+  TextColumn get classKey => text().nullable()();
+
+  /// On a joined class: the teacher device's Ed25519 public key, pinned at
+  /// join. Replies not signed by it are rejected.
+  TextColumn get teacherPublicKey => text().nullable()();
+
+  /// True on a student device for a class it joined from a teacher; false
+  /// for a class this device created. Only created classes are ever served.
+  BoolColumn get joined => boolean().withDefault(const Constant(false))();
 }

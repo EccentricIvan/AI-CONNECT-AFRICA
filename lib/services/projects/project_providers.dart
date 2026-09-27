@@ -15,14 +15,17 @@ final projectStoreProvider = Provider<ProjectStore>((ref) => ProjectStore());
 /// so changes made in Explorer show up on the next refresh.
 final studentProjectFoldersProvider =
     FutureProvider.family<List<ProjectFolder>, int>((ref, studentId) async {
-  final store = ref.watch(projectStoreProvider);
-  final db = ref.watch(dbProvider);
-  final student = await db.studentDao.getStudentById(studentId);
-  // Rows saved by the Block canvas / guided Create chat (and older App
-  // builder saves) get their folders here, so every creation is listed.
-  await LegacyProjectSync(db, store).sync(studentId, studentName: student?.name);
-  return store.list(studentId);
-});
+      final store = ref.watch(projectStoreProvider);
+      final db = ref.watch(dbProvider);
+      final student = await db.studentDao.getStudentById(studentId);
+      // Rows saved by the old Block canvas / guided Create chat (and older App
+      // builder saves) get their folders here, so every creation is listed.
+      await LegacyProjectSync(
+        db,
+        store,
+      ).sync(studentId, studentName: student?.name);
+      return store.list(studentId);
+    });
 
 /// Outcome of [saveCreation] for the builder's snackbar.
 class SavedCreation {
@@ -53,7 +56,8 @@ Future<SavedCreation?> saveCreation(
   final student = await ref.read(activeStudentProvider.future);
   if (student == null) return null;
   final store = ref.read(projectStoreProvider);
-  final existed = projectId != null && await store.findById(student.id, projectId) != null;
+  final existed =
+      projectId != null && await store.findById(student.id, projectId) != null;
   final folder = await store.save(
     studentId: student.id,
     studentName: student.name,

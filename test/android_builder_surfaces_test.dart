@@ -10,13 +10,7 @@ void main() {
     expect(kIsWeb, isFalse);
 
     // Route paths used by Create + Home on every mobile build.
-    const routes = [
-      '/sitechat',
-      '/applab',
-      '/appchat',
-      '/weblab',
-      '/website',
-    ];
+    const routes = ['/sitechat', '/applab', '/appchat', '/weblab'];
     for (final r in routes) {
       expect(r, startsWith('/'));
     }

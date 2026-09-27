@@ -32,7 +32,6 @@ import '../../features/teacher/teacher_pin.dart';
 import '../../features/teacher/teacher_pin_screen.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
 import '../../features/web_dev_lab/web_dev_lab_screen.dart';
-import '../../features/website/website_builder_screen.dart';
 import '../../screens/package_fetch_screen.dart';
 import '../../shared/widgets/app_shell.dart';
 
@@ -73,36 +72,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state, child) => AppShell(child: child),
         routes: [
           // Home is the AI chat workspace (formerly `/chat`).
-          GoRoute(path: '/', builder: (_, state) {
-            final topic = state.uri.queryParameters['topic'];
-            final sectionParam = state.uri.queryParameters['section'];
-            final subject = state.uri.queryParameters['subject'];
-            final section = topic != null || sectionParam == 'learn'
-                ? ChatSection.learn
-                : ChatSection.wholesomeChat;
-            final programming = isProgrammingSubjectId(subject) ||
-                looksLikeProgramming(topic ?? '');
-            // Skip ModelGate on web only — the browser build can't run a
-            // local model at all. Android/Windows/Linux need the AfriSLM GGUF.
-            if (kIsWeb) {
-              return LearnScreen(
-                initialTopic: topic,
-                section: section,
-                programmingSubject: programming,
-              );
-            }
-            return ModelGate(
-              child: LearnScreen(
-                initialTopic: topic,
-                section: section,
-                programmingSubject: programming,
-              ),
-            );
-          }),
           GoRoute(
-            path: '/home',
-            redirect: (_, __) => '/',
+            path: '/',
+            builder: (_, state) {
+              final topic = state.uri.queryParameters['topic'];
+              final sectionParam = state.uri.queryParameters['section'];
+              final subject = state.uri.queryParameters['subject'];
+              final section = topic != null || sectionParam == 'learn'
+                  ? ChatSection.learn
+                  : ChatSection.wholesomeChat;
+              final programming =
+                  isProgrammingSubjectId(subject) ||
+                  looksLikeProgramming(topic ?? '');
+              // Skip ModelGate on web only — the browser build can't run a
+              // local model at all. Android/Windows/Linux need the AfriSLM GGUF.
+              if (kIsWeb) {
+                return LearnScreen(
+                  initialTopic: topic,
+                  section: section,
+                  programmingSubject: programming,
+                );
+              }
+              return ModelGate(
+                child: LearnScreen(
+                  initialTopic: topic,
+                  section: section,
+                  programmingSubject: programming,
+                ),
+              );
+            },
           ),
+          GoRoute(path: '/home', redirect: (_, __) => '/'),
           GoRoute(
             path: '/chat',
             redirect: (_, state) {
@@ -121,16 +121,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/learn/subject/:id',
-            builder: (_, state) => UnitsScreen(
-              subjectId: state.pathParameters['id'] ?? '',
-            ),
+            builder: (_, state) =>
+                UnitsScreen(subjectId: state.pathParameters['id'] ?? ''),
           ),
           GoRoute(
             path: '/learn/subject/:id/lesson/:unit/:lesson',
             builder: (_, state) => LessonScreen(
               subjectId: state.pathParameters['id'] ?? '',
               unitIndex: int.tryParse(state.pathParameters['unit'] ?? '0') ?? 0,
-              lessonIndex: int.tryParse(state.pathParameters['lesson'] ?? '0') ?? 0,
+              lessonIndex:
+                  int.tryParse(state.pathParameters['lesson'] ?? '0') ?? 0,
             ),
           ),
           GoRoute(
@@ -139,7 +139,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               topic: Uri.decodeComponent(state.pathParameters['topic'] ?? ''),
             ),
           ),
-          GoRoute(path: '/practice', builder: (_, __) => const PracticeScreen()),
+          GoRoute(
+            path: '/practice',
+            builder: (_, __) => const PracticeScreen(),
+          ),
           GoRoute(path: '/create', builder: (_, __) => const CreateScreen()),
           GoRoute(path: '/weblab', builder: (_, __) => const WebDevLabScreen()),
           GoRoute(path: '/applab', builder: (_, __) => const AppDevLabScreen()),
@@ -147,17 +150,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/appchat',
             builder: (_, __) => const AppChatBuilderScreen(),
           ),
+          GoRoute(path: '/sitebuilder', redirect: (_, __) => '/sitechat'),
           GoRoute(
-            path: '/sitebuilder',
-            redirect: (_, __) => '/sitechat',
+            path: '/sitechat',
+            builder: (_, __) => const SiteChatBuilderScreen(),
           ),
-          GoRoute(path: '/sitechat', builder: (_, __) => const SiteChatBuilderScreen()),
-          GoRoute(path: '/pythonlab', builder: (_, __) => const PythonLabScreen()),
-          GoRoute(path: '/website', builder: (_, __) => const WebsiteBuilderScreen()),
-          GoRoute(path: '/projects', builder: (_, __) => const ProjectsScreen()),
-          GoRoute(path: '/achievements', builder: (_, __) => const AchievementsScreen()),
-          GoRoute(path: '/certificates', builder: (_, __) => const CertificatesScreen()),
-          GoRoute(path: '/teacher', builder: (_, __) => const TeacherDashboardScreen()),
+          GoRoute(
+            path: '/pythonlab',
+            builder: (_, __) => const PythonLabScreen(),
+          ),
+          GoRoute(
+            path: '/projects',
+            builder: (_, __) => const ProjectsScreen(),
+          ),
+          GoRoute(
+            path: '/achievements',
+            builder: (_, __) => const AchievementsScreen(),
+          ),
+          GoRoute(
+            path: '/certificates',
+            builder: (_, __) => const CertificatesScreen(),
+          ),
+          GoRoute(
+            path: '/teacher',
+            builder: (_, __) => const TeacherDashboardScreen(),
+          ),
           GoRoute(
             path: '/teacher/:id',
             builder: (_, state) => TeacherStudentDetailScreen(
@@ -165,7 +182,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(path: '/admin', builder: (_, __) => const AdminScreen()),
-          GoRoute(path: '/settings', builder: (_, __) => const SettingsScreen()),
+          GoRoute(
+            path: '/settings',
+            builder: (_, __) => const SettingsScreen(),
+          ),
           GoRoute(
             path: '/learners',
             builder: (_, __) => const LearnerPickerScreen(),
@@ -177,8 +197,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               // Only ever continue into the gated area, never to an
               // arbitrary location passed in the query string.
               return TeacherUnlockScreen(
-                destination:
-                    isTeacherRoute(Uri.parse(to).path) ? to : '/teacher',
+                destination: isTeacherRoute(Uri.parse(to).path)
+                    ? to
+                    : '/teacher',
               );
             },
           ),

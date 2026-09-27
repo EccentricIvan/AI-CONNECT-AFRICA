@@ -31,4 +31,9 @@ class SyncState extends Table {
   /// routing key, …) across every sync so far — surfaced in the sync UI so
   /// a persistently high count is visible instead of silently swallowed.
   IntColumn get rejectedCount => integer().withDefault(const Constant(0))();
+
+  /// The channel digest (see `channelDigest`) this device last replaced its
+  /// copy of the channel with. The next sync skips the channel while the
+  /// teacher's digest still matches.
+  TextColumn get channelDigest => text().nullable()();
 }

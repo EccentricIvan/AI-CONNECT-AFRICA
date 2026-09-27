@@ -40,7 +40,10 @@ class ResourceImportService {
     try {
       bytes = await file.readAsBytes();
     } catch (e) {
-      return ImportReport.failed(_baseName(path), 'That file could not be opened ($e).');
+      return ImportReport.failed(
+        _baseName(path),
+        'That file could not be opened ($e).',
+      );
     }
     return importBytes(
       fileName: _baseName(path),
@@ -89,6 +92,9 @@ class ResourceImportService {
         resourceTitle: title,
         content: section.body,
         termMarker: termMarker,
+        // The teacher sees, shares and deletes the file as one note; the
+        // per-heading sections only exist for the tutor's search.
+        documentTitle: docTitle,
       );
       if (written > 0) {
         chunks += written;
@@ -170,11 +176,11 @@ class ImportReport {
   }) : failure = null;
 
   const ImportReport.failed(this.fileName, this.failure)
-      : documentTitle = '',
-        format = '',
-        chunkCount = 0,
-        topics = const [],
-        wordCount = 0;
+    : documentTitle = '',
+      format = '',
+      chunkCount = 0,
+      topics = const [],
+      wordCount = 0;
 
   final String fileName;
   final String documentTitle;
@@ -224,10 +230,12 @@ List<ResourceSection> splitIntoSections(
     // topic. Fold it into the previous one rather than indexing a fragment.
     if (body.length < minSectionChars && sections.isNotEmpty) {
       final last = sections.removeLast();
-      sections.add(ResourceSection(
-        title: last.title,
-        body: '${last.body}\n\n$currentTitle\n$body'.trim(),
-      ));
+      sections.add(
+        ResourceSection(
+          title: last.title,
+          body: '${last.body}\n\n$currentTitle\n$body'.trim(),
+        ),
+      );
       return;
     }
     sections.add(ResourceSection(title: currentTitle, body: body));
@@ -301,8 +309,7 @@ String _stripExtension(String fileName) {
   return base.replaceAll('_', ' ').replaceAll('-', ' ').trim();
 }
 
-int _countWords(String text) =>
-    RegExp(r'\S+').allMatches(text).length;
+int _countWords(String text) => RegExp(r'\S+').allMatches(text).length;
 
 // ── Provider ─────────────────────────────────────────────────────────────
 
@@ -315,7 +322,7 @@ void debugLogImport(ImportReport report) {
   debugPrint(
     report.ok
         ? 'Imported ${report.fileName}: ${report.topics.length} topics, '
-            '${report.wordCount} words'
+              '${report.wordCount} words'
         : 'Import failed for ${report.fileName}: ${report.failure}',
   );
 }

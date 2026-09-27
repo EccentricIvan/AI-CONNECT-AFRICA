@@ -13,7 +13,7 @@ import 'project_store.dart';
 /// Gives every creation saved as a database row a project folder too:
 ///
 /// * `app_builder_projects` rows from before project folders existed,
-/// * `website_projects` (the Block canvas, which still saves rows), and
+/// * `website_projects` (the Block canvas, since removed — only old rows), and
 /// * `student_projects` (the guided Create chat — essays, plans…).
 ///
 /// Each row becomes a folder with the stable id `legacy-<table>-<rowId>`
@@ -30,12 +30,18 @@ class LegacyProjectSync {
 
   Future<void> sync(int studentId, {String? studentName}) async {
     try {
-      final learner = await _store.learnerDirectory(studentId, studentName: studentName);
+      final learner = await _store.learnerDirectory(
+        studentId,
+        studentName: studentName,
+      );
       final ledgerFile = File(p.join(learner.path, _ledgerName));
       final synced = <String>{};
       if (await ledgerFile.exists()) {
         try {
-          synced.addAll((jsonDecode(await ledgerFile.readAsString()) as List).cast<String>());
+          synced.addAll(
+            (jsonDecode(await ledgerFile.readAsString()) as List)
+                .cast<String>(),
+          );
         } catch (_) {}
       }
       final existing = {
@@ -50,12 +56,15 @@ class LegacyProjectSync {
       }) async {
         final folder = existing[id];
         if (folder == null && synced.contains(id)) return; // deleted on purpose
-        if (folder != null && !updatedAt.isAfter(folder.manifest.updatedAt)) return;
+        if (folder != null && !updatedAt.isAfter(folder.manifest.updatedAt))
+          return;
         await write();
         if (synced.add(id)) changed = true;
       }
 
-      for (final row in await _db.appBuilderProjectDao.getProjectsForStudent(studentId)) {
+      for (final row in await _db.appBuilderProjectDao.getProjectsForStudent(
+        studentId,
+      )) {
         final id = 'legacy-app-${row.id}';
         await upsert(
           id: id,
@@ -163,7 +172,8 @@ class LegacyProjectSync {
   static Map<String, String> _answers(String json) {
     try {
       return {
-        for (final e in (jsonDecode(json) as Map).entries) '${e.key}': '${e.value}',
+        for (final e in (jsonDecode(json) as Map).entries)
+          '${e.key}': '${e.value}',
       };
     } catch (_) {
       return const {};

@@ -19,48 +19,54 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
     with _$ClassGroupDaoMixin {
   ClassGroupDao(super.db);
 
-  Stream<List<ClassGroup>> watchAllClasses() => (select(classGroups)
-        ..orderBy([
-          (t) => OrderingTerm.asc(t.className),
-          (t) => OrderingTerm.asc(t.streamName),
-        ]))
-      .watch();
+  Stream<List<ClassGroup>> watchAllClasses() =>
+      (select(classGroups)..orderBy([
+            (t) => OrderingTerm.asc(t.className),
+            (t) => OrderingTerm.asc(t.streamName),
+          ]))
+          .watch();
 
   Future<int> createClass({required String className, String? streamName}) {
     final stream = streamName?.trim();
-    return into(classGroups).insert(ClassGroupsCompanion.insert(
-      className: className.trim(),
-      streamName: Value(stream == null || stream.isEmpty ? null : stream),
-      groupUuid: Value(newSyncId()),
-    ));
+    return into(classGroups).insert(
+      ClassGroupsCompanion.insert(
+        className: className.trim(),
+        streamName: Value(stream == null || stream.isEmpty ? null : stream),
+        groupUuid: Value(newSyncId()),
+      ),
+    );
   }
 
   /// The class/stream a scoped-sync request named by its portable id.
-  Future<ClassGroup?> findByUuid(String groupUuid) =>
-      (select(classGroups)..where((t) => t.groupUuid.equals(groupUuid)))
-          .getSingleOrNull();
+  Future<ClassGroup?> findByUuid(String groupUuid) => (select(
+    classGroups,
+  )..where((t) => t.groupUuid.equals(groupUuid))).getSingleOrNull();
 
   /// Backfills [ClassGroups.groupUuid] for rows written before that column
   /// existed, so a class created before scoped sync shipped is still
   /// syncable without the teacher having to recreate it. Called once from
   /// the schema-11 migration.
+  ///
+  /// Raw SQL on purpose: this runs mid-upgrade, before later schema steps
+  /// add their columns. Mapping full rows through the generated class would
+  /// expect columns (e.g. `joined`, schema 16) that don't exist yet.
   Future<void> backfillGroupUuids() async {
-    final rows =
-        await (select(classGroups)..where((t) => t.groupUuid.isNull())).get();
-    if (rows.isEmpty) return;
-    await batch((b) {
-      for (final row in rows) {
-        b.update(
-          classGroups,
-          ClassGroupsCompanion(groupUuid: Value(newSyncId())),
-          where: (t) => t.id.equals(row.id),
-        );
-      }
-    });
+    final rows = await customSelect(
+      'SELECT id FROM class_groups WHERE group_uuid IS NULL',
+    ).get();
+    for (final row in rows) {
+      await customStatement(
+        'UPDATE class_groups SET group_uuid = ? WHERE id = ?',
+        [newSyncId(), row.read<int>('id')],
+      );
+    }
   }
 
-  Future<void> renameClass(int id,
-      {required String className, String? streamName}) {
+  Future<void> renameClass(
+    int id, {
+    required String className,
+    String? streamName,
+  }) {
     final stream = streamName?.trim();
     return (update(classGroups)..where((t) => t.id.equals(id))).write(
       ClassGroupsCompanion(
@@ -74,15 +80,34 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
   /// kept. The FK on `students.class_group_id` is not enforced, so without the
   /// explicit update they would point at a class that no longer exists.
   Future<void> deleteClass(int id) => transaction(() async {
-        await (update(students)..where((t) => t.classGroupId.equals(id)))
-            .write(const StudentsCompanion(classGroupId: Value(null)));
-        await (delete(classGroups)..where((t) => t.id.equals(id))).go();
-      });
+    await (update(students)..where((t) => t.classGroupId.equals(id))).write(
+      const StudentsCompanion(classGroupId: Value(null)),
+    );
+    final uuid = (await (select(
+      classGroups,
+    )..where((t) => t.id.equals(id))).getSingleOrNull())?.groupUuid;
+    if (uuid != null) {
+      // FKs aren't enforced (see CLAUDE.md): clear the class's sync
+      // rows by hand — its note shares on a teacher device, the notes
+      // it received and its sync bookkeeping on a student device.
+      for (final table in [
+        'resource_shares',
+        'topic_resources',
+        'sync_state',
+      ]) {
+        await customStatement('DELETE FROM $table WHERE class_group_uuid = ?', [
+          uuid,
+        ]);
+      }
+    }
+    await (delete(classGroups)..where((t) => t.id.equals(id))).go();
+  });
 
   /// Moves a learner into [classGroupId], or out of any class when null.
   Future<void> assignLearner(int studentId, int? classGroupId) =>
-      (update(students)..where((t) => t.id.equals(studentId)))
-          .write(StudentsCompanion(classGroupId: Value(classGroupId)));
+      (update(students)..where((t) => t.id.equals(studentId))).write(
+        StudentsCompanion(classGroupId: Value(classGroupId)),
+      );
 
   /// Topic count, mean mastery and total sessions for every learner, keyed by
   /// student id. One grouped query rather than one per learner.
@@ -96,14 +121,16 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
       'LEFT JOIN topic_progress tp ON tp.student_id = s.id '
       'GROUP BY s.id',
       readsFrom: {students, topicProgress},
-    ).watch().map((rows) => {
-          for (final r in rows)
-            r.read<int>('student_id'): LearnerStats(
-              topics: r.read<int>('topics'),
-              averageLevel: r.read<double>('avg_level'),
-              sessions: r.read<int>('sessions'),
-            ),
-        });
+    ).watch().map(
+      (rows) => {
+        for (final r in rows)
+          r.read<int>('student_id'): LearnerStats(
+            topics: r.read<int>('topics'),
+            averageLevel: r.read<double>('avg_level'),
+            sessions: r.read<int>('sessions'),
+          ),
+      },
+    );
   }
 }
 

@@ -48,6 +48,10 @@ const int kSiteBuildMaxTokens = 1100;
 /// One-shot mobile-web app Build from recorded features (1.5B coder).
 const int kAppBuildMaxTokens = 650;
 
+/// One-shot app Build from a learner's free-text description: a whole page,
+/// so it gets the same ceiling as a full website rather than [kAppBuildMaxTokens].
+const int kAppFreeTextBuildMaxTokens = 1100;
+
 /// Lab "Autocorrect" polish via the 1.5B coder (short snippets).
 const int kCodeFixMaxTokens = 500;
 

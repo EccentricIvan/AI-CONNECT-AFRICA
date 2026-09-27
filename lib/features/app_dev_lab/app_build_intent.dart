@@ -45,6 +45,7 @@ class AppBuildIntent {
     required this.themePrimary,
     required this.answers,
     required this.features,
+    this.description = '',
   });
 
   final String appTypeId;
@@ -54,6 +55,10 @@ class AppBuildIntent {
   final String themePrimary;
   final Map<String, String> answers;
   final List<String> features;
+
+  /// Raw free-text description the learner typed, when this build came from
+  /// the "describe what you want" entry point rather than the guided wizard.
+  final String description;
 
   String get appName {
     final n = answers['app_name']?.trim();
@@ -163,9 +168,7 @@ class AppBuildIntent {
   String toBackendCoderBrief() {
     final buf = StringBuffer()
       ..writeln('/no_think')
-      ..writeln(
-        'Write one complete FastAPI backend as a single Python file.',
-      )
+      ..writeln('Write one complete FastAPI backend as a single Python file.')
       ..writeln(
         'Output ONLY Python source. No markdown fences. No commentary. '
         'No thinking. Start with the imports.',
@@ -190,9 +193,11 @@ class AppBuildIntent {
 
     if (features.isNotEmpty) {
       buf.writeln();
-      buf.writeln('Give each of these features real REST endpoints '
-          '(GET/POST/PUT/DELETE as appropriate), matching the data the '
-          'frontend needs to show:');
+      buf.writeln(
+        'Give each of these features real REST endpoints '
+        '(GET/POST/PUT/DELETE as appropriate), matching the data the '
+        'frontend needs to show:',
+      );
       for (final f in features) {
         buf.writeln('- $f');
       }
@@ -226,6 +231,20 @@ class AppBuildIntent {
       ..writeln('APP TYPE: $appTypeName ($appTypeId)')
       ..writeln('COLOR THEME: $themeName — primary $themePrimary');
 
+    if (description.trim().isNotEmpty) {
+      buf
+        ..writeln()
+        ..writeln(
+          'DESCRIPTION (primary spec — this is what the student actually '
+          'asked for; if it conflicts with the app type above, follow this):',
+        )
+        ..writeln(description.trim())
+        ..writeln()
+        ..writeln(
+          'Keep the CSS short (about 30 lines) so the whole page fits — '
+          'every screen the description needs must be in the <body>.',
+        );
+    }
 
     if (answers.isNotEmpty) {
       buf.writeln();
@@ -250,12 +269,7 @@ const kAppLabTypes = <AppLabType>[
     id: 'todo',
     name: 'Todo List',
     icon: Icons.check_box_outlined,
-    featureOptions: [
-      'Task list',
-      'Add task',
-      'Mark done',
-      'Priority tags',
-    ],
+    featureOptions: ['Task list', 'Add task', 'Mark done', 'Priority tags'],
   ),
   AppLabType(
     id: 'expense',

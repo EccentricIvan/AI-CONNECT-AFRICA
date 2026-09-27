@@ -15,9 +15,7 @@ void main() {
   late OfflineRagService rag;
 
   setUp(() {
-    db = OticDatabase.forTesting(
-      DatabaseConnection(NativeDatabase.memory()),
-    );
+    db = OticDatabase.forTesting(DatabaseConnection(NativeDatabase.memory()));
     storage = OfflineStorageService(db);
     rag = OfflineRagService(storage);
   });
@@ -38,7 +36,8 @@ void main() {
         subjectId: 'Chemistry',
         topicKey: 'Acid–Base Balances', // en dash, title case
         resourceTitle: 'Acid-Base Balances Notes',
-        content: 'Neutralisation is the reaction between an acid and a base '
+        content:
+            'Neutralisation is the reaction between an acid and a base '
             'to produce a salt and water. The pH of a neutral solution is 7.',
         termMarker: 2,
       );
@@ -236,15 +235,18 @@ void main() {
       expect(context, isEmpty);
     });
 
-    test('a keyword-ful question still reaches subject-wide material', () async {
-      await seed();
-      final context = await rag.retrieveContextForQuery(
-        'what is a burette?',
-        'chemistry',
-        'a_topic_with_no_notes',
-      );
-      expect(context, contains('burette'));
-    });
+    test(
+      'a keyword-ful question still reaches subject-wide material',
+      () async {
+        await seed();
+        final context = await rag.retrieveContextForQuery(
+          'what is a burette?',
+          'chemistry',
+          'a_topic_with_no_notes',
+        );
+        expect(context, contains('burette'));
+      },
+    );
   });
 
   // ── CRUD ──────────────────────────────────────────────────────────────
@@ -356,25 +358,28 @@ void main() {
       expect(list.single.termMarker, kAllTermsMarker);
     });
 
-    test('a teacher percent sign is matched literally, not as a wildcard', () async {
-      await storage.insertTopicResource(
-        subjectId: 'chemistry',
-        topicKey: 'concentration',
-        resourceTitle: 'Percent Notes',
-        content: 'A 100% yield is theoretical.',
-      );
-      final hits = await storage.searchChunks(
-        subjectId: 'chemistry',
-        needle: '100%',
-      );
-      expect(hits, hasLength(1));
+    test(
+      'a teacher percent sign is matched literally, not as a wildcard',
+      () async {
+        await storage.insertTopicResource(
+          subjectId: 'chemistry',
+          topicKey: 'concentration',
+          resourceTitle: 'Percent Notes',
+          content: 'A 100% yield is theoretical.',
+        );
+        final hits = await storage.searchChunks(
+          subjectId: 'chemistry',
+          needle: '100%',
+        );
+        expect(hits, hasLength(1));
 
-      final misses = await storage.searchChunks(
-        subjectId: 'chemistry',
-        needle: 'zz%zz',
-      );
-      expect(misses, isEmpty);
-    });
+        final misses = await storage.searchChunks(
+          subjectId: 'chemistry',
+          needle: 'zz%zz',
+        );
+        expect(misses, isEmpty);
+      },
+    );
   });
 
   // ── Chunking ──────────────────────────────────────────────────────────
@@ -494,8 +499,7 @@ void main() {
       ResourceLabels.uploadHint,
       ResourceLabels.reading,
       ResourceLabels.readFailed,
-      ResourceLabels.importedTopics,
-      ResourceLabels.importedOneTopic,
+      ResourceLabels.fileAdded,
     ];
 
     test('the three agreed action labels are exact', () {

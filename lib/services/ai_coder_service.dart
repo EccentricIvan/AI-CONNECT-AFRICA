@@ -32,7 +32,7 @@ class AiCoderService {
   }) {
     return HybridModelOrchestrator.instance.runExclusive(() async {
       if (!await ensureLoaded()) return null;
-            try {
+      try {
         return await generateSiteHtmlWithCoder(
           engine: engine,
           intent: intent,
@@ -51,7 +51,7 @@ class AiCoderService {
   }) {
     return HybridModelOrchestrator.instance.runExclusive(() async {
       if (!await ensureLoaded()) return null;
-            try {
+      try {
         return await generateAppUiSchemaWithCoder(
           engine: engine,
           intent: intent,
@@ -67,14 +67,16 @@ class AiCoderService {
   Future<String?> generateAppHtml({
     required AppBuildIntent intent,
     void Function(String cumulative)? onToken,
+    int maxTokens = kAppBuildMaxTokens,
   }) {
     return HybridModelOrchestrator.instance.runExclusive(() async {
       if (!await ensureLoaded()) return null;
-            try {
+      try {
         return await generateAppHtmlWithCoder(
           engine: engine,
           intent: intent,
           onToken: onToken,
+          maxTokens: maxTokens,
         );
       } finally {
         await releaseAfterJob();
@@ -109,7 +111,7 @@ class AiCoderService {
   }) {
     return HybridModelOrchestrator.instance.runExclusive(() async {
       if (!await ensureLoaded()) return null;
-            try {
+      try {
         return await generateAppDartWithCoder(
           engine: engine,
           intent: intent,
