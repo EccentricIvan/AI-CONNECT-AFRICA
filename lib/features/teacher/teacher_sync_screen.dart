@@ -8,13 +8,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../collaboration/lan_discovery.dart';
 import '../../collaboration/sync/class_crypto.dart';
 import '../../collaboration/sync/mdns_discovery.dart';
-import '../../collaboration/sync/teacher_sync_server.dart';
+import '../../collaboration/sync/sync_address.dart';
+import '../../collaboration/sync/class_share_server.dart';
 import '../../core/theme/app_colors.dart';
 import '../../curriculum/curriculum_models.dart';
 import '../../services/custom_subject_service.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../collaborate/join_requests.dart';
+import 'class_progress_panel.dart';
 import 'class_providers.dart';
 
 /// Shares one class/stream's notes with its students' devices on the same
@@ -33,7 +36,7 @@ class TeacherSyncScreen extends ConsumerStatefulWidget {
 }
 
 class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
-  TeacherSyncServer? _server;
+  ClassShareServer? _server;
   LanDiscoveryService? _announcer;
   final MdnsSyncDiscovery _mdns = MdnsSyncDiscovery();
   int? _selectedId;
@@ -42,6 +45,11 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
   String? _code;
   DateTime? _codeExpires;
   List<String> _subjects = const [];
+
+  /// This device's addresses while sharing, for students whose network
+  /// blocks automatic discovery (phone hotspots, some school Wi-Fi).
+  List<String> _addresses = const [];
+  int? _port;
 
   static const _codeLife = Duration(minutes: 30);
 
@@ -62,7 +70,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
   @override
   void dispose() {
     _tick?.cancel();
-    _server?.stop();
+    _server?.dispose();
     _announcer?.dispose();
     _mdns.dispose();
     super.dispose();
@@ -88,7 +96,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
     try {
       final db = ref.read(dbProvider);
       final keyed = await db.classSyncDao.ensureClassKey(group);
-      final server = TeacherSyncServer(db);
+      final server = ClassShareServer(db);
       final port = await server.start(classUuids: {keyed.groupUuid!});
       final announcer = LanDiscoveryService(
         displayName: 'Teacher · ${classLabel(keyed)}',
@@ -100,6 +108,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
       // Additive — MdnsSyncDiscovery no-ops on Linux/web (see its doc).
       await _mdns.registerServer(className: classLabel(keyed), port: port);
       final subjects = await db.classSyncDao.sharedSubjects(keyed.groupUuid!);
+      final addresses = await localIPv4Addresses();
 
       if (!mounted) {
         await server.stop();
@@ -111,6 +120,8 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
         _server = server;
         _announcer = announcer;
         _subjects = subjects;
+        _addresses = addresses;
+        _port = port;
       });
       await _newCode(keyed);
     } catch (e) {
@@ -298,6 +309,46 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                   onNewCode: () => _newCode(selected),
                 ),
                 const SizedBox(height: 12),
+                JoinRequestsCard(server: _server!),
+                if (_addresses.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  StudioCard(
+                    accent: AppColors.accentCyan,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'This device’s address',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: ac.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        for (final a in _addresses)
+                          SelectableText(
+                            _port == kDefaultSyncPort ? a : '$a:$_port',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Only needed if a student’s device can’t find this '
+                          'one: they type it under Class sync → Can’t find '
+                          'your teacher’s device?',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: ac.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
                 StudioCard(
                   accent: _subjects.isEmpty
                       ? AppColors.accentOrange
@@ -314,9 +365,13 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                 ),
               ],
               const SizedBox(height: 20),
+              ClassProgressPanel(group: selected),
+              const SizedBox(height: 20),
               Text(
-                'Students type the join code once on their device (Collaborate → '
-                'Join a class). After that, only their devices can pull '
+                'Students type the join code once on their device (Class sync in '
+                'the menu, on any phone or PC), and you tap Accept when their '
+                'name appears. Each time they sync, their progress comes back '
+                'to you here. After that, only their devices can pull '
                 '${classLabel(selected)}’s notes — and only the notes you shared '
                 'with it. Other classes, other schools and anyone else on the Wi-Fi '
                 'get nothing, and cannot read what is sent. Works over the same '
@@ -372,11 +427,15 @@ class _JoinCodeCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (locked)
-            const Text(
-              'Too many wrong codes were tried, so this code was closed. Make a new one.',
-              style: TextStyle(color: Colors.red),
-            )
-          else if (code != null)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 6),
+              child: Text(
+                'A device tried too many wrong codes and is shut out. Make a '
+                'new code if that was a real student.',
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          if (code != null)
             Row(
               children: [
                 SelectableText(

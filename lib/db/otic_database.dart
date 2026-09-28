@@ -28,7 +28,9 @@ import 'tables/class_groups_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
 import 'tables/learning_paths_table.dart';
+import 'tables/member_reports_table.dart';
 import 'tables/resource_shares_table.dart';
+import 'tables/served_channels_table.dart';
 import 'tables/sync_identity_table.dart';
 import 'tables/session_summaries_table.dart';
 import 'tables/student_projects_table.dart';
@@ -59,6 +61,8 @@ part 'otic_database.g.dart';
     Assignments,
     ResourceShares,
     SyncIdentity,
+    ServedChannels,
+    MemberReports,
   ],
   daos: [
     StudentDao,
@@ -90,7 +94,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -351,6 +355,34 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _tableExists('sync_identity')) {
           await m.createTable(syncIdentity);
+        }
+      }
+      if (from < 17) {
+        // Class sync v3: classmates may pass the teacher's notes on, so
+        // each channel carries the teacher's signed, monotonic version.
+        // Additive — existing copies have no version yet and are simply
+        // replaced on the next sync with the teacher.
+        for (final (col, add) in [
+          (
+            'channel_version',
+            () => m.addColumn(syncState, syncState.channelVersion),
+          ),
+          ('manifest_sig', () => m.addColumn(syncState, syncState.manifestSig)),
+        ]) {
+          if (!await _columnExists('sync_state', col)) await add();
+        }
+        if (!await _tableExists('served_channels')) {
+          await m.createTable(servedChannels);
+        }
+        if (!await _indexExists('idx_served_channels_channel')) {
+          await m.create(idxServedChannelsChannel);
+        }
+        // Students' devices report progress to the teacher when they sync.
+        if (!await _tableExists('member_reports')) {
+          await m.createTable(memberReports);
+        }
+        if (!await _indexExists('idx_member_reports_member')) {
+          await m.create(idxMemberReportsMember);
         }
       }
     },

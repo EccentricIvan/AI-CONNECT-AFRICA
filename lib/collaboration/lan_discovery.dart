@@ -32,7 +32,7 @@ class LanPeer {
   final String role;
 
   /// Set only when [role] is 'teacher' and that device's
-  /// `TeacherSyncServer` is running — the port a student's
+  /// `ClassShareServer` is running — the port a student's
   /// `SelectiveSyncManager` should call at [address].
   final int? syncPort;
 
@@ -40,6 +40,9 @@ class LanPeer {
   final String? schoolTag;
 
   bool get isSyncServer => role == 'teacher' && syncPort != null;
+
+  /// A student device passing its teacher's notes on to classmates.
+  bool get isClassmateShare => role == 'classmate' && syncPort != null;
 }
 
 class LanDiscoveryService {
@@ -60,12 +63,13 @@ class LanDiscoveryService {
   String currentTopic;
   int points;
 
-  /// 'student' (default) or 'teacher' — announced so a `SelectiveSyncManager`
-  /// can pick out sync servers from the same broadcast that already carries
-  /// classmate presence, instead of a second discovery mechanism.
-  final String role;
+  /// 'student' (default), 'teacher', or 'classmate' (a student sharing) —
+  /// announced so a `SelectiveSyncManager` can pick out sharing devices from
+  /// the same broadcast that already carries presence. Mutable so a student
+  /// screen can start and stop sharing on the one socket it already holds.
+  String role;
 
-  /// The `TeacherSyncServer` port, when [role] is 'teacher' and it is
+  /// The `ClassShareServer` port, when [role] is 'teacher' and it is
   /// running. Left null (and therefore un-announced) otherwise.
   int? syncPort;
 

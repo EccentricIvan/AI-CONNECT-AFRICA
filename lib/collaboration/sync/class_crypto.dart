@@ -174,6 +174,217 @@ Future<Object?> openReply({
   }
 }
 
+// ── Relay replies: a classmate passing the teacher's notes on ──────────────
+
+/// A classmate's reply: encrypted with the class key and bound to the
+/// requester's nonce, but not signed — a classmate has no key anyone pins.
+/// What makes relayed notes trustworthy is the teacher's signature on each
+/// channel's manifest ([signManifest]), which travels inside.
+Future<Map<String, Object?>> sealRelayReply({
+  required String classKey,
+  required String requestNonce,
+  required Object? json,
+}) async {
+  final box = await _aes.encrypt(
+    utf8.encode(jsonEncode(json)),
+    secretKey: await _relayKey(classKey),
+    nonce: randomBytes(12),
+    aad: utf8.encode(requestNonce),
+  );
+  return {
+    'v': 2,
+    'n': b64(box.nonce),
+    'c': b64(box.cipherText),
+    'm': b64(box.mac.bytes),
+  };
+}
+
+Future<Object?> openRelayReply({
+  required String classKey,
+  required String requestNonce,
+  required Object? sealed,
+}) async {
+  if (sealed is! Map || sealed['v'] != 2) {
+    throw const SyncTrustError('not a classmate reply');
+  }
+  final n = sealed['n'], c = sealed['c'], m = sealed['m'];
+  if (n is! String || c is! String || m is! String) {
+    throw const SyncTrustError('classmate reply is missing fields');
+  }
+  try {
+    final clear = await _aes.decrypt(
+      SecretBox(unb64(c), nonce: unb64(n), mac: Mac(unb64(m))),
+      secretKey: await _relayKey(classKey),
+      aad: utf8.encode(requestNonce),
+    );
+    return jsonDecode(utf8.decode(clear));
+  } on SecretBoxAuthenticationError {
+    throw const SyncTrustError(
+      'classmate reply could not be decrypted with the class key',
+    );
+  }
+}
+
+Future<SecretKey> _relayKey(String classKey) => _hkdf.deriveKey(
+  secretKey: SecretKey(unb64(classKey)),
+  nonce: utf8.encode('otic-sync'),
+  info: utf8.encode('otic-sync-relay-v1'),
+);
+
+// ── Progress reports: student device → teacher ─────────────────────────────
+
+/// A student device's progress report, encrypted with the class key and
+/// bound to the request nonce, so learner names and progress never cross
+/// the Wi-Fi in the clear. The request MAC proves it's from a class member.
+Future<Map<String, Object?>> sealReport({
+  required String classKey,
+  required String requestNonce,
+  required Object? json,
+}) async {
+  final box = await _aes.encrypt(
+    utf8.encode(jsonEncode(json)),
+    secretKey: await _reportKey(classKey),
+    nonce: randomBytes(12),
+    aad: utf8.encode(requestNonce),
+  );
+  return {
+    'n': b64(box.nonce),
+    'c': b64(box.cipherText),
+    'm': b64(box.mac.bytes),
+  };
+}
+
+Future<Object?> openReport({
+  required String classKey,
+  required String requestNonce,
+  required Object? sealed,
+}) async {
+  if (sealed is! Map) throw const SyncTrustError('not a report');
+  final n = sealed['n'], c = sealed['c'], m = sealed['m'];
+  if (n is! String || c is! String || m is! String) {
+    throw const SyncTrustError('report is missing fields');
+  }
+  try {
+    final clear = await _aes.decrypt(
+      SecretBox(unb64(c), nonce: unb64(n), mac: Mac(unb64(m))),
+      secretKey: await _reportKey(classKey),
+      aad: utf8.encode(requestNonce),
+    );
+    return jsonDecode(utf8.decode(clear));
+  } on SecretBoxAuthenticationError {
+    throw const SyncTrustError('report could not be decrypted');
+  }
+}
+
+Future<SecretKey> _reportKey(String classKey) => _hkdf.deriveKey(
+  secretKey: SecretKey(unb64(classKey)),
+  nonce: utf8.encode('otic-sync'),
+  info: utf8.encode('otic-sync-report-v1'),
+);
+
+// ── Channel manifests: the teacher's signature that survives a relay ───────
+
+/// One channel's manifest, as the teacher signs it.
+class ChannelManifest {
+  const ChannelManifest({
+    required this.schoolId,
+    required this.classUuid,
+    required this.subjectId,
+    required this.digest,
+    required this.version,
+    required this.signature,
+  });
+
+  final String schoolId;
+  final String classUuid;
+  final String subjectId;
+  final String digest;
+  final int version;
+  final String signature;
+
+  Map<String, Object?> toJson() => {
+    'subject_id': subjectId,
+    'digest': digest,
+    'version': version,
+    'sig': signature,
+  };
+
+  /// Reads one entry of a handshake's `subjects` list. The school and class
+  /// come from the request, never from the reply — a manifest signed for
+  /// another class then simply fails [verifyManifest].
+  static ChannelManifest? fromJson(
+    Object? json, {
+    required String schoolId,
+    required String classUuid,
+  }) {
+    if (json is! Map) return null;
+    final s = json['subject_id'], d = json['digest'];
+    final v = json['version'], sig = json['sig'];
+    if (s is! String || d is! String || v is! int || sig is! String) {
+      return null;
+    }
+    return ChannelManifest(
+      schoolId: schoolId,
+      classUuid: classUuid,
+      subjectId: s,
+      digest: d,
+      version: v,
+      signature: sig,
+    );
+  }
+}
+
+List<int> _manifestBytes(
+  String schoolId,
+  String classUuid,
+  String subjectId,
+  String digest,
+  int version,
+) => utf8.encode(
+  'otic-channel-v1\n$schoolId\n$classUuid\n$subjectId\n$digest\n$version',
+);
+
+/// The teacher's signature over one channel's content ([digest], which
+/// covers every chunk's hash) and [version].
+Future<String> signManifest({
+  required String signingSeed,
+  required String schoolId,
+  required String classUuid,
+  required String subjectId,
+  required String digest,
+  required int version,
+}) async {
+  final pair = await _ed25519.newKeyPairFromSeed(unb64(signingSeed));
+  final sig = await _ed25519.sign(
+    _manifestBytes(schoolId, classUuid, subjectId, digest, version),
+    keyPair: pair,
+  );
+  return b64(sig.bytes);
+}
+
+/// True when [m] was signed by [teacherPublicKey] — the key pinned when
+/// this device joined the class through the teacher.
+Future<bool> verifyManifest(ChannelManifest m, String teacherPublicKey) async {
+  try {
+    return await _ed25519.verify(
+      _manifestBytes(m.schoolId, m.classUuid, m.subjectId, m.digest, m.version),
+      signature: Signature(
+        unb64(m.signature),
+        publicKey: SimplePublicKey(
+          unb64(teacherPublicKey),
+          type: KeyPairType.ed25519,
+        ),
+      ),
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Random token a sharing classmate hands a device it accepted. Requests
+/// without it get nothing, even with the class key.
+String newSessionToken() => b64(randomBytes(24));
+
 // ── Join codes ─────────────────────────────────────────────────────────────
 
 /// No 0/O, 1/I: codes are read off a screen and typed on a phone.

@@ -106,6 +106,12 @@ class AppShell extends ConsumerWidget {
       Icons.emoji_events_rounded,
       '/achievements',
     ),
+    _NavDest(
+      'Class sync',
+      Icons.sync_outlined,
+      Icons.sync_rounded,
+      '/class-sync',
+    ),
   ];
 
   static const kNavBarHeight = 72.0;

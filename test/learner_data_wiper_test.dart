@@ -486,6 +486,11 @@ void main() {
       // school + signing key — device resources, not any learner's data.
       'resource_shares',
       'sync_identity',
+      // Teacher device: channel versions it signed, and progress reports
+      // from other devices' learners — no row belongs to a local learner.
+      // Deleting the class clears both (ClassGroupDao.deleteClass).
+      'served_channels',
+      'member_reports',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

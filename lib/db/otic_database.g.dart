@@ -7797,6 +7797,28 @@ class $SyncStateTable extends SyncState
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _channelVersionMeta = const VerificationMeta(
+    'channelVersion',
+  );
+  @override
+  late final GeneratedColumn<int> channelVersion = GeneratedColumn<int>(
+    'channel_version',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _manifestSigMeta = const VerificationMeta(
+    'manifestSig',
+  );
+  @override
+  late final GeneratedColumn<String> manifestSig = GeneratedColumn<String>(
+    'manifest_sig',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7805,6 +7827,8 @@ class $SyncStateTable extends SyncState
     lastSyncedAt,
     rejectedCount,
     channelDigest,
+    channelVersion,
+    manifestSig,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7869,6 +7893,24 @@ class $SyncStateTable extends SyncState
         ),
       );
     }
+    if (data.containsKey('channel_version')) {
+      context.handle(
+        _channelVersionMeta,
+        channelVersion.isAcceptableOrUnknown(
+          data['channel_version']!,
+          _channelVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('manifest_sig')) {
+      context.handle(
+        _manifestSigMeta,
+        manifestSig.isAcceptableOrUnknown(
+          data['manifest_sig']!,
+          _manifestSigMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -7902,6 +7944,14 @@ class $SyncStateTable extends SyncState
         DriftSqlType.string,
         data['${effectivePrefix}channel_digest'],
       ),
+      channelVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}channel_version'],
+      ),
+      manifestSig: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}manifest_sig'],
+      ),
     );
   }
 
@@ -7931,8 +7981,18 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
 
   /// The channel digest (see `channelDigest`) this device last replaced its
   /// copy of the channel with. The next sync skips the channel while the
-  /// teacher's digest still matches.
+  /// teacher's digest still matches. Null on a tombstone: a subject the
+  /// teacher stopped sharing, kept so a classmate can't bring it back.
   final String? channelDigest;
+
+  /// The teacher's version of this channel (see `ServedChannels`). A copy
+  /// relayed by a classmate is taken only when its version is higher.
+  final int? channelVersion;
+
+  /// The teacher's signature over this channel's manifest — kept so this
+  /// device can pass the channel on and the next device can check it came
+  /// from the teacher unchanged.
+  final String? manifestSig;
   const SyncStateData({
     required this.id,
     required this.classGroupUuid,
@@ -7940,6 +8000,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     required this.lastSyncedAt,
     required this.rejectedCount,
     this.channelDigest,
+    this.channelVersion,
+    this.manifestSig,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7951,6 +8013,12 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     map['rejected_count'] = Variable<int>(rejectedCount);
     if (!nullToAbsent || channelDigest != null) {
       map['channel_digest'] = Variable<String>(channelDigest);
+    }
+    if (!nullToAbsent || channelVersion != null) {
+      map['channel_version'] = Variable<int>(channelVersion);
+    }
+    if (!nullToAbsent || manifestSig != null) {
+      map['manifest_sig'] = Variable<String>(manifestSig);
     }
     return map;
   }
@@ -7965,6 +8033,12 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       channelDigest: channelDigest == null && nullToAbsent
           ? const Value.absent()
           : Value(channelDigest),
+      channelVersion: channelVersion == null && nullToAbsent
+          ? const Value.absent()
+          : Value(channelVersion),
+      manifestSig: manifestSig == null && nullToAbsent
+          ? const Value.absent()
+          : Value(manifestSig),
     );
   }
 
@@ -7980,6 +8054,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       lastSyncedAt: serializer.fromJson<String>(json['lastSyncedAt']),
       rejectedCount: serializer.fromJson<int>(json['rejectedCount']),
       channelDigest: serializer.fromJson<String?>(json['channelDigest']),
+      channelVersion: serializer.fromJson<int?>(json['channelVersion']),
+      manifestSig: serializer.fromJson<String?>(json['manifestSig']),
     );
   }
   @override
@@ -7992,6 +8068,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       'lastSyncedAt': serializer.toJson<String>(lastSyncedAt),
       'rejectedCount': serializer.toJson<int>(rejectedCount),
       'channelDigest': serializer.toJson<String?>(channelDigest),
+      'channelVersion': serializer.toJson<int?>(channelVersion),
+      'manifestSig': serializer.toJson<String?>(manifestSig),
     };
   }
 
@@ -8002,6 +8080,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     String? lastSyncedAt,
     int? rejectedCount,
     Value<String?> channelDigest = const Value.absent(),
+    Value<int?> channelVersion = const Value.absent(),
+    Value<String?> manifestSig = const Value.absent(),
   }) => SyncStateData(
     id: id ?? this.id,
     classGroupUuid: classGroupUuid ?? this.classGroupUuid,
@@ -8011,6 +8091,10 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     channelDigest: channelDigest.present
         ? channelDigest.value
         : this.channelDigest,
+    channelVersion: channelVersion.present
+        ? channelVersion.value
+        : this.channelVersion,
+    manifestSig: manifestSig.present ? manifestSig.value : this.manifestSig,
   );
   SyncStateData copyWithCompanion(SyncStateCompanion data) {
     return SyncStateData(
@@ -8028,6 +8112,12 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
       channelDigest: data.channelDigest.present
           ? data.channelDigest.value
           : this.channelDigest,
+      channelVersion: data.channelVersion.present
+          ? data.channelVersion.value
+          : this.channelVersion,
+      manifestSig: data.manifestSig.present
+          ? data.manifestSig.value
+          : this.manifestSig,
     );
   }
 
@@ -8039,7 +8129,9 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
           ..write('subjectId: $subjectId, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('rejectedCount: $rejectedCount, ')
-          ..write('channelDigest: $channelDigest')
+          ..write('channelDigest: $channelDigest, ')
+          ..write('channelVersion: $channelVersion, ')
+          ..write('manifestSig: $manifestSig')
           ..write(')'))
         .toString();
   }
@@ -8052,6 +8144,8 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
     lastSyncedAt,
     rejectedCount,
     channelDigest,
+    channelVersion,
+    manifestSig,
   );
   @override
   bool operator ==(Object other) =>
@@ -8062,7 +8156,9 @@ class SyncStateData extends DataClass implements Insertable<SyncStateData> {
           other.subjectId == this.subjectId &&
           other.lastSyncedAt == this.lastSyncedAt &&
           other.rejectedCount == this.rejectedCount &&
-          other.channelDigest == this.channelDigest);
+          other.channelDigest == this.channelDigest &&
+          other.channelVersion == this.channelVersion &&
+          other.manifestSig == this.manifestSig);
 }
 
 class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
@@ -8072,6 +8168,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
   final Value<String> lastSyncedAt;
   final Value<int> rejectedCount;
   final Value<String?> channelDigest;
+  final Value<int?> channelVersion;
+  final Value<String?> manifestSig;
   const SyncStateCompanion({
     this.id = const Value.absent(),
     this.classGroupUuid = const Value.absent(),
@@ -8079,6 +8177,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     this.lastSyncedAt = const Value.absent(),
     this.rejectedCount = const Value.absent(),
     this.channelDigest = const Value.absent(),
+    this.channelVersion = const Value.absent(),
+    this.manifestSig = const Value.absent(),
   });
   SyncStateCompanion.insert({
     this.id = const Value.absent(),
@@ -8087,6 +8187,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     required String lastSyncedAt,
     this.rejectedCount = const Value.absent(),
     this.channelDigest = const Value.absent(),
+    this.channelVersion = const Value.absent(),
+    this.manifestSig = const Value.absent(),
   }) : classGroupUuid = Value(classGroupUuid),
        subjectId = Value(subjectId),
        lastSyncedAt = Value(lastSyncedAt);
@@ -8097,6 +8199,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     Expression<String>? lastSyncedAt,
     Expression<int>? rejectedCount,
     Expression<String>? channelDigest,
+    Expression<int>? channelVersion,
+    Expression<String>? manifestSig,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -8105,6 +8209,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
       if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
       if (rejectedCount != null) 'rejected_count': rejectedCount,
       if (channelDigest != null) 'channel_digest': channelDigest,
+      if (channelVersion != null) 'channel_version': channelVersion,
+      if (manifestSig != null) 'manifest_sig': manifestSig,
     });
   }
 
@@ -8115,6 +8221,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     Value<String>? lastSyncedAt,
     Value<int>? rejectedCount,
     Value<String?>? channelDigest,
+    Value<int?>? channelVersion,
+    Value<String?>? manifestSig,
   }) {
     return SyncStateCompanion(
       id: id ?? this.id,
@@ -8123,6 +8231,8 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       rejectedCount: rejectedCount ?? this.rejectedCount,
       channelDigest: channelDigest ?? this.channelDigest,
+      channelVersion: channelVersion ?? this.channelVersion,
+      manifestSig: manifestSig ?? this.manifestSig,
     );
   }
 
@@ -8147,6 +8257,12 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
     if (channelDigest.present) {
       map['channel_digest'] = Variable<String>(channelDigest.value);
     }
+    if (channelVersion.present) {
+      map['channel_version'] = Variable<int>(channelVersion.value);
+    }
+    if (manifestSig.present) {
+      map['manifest_sig'] = Variable<String>(manifestSig.value);
+    }
     return map;
   }
 
@@ -8158,7 +8274,9 @@ class SyncStateCompanion extends UpdateCompanion<SyncStateData> {
           ..write('subjectId: $subjectId, ')
           ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('rejectedCount: $rejectedCount, ')
-          ..write('channelDigest: $channelDigest')
+          ..write('channelDigest: $channelDigest, ')
+          ..write('channelVersion: $channelVersion, ')
+          ..write('manifestSig: $manifestSig')
           ..write(')'))
         .toString();
   }
@@ -9309,6 +9427,782 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
   }
 }
 
+class $ServedChannelsTable extends ServedChannels
+    with TableInfo<$ServedChannelsTable, ServedChannel> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ServedChannelsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _digestMeta = const VerificationMeta('digest');
+  @override
+  late final GeneratedColumn<String> digest = GeneratedColumn<String>(
+    'digest',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    classGroupUuid,
+    subjectId,
+    digest,
+    version,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'served_channels';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ServedChannel> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_classGroupUuidMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('digest')) {
+      context.handle(
+        _digestMeta,
+        digest.isAcceptableOrUnknown(data['digest']!, _digestMeta),
+      );
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ServedChannel map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ServedChannel(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      digest: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}digest'],
+      ),
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+    );
+  }
+
+  @override
+  $ServedChannelsTable createAlias(String alias) {
+    return $ServedChannelsTable(attachedDatabase, alias);
+  }
+}
+
+class ServedChannel extends DataClass implements Insertable<ServedChannel> {
+  final int id;
+  final String classGroupUuid;
+  final String subjectId;
+
+  /// The channel digest last served; null once the subject stopped being
+  /// shared with the class.
+  final String? digest;
+  final int version;
+  const ServedChannel({
+    required this.id,
+    required this.classGroupUuid,
+    required this.subjectId,
+    this.digest,
+    required this.version,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    map['subject_id'] = Variable<String>(subjectId);
+    if (!nullToAbsent || digest != null) {
+      map['digest'] = Variable<String>(digest);
+    }
+    map['version'] = Variable<int>(version);
+    return map;
+  }
+
+  ServedChannelsCompanion toCompanion(bool nullToAbsent) {
+    return ServedChannelsCompanion(
+      id: Value(id),
+      classGroupUuid: Value(classGroupUuid),
+      subjectId: Value(subjectId),
+      digest: digest == null && nullToAbsent
+          ? const Value.absent()
+          : Value(digest),
+      version: Value(version),
+    );
+  }
+
+  factory ServedChannel.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ServedChannel(
+      id: serializer.fromJson<int>(json['id']),
+      classGroupUuid: serializer.fromJson<String>(json['classGroupUuid']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      digest: serializer.fromJson<String?>(json['digest']),
+      version: serializer.fromJson<int>(json['version']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'classGroupUuid': serializer.toJson<String>(classGroupUuid),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'digest': serializer.toJson<String?>(digest),
+      'version': serializer.toJson<int>(version),
+    };
+  }
+
+  ServedChannel copyWith({
+    int? id,
+    String? classGroupUuid,
+    String? subjectId,
+    Value<String?> digest = const Value.absent(),
+    int? version,
+  }) => ServedChannel(
+    id: id ?? this.id,
+    classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+    subjectId: subjectId ?? this.subjectId,
+    digest: digest.present ? digest.value : this.digest,
+    version: version ?? this.version,
+  );
+  ServedChannel copyWithCompanion(ServedChannelsCompanion data) {
+    return ServedChannel(
+      id: data.id.present ? data.id.value : this.id,
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      digest: data.digest.present ? data.digest.value : this.digest,
+      version: data.version.present ? data.version.value : this.version,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ServedChannel(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('digest: $digest, ')
+          ..write('version: $version')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, classGroupUuid, subjectId, digest, version);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ServedChannel &&
+          other.id == this.id &&
+          other.classGroupUuid == this.classGroupUuid &&
+          other.subjectId == this.subjectId &&
+          other.digest == this.digest &&
+          other.version == this.version);
+}
+
+class ServedChannelsCompanion extends UpdateCompanion<ServedChannel> {
+  final Value<int> id;
+  final Value<String> classGroupUuid;
+  final Value<String> subjectId;
+  final Value<String?> digest;
+  final Value<int> version;
+  const ServedChannelsCompanion({
+    this.id = const Value.absent(),
+    this.classGroupUuid = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.digest = const Value.absent(),
+    this.version = const Value.absent(),
+  });
+  ServedChannelsCompanion.insert({
+    this.id = const Value.absent(),
+    required String classGroupUuid,
+    required String subjectId,
+    this.digest = const Value.absent(),
+    required int version,
+  }) : classGroupUuid = Value(classGroupUuid),
+       subjectId = Value(subjectId),
+       version = Value(version);
+  static Insertable<ServedChannel> custom({
+    Expression<int>? id,
+    Expression<String>? classGroupUuid,
+    Expression<String>? subjectId,
+    Expression<String>? digest,
+    Expression<int>? version,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (digest != null) 'digest': digest,
+      if (version != null) 'version': version,
+    });
+  }
+
+  ServedChannelsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? classGroupUuid,
+    Value<String>? subjectId,
+    Value<String?>? digest,
+    Value<int>? version,
+  }) {
+    return ServedChannelsCompanion(
+      id: id ?? this.id,
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+      subjectId: subjectId ?? this.subjectId,
+      digest: digest ?? this.digest,
+      version: version ?? this.version,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (digest.present) {
+      map['digest'] = Variable<String>(digest.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ServedChannelsCompanion(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('digest: $digest, ')
+          ..write('version: $version')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MemberReportsTable extends MemberReports
+    with TableInfo<$MemberReportsTable, MemberReport> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MemberReportsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memberKeyMeta = const VerificationMeta(
+    'memberKey',
+  );
+  @override
+  late final GeneratedColumn<String> memberKey = GeneratedColumn<String>(
+    'member_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _reportJsonMeta = const VerificationMeta(
+    'reportJson',
+  );
+  @override
+  late final GeneratedColumn<String> reportJson = GeneratedColumn<String>(
+    'report_json',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<String> receivedAt = GeneratedColumn<String>(
+    'received_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    classGroupUuid,
+    memberKey,
+    name,
+    reportJson,
+    receivedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'member_reports';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MemberReport> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_classGroupUuidMeta);
+    }
+    if (data.containsKey('member_key')) {
+      context.handle(
+        _memberKeyMeta,
+        memberKey.isAcceptableOrUnknown(data['member_key']!, _memberKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberKeyMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('report_json')) {
+      context.handle(
+        _reportJsonMeta,
+        reportJson.isAcceptableOrUnknown(data['report_json']!, _reportJsonMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reportJsonMeta);
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receivedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MemberReport map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MemberReport(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      )!,
+      memberKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_key'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      reportJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}report_json'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}received_at'],
+      )!,
+    );
+  }
+
+  @override
+  $MemberReportsTable createAlias(String alias) {
+    return $MemberReportsTable(attachedDatabase, alias);
+  }
+}
+
+class MemberReport extends DataClass implements Insertable<MemberReport> {
+  final int id;
+
+  /// The class/stream reported to ([ClassGroups.groupUuid]).
+  final String classGroupUuid;
+
+  /// Stable per learner per device: the device's public key + its local
+  /// learner id. Two learners sharing one device stay two rows.
+  final String memberKey;
+  final String name;
+
+  /// The summary as the device sent it (`ProgressReport.toJson`).
+  final String reportJson;
+
+  /// ISO-8601 UTC, this (teacher) device's clock.
+  final String receivedAt;
+  const MemberReport({
+    required this.id,
+    required this.classGroupUuid,
+    required this.memberKey,
+    required this.name,
+    required this.reportJson,
+    required this.receivedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    map['member_key'] = Variable<String>(memberKey);
+    map['name'] = Variable<String>(name);
+    map['report_json'] = Variable<String>(reportJson);
+    map['received_at'] = Variable<String>(receivedAt);
+    return map;
+  }
+
+  MemberReportsCompanion toCompanion(bool nullToAbsent) {
+    return MemberReportsCompanion(
+      id: Value(id),
+      classGroupUuid: Value(classGroupUuid),
+      memberKey: Value(memberKey),
+      name: Value(name),
+      reportJson: Value(reportJson),
+      receivedAt: Value(receivedAt),
+    );
+  }
+
+  factory MemberReport.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MemberReport(
+      id: serializer.fromJson<int>(json['id']),
+      classGroupUuid: serializer.fromJson<String>(json['classGroupUuid']),
+      memberKey: serializer.fromJson<String>(json['memberKey']),
+      name: serializer.fromJson<String>(json['name']),
+      reportJson: serializer.fromJson<String>(json['reportJson']),
+      receivedAt: serializer.fromJson<String>(json['receivedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'classGroupUuid': serializer.toJson<String>(classGroupUuid),
+      'memberKey': serializer.toJson<String>(memberKey),
+      'name': serializer.toJson<String>(name),
+      'reportJson': serializer.toJson<String>(reportJson),
+      'receivedAt': serializer.toJson<String>(receivedAt),
+    };
+  }
+
+  MemberReport copyWith({
+    int? id,
+    String? classGroupUuid,
+    String? memberKey,
+    String? name,
+    String? reportJson,
+    String? receivedAt,
+  }) => MemberReport(
+    id: id ?? this.id,
+    classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+    memberKey: memberKey ?? this.memberKey,
+    name: name ?? this.name,
+    reportJson: reportJson ?? this.reportJson,
+    receivedAt: receivedAt ?? this.receivedAt,
+  );
+  MemberReport copyWithCompanion(MemberReportsCompanion data) {
+    return MemberReport(
+      id: data.id.present ? data.id.value : this.id,
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
+      memberKey: data.memberKey.present ? data.memberKey.value : this.memberKey,
+      name: data.name.present ? data.name.value : this.name,
+      reportJson: data.reportJson.present
+          ? data.reportJson.value
+          : this.reportJson,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MemberReport(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('memberKey: $memberKey, ')
+          ..write('name: $name, ')
+          ..write('reportJson: $reportJson, ')
+          ..write('receivedAt: $receivedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, classGroupUuid, memberKey, name, reportJson, receivedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MemberReport &&
+          other.id == this.id &&
+          other.classGroupUuid == this.classGroupUuid &&
+          other.memberKey == this.memberKey &&
+          other.name == this.name &&
+          other.reportJson == this.reportJson &&
+          other.receivedAt == this.receivedAt);
+}
+
+class MemberReportsCompanion extends UpdateCompanion<MemberReport> {
+  final Value<int> id;
+  final Value<String> classGroupUuid;
+  final Value<String> memberKey;
+  final Value<String> name;
+  final Value<String> reportJson;
+  final Value<String> receivedAt;
+  const MemberReportsCompanion({
+    this.id = const Value.absent(),
+    this.classGroupUuid = const Value.absent(),
+    this.memberKey = const Value.absent(),
+    this.name = const Value.absent(),
+    this.reportJson = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+  });
+  MemberReportsCompanion.insert({
+    this.id = const Value.absent(),
+    required String classGroupUuid,
+    required String memberKey,
+    required String name,
+    required String reportJson,
+    required String receivedAt,
+  }) : classGroupUuid = Value(classGroupUuid),
+       memberKey = Value(memberKey),
+       name = Value(name),
+       reportJson = Value(reportJson),
+       receivedAt = Value(receivedAt);
+  static Insertable<MemberReport> custom({
+    Expression<int>? id,
+    Expression<String>? classGroupUuid,
+    Expression<String>? memberKey,
+    Expression<String>? name,
+    Expression<String>? reportJson,
+    Expression<String>? receivedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
+      if (memberKey != null) 'member_key': memberKey,
+      if (name != null) 'name': name,
+      if (reportJson != null) 'report_json': reportJson,
+      if (receivedAt != null) 'received_at': receivedAt,
+    });
+  }
+
+  MemberReportsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? classGroupUuid,
+    Value<String>? memberKey,
+    Value<String>? name,
+    Value<String>? reportJson,
+    Value<String>? receivedAt,
+  }) {
+    return MemberReportsCompanion(
+      id: id ?? this.id,
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+      memberKey: memberKey ?? this.memberKey,
+      name: name ?? this.name,
+      reportJson: reportJson ?? this.reportJson,
+      receivedAt: receivedAt ?? this.receivedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
+    if (memberKey.present) {
+      map['member_key'] = Variable<String>(memberKey.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (reportJson.present) {
+      map['report_json'] = Variable<String>(reportJson.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<String>(receivedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MemberReportsCompanion(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('memberKey: $memberKey, ')
+          ..write('name: $name, ')
+          ..write('reportJson: $reportJson, ')
+          ..write('receivedAt: $receivedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -9337,6 +10231,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $AssignmentsTable assignments = $AssignmentsTable(this);
   late final $ResourceSharesTable resourceShares = $ResourceSharesTable(this);
   late final $SyncIdentityTable syncIdentity = $SyncIdentityTable(this);
+  late final $ServedChannelsTable servedChannels = $ServedChannelsTable(this);
+  late final $MemberReportsTable memberReports = $MemberReportsTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -9368,6 +10264,14 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final Index idxResourceSharesUnique = Index(
     'idx_resource_shares_unique',
     'CREATE UNIQUE INDEX idx_resource_shares_unique ON resource_shares (subject_id, document_title, class_group_uuid)',
+  );
+  late final Index idxServedChannelsChannel = Index(
+    'idx_served_channels_channel',
+    'CREATE UNIQUE INDEX idx_served_channels_channel ON served_channels (class_group_uuid, subject_id)',
+  );
+  late final Index idxMemberReportsMember = Index(
+    'idx_member_reports_member',
+    'CREATE UNIQUE INDEX idx_member_reports_member ON member_reports (class_group_uuid, member_key)',
   );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
@@ -9416,6 +10320,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     assignments,
     resourceShares,
     syncIdentity,
+    servedChannels,
+    memberReports,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -9424,6 +10330,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxSyncStateChannel,
     idxAssignmentsStudentSubjectTerm,
     idxResourceSharesUnique,
+    idxServedChannelsChannel,
+    idxMemberReportsMember,
   ];
 }
 
@@ -13224,6 +14132,8 @@ typedef $$SyncStateTableCreateCompanionBuilder =
       required String lastSyncedAt,
       Value<int> rejectedCount,
       Value<String?> channelDigest,
+      Value<int?> channelVersion,
+      Value<String?> manifestSig,
     });
 typedef $$SyncStateTableUpdateCompanionBuilder =
     SyncStateCompanion Function({
@@ -13233,6 +14143,8 @@ typedef $$SyncStateTableUpdateCompanionBuilder =
       Value<String> lastSyncedAt,
       Value<int> rejectedCount,
       Value<String?> channelDigest,
+      Value<int?> channelVersion,
+      Value<String?> manifestSig,
     });
 
 class $$SyncStateTableFilterComposer
@@ -13271,6 +14183,16 @@ class $$SyncStateTableFilterComposer
 
   ColumnFilters<String> get channelDigest => $composableBuilder(
     column: $table.channelDigest,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get channelVersion => $composableBuilder(
+    column: $table.channelVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get manifestSig => $composableBuilder(
+    column: $table.manifestSig,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13313,6 +14235,16 @@ class $$SyncStateTableOrderingComposer
     column: $table.channelDigest,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get channelVersion => $composableBuilder(
+    column: $table.channelVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get manifestSig => $composableBuilder(
+    column: $table.manifestSig,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncStateTableAnnotationComposer
@@ -13347,6 +14279,16 @@ class $$SyncStateTableAnnotationComposer
 
   GeneratedColumn<String> get channelDigest => $composableBuilder(
     column: $table.channelDigest,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get channelVersion => $composableBuilder(
+    column: $table.channelVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get manifestSig => $composableBuilder(
+    column: $table.manifestSig,
     builder: (column) => column,
   );
 }
@@ -13388,6 +14330,8 @@ class $$SyncStateTableTableManager
                 Value<String> lastSyncedAt = const Value.absent(),
                 Value<int> rejectedCount = const Value.absent(),
                 Value<String?> channelDigest = const Value.absent(),
+                Value<int?> channelVersion = const Value.absent(),
+                Value<String?> manifestSig = const Value.absent(),
               }) => SyncStateCompanion(
                 id: id,
                 classGroupUuid: classGroupUuid,
@@ -13395,6 +14339,8 @@ class $$SyncStateTableTableManager
                 lastSyncedAt: lastSyncedAt,
                 rejectedCount: rejectedCount,
                 channelDigest: channelDigest,
+                channelVersion: channelVersion,
+                manifestSig: manifestSig,
               ),
           createCompanionCallback:
               ({
@@ -13404,6 +14350,8 @@ class $$SyncStateTableTableManager
                 required String lastSyncedAt,
                 Value<int> rejectedCount = const Value.absent(),
                 Value<String?> channelDigest = const Value.absent(),
+                Value<int?> channelVersion = const Value.absent(),
+                Value<String?> manifestSig = const Value.absent(),
               }) => SyncStateCompanion.insert(
                 id: id,
                 classGroupUuid: classGroupUuid,
@@ -13411,6 +14359,8 @@ class $$SyncStateTableTableManager
                 lastSyncedAt: lastSyncedAt,
                 rejectedCount: rejectedCount,
                 channelDigest: channelDigest,
+                channelVersion: channelVersion,
+                manifestSig: manifestSig,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -14060,6 +15010,423 @@ typedef $$SyncIdentityTableProcessedTableManager =
       SyncIdentityData,
       PrefetchHooks Function()
     >;
+typedef $$ServedChannelsTableCreateCompanionBuilder =
+    ServedChannelsCompanion Function({
+      Value<int> id,
+      required String classGroupUuid,
+      required String subjectId,
+      Value<String?> digest,
+      required int version,
+    });
+typedef $$ServedChannelsTableUpdateCompanionBuilder =
+    ServedChannelsCompanion Function({
+      Value<int> id,
+      Value<String> classGroupUuid,
+      Value<String> subjectId,
+      Value<String?> digest,
+      Value<int> version,
+    });
+
+class $$ServedChannelsTableFilterComposer
+    extends Composer<_$OticDatabase, $ServedChannelsTable> {
+  $$ServedChannelsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get digest => $composableBuilder(
+    column: $table.digest,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ServedChannelsTableOrderingComposer
+    extends Composer<_$OticDatabase, $ServedChannelsTable> {
+  $$ServedChannelsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get digest => $composableBuilder(
+    column: $table.digest,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ServedChannelsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $ServedChannelsTable> {
+  $$ServedChannelsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get digest =>
+      $composableBuilder(column: $table.digest, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+}
+
+class $$ServedChannelsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $ServedChannelsTable,
+          ServedChannel,
+          $$ServedChannelsTableFilterComposer,
+          $$ServedChannelsTableOrderingComposer,
+          $$ServedChannelsTableAnnotationComposer,
+          $$ServedChannelsTableCreateCompanionBuilder,
+          $$ServedChannelsTableUpdateCompanionBuilder,
+          (
+            ServedChannel,
+            BaseReferences<_$OticDatabase, $ServedChannelsTable, ServedChannel>,
+          ),
+          ServedChannel,
+          PrefetchHooks Function()
+        > {
+  $$ServedChannelsTableTableManager(
+    _$OticDatabase db,
+    $ServedChannelsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ServedChannelsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ServedChannelsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ServedChannelsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> classGroupUuid = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String?> digest = const Value.absent(),
+                Value<int> version = const Value.absent(),
+              }) => ServedChannelsCompanion(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                subjectId: subjectId,
+                digest: digest,
+                version: version,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String classGroupUuid,
+                required String subjectId,
+                Value<String?> digest = const Value.absent(),
+                required int version,
+              }) => ServedChannelsCompanion.insert(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                subjectId: subjectId,
+                digest: digest,
+                version: version,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ServedChannelsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $ServedChannelsTable,
+      ServedChannel,
+      $$ServedChannelsTableFilterComposer,
+      $$ServedChannelsTableOrderingComposer,
+      $$ServedChannelsTableAnnotationComposer,
+      $$ServedChannelsTableCreateCompanionBuilder,
+      $$ServedChannelsTableUpdateCompanionBuilder,
+      (
+        ServedChannel,
+        BaseReferences<_$OticDatabase, $ServedChannelsTable, ServedChannel>,
+      ),
+      ServedChannel,
+      PrefetchHooks Function()
+    >;
+typedef $$MemberReportsTableCreateCompanionBuilder =
+    MemberReportsCompanion Function({
+      Value<int> id,
+      required String classGroupUuid,
+      required String memberKey,
+      required String name,
+      required String reportJson,
+      required String receivedAt,
+    });
+typedef $$MemberReportsTableUpdateCompanionBuilder =
+    MemberReportsCompanion Function({
+      Value<int> id,
+      Value<String> classGroupUuid,
+      Value<String> memberKey,
+      Value<String> name,
+      Value<String> reportJson,
+      Value<String> receivedAt,
+    });
+
+class $$MemberReportsTableFilterComposer
+    extends Composer<_$OticDatabase, $MemberReportsTable> {
+  $$MemberReportsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberKey => $composableBuilder(
+    column: $table.memberKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get reportJson => $composableBuilder(
+    column: $table.reportJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MemberReportsTableOrderingComposer
+    extends Composer<_$OticDatabase, $MemberReportsTable> {
+  $$MemberReportsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberKey => $composableBuilder(
+    column: $table.memberKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reportJson => $composableBuilder(
+    column: $table.reportJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MemberReportsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $MemberReportsTable> {
+  $$MemberReportsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get memberKey =>
+      $composableBuilder(column: $table.memberKey, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get reportJson => $composableBuilder(
+    column: $table.reportJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$MemberReportsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $MemberReportsTable,
+          MemberReport,
+          $$MemberReportsTableFilterComposer,
+          $$MemberReportsTableOrderingComposer,
+          $$MemberReportsTableAnnotationComposer,
+          $$MemberReportsTableCreateCompanionBuilder,
+          $$MemberReportsTableUpdateCompanionBuilder,
+          (
+            MemberReport,
+            BaseReferences<_$OticDatabase, $MemberReportsTable, MemberReport>,
+          ),
+          MemberReport,
+          PrefetchHooks Function()
+        > {
+  $$MemberReportsTableTableManager(_$OticDatabase db, $MemberReportsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MemberReportsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MemberReportsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MemberReportsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> classGroupUuid = const Value.absent(),
+                Value<String> memberKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> reportJson = const Value.absent(),
+                Value<String> receivedAt = const Value.absent(),
+              }) => MemberReportsCompanion(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                memberKey: memberKey,
+                name: name,
+                reportJson: reportJson,
+                receivedAt: receivedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String classGroupUuid,
+                required String memberKey,
+                required String name,
+                required String reportJson,
+                required String receivedAt,
+              }) => MemberReportsCompanion.insert(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                memberKey: memberKey,
+                name: name,
+                reportJson: reportJson,
+                receivedAt: receivedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MemberReportsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $MemberReportsTable,
+      MemberReport,
+      $$MemberReportsTableFilterComposer,
+      $$MemberReportsTableOrderingComposer,
+      $$MemberReportsTableAnnotationComposer,
+      $$MemberReportsTableCreateCompanionBuilder,
+      $$MemberReportsTableUpdateCompanionBuilder,
+      (
+        MemberReport,
+        BaseReferences<_$OticDatabase, $MemberReportsTable, MemberReport>,
+      ),
+      MemberReport,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -14101,4 +15468,8 @@ class $OticDatabaseManager {
       $$ResourceSharesTableTableManager(_db, _db.resourceShares);
   $$SyncIdentityTableTableManager get syncIdentity =>
       $$SyncIdentityTableTableManager(_db, _db.syncIdentity);
+  $$ServedChannelsTableTableManager get servedChannels =>
+      $$ServedChannelsTableTableManager(_db, _db.servedChannels);
+  $$MemberReportsTableTableManager get memberReports =>
+      $$MemberReportsTableTableManager(_db, _db.memberReports);
 }

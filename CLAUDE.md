@@ -27,6 +27,13 @@ AI Connect Africa is a **fully offline AI-powered Learning Operating System**. I
 - **Brain — Qwen2.5-Coder-1.5B-Instruct** (int4 `.litertlm` on Android, GGUF on desktop) → the one reasoning model. It does **all** reasoning and answer generation: tutoring, practice, learning paths, *and* code for the labs and builders (programming subjects just get the programming contract, `kProgrammingTutorContract`, on the same engine). See `lib/ai_core/model/model_manager.dart` and `dualModelRuntimeProvider` in `lib/ai_core/providers/ai_provider.dart`. Apache-2.0. **There is no Qwen3-0.6B any more** — it was removed on 2026-09-23 so one model does both jobs; don't reintroduce a separate chat or coder model.
 - **Translation — TranslatePsy-AfriSLM** (int8 `.litertlm` on Android, converted by `.github/workflows/convert-afrislm-litertlm.yml` behind a round-trip quality gate — see `tools/litert/`; Q4 GGUF on desktop) → translates English ↔ 19 Sub-Saharan African languages so students can learn in their own language while the tutor reasons in English. In-process on both runtimes, no server. `/no_think` is sent to AfriSLM (a Qwen3.5 fine-tune) but not to the Qwen2.5 brain (`appendNoThink` on both engine classes). On Android every translation is a fresh conversation (`isolatedTurns`), never a pinned chat. See `lib/ai_core/translate/afrislm_model_manager.dart`.
 
+Decoding is greedy everywhere (exact, repeatable code/JSON/translation)
+**except the chat bubble**: `TutorPipeline.respond` and `QwenChatService`
+run inside `runAsProse` (`decode_profile.dart`), which gives light seeded
+sampling, a repeat penalty on llama.cpp, and `RepetitionGuard`, which cuts a
+reply off before a repeated sentence is shown. Greedy decoding on the 1.5B
+brain wrote the same paragraph until it ran out of tokens.
+
 Both models expose the same Dart inference interface from `lib/ai_core/inference/inference_engine.dart`. Chat and translation are both wired up and shipping. On Windows, llama.cpp's `ggml.dll` carries a load-time import on `ggml-vulkan.dll` → `vulkan-1.dll` even though inference runs CPU-only (`nGpuLayers: 0`); the build ships a bundled Vulkan loader (`tools/fetch_vulkan_loader.ps1`, `windows/CMakeLists.txt`) so machines without a Vulkan-capable display driver can still load llama.cpp at all.
 
 Target platforms: Android (4 GB RAM / 32 GB storage minimum), Windows (8 GB RAM), Ubuntu (8 GB RAM).
@@ -143,20 +150,32 @@ prompt and the engines clip from the end. Notes *supplement* the model; they
 do not override it. There are no embeddings: a third model does not fit
 4 GB Android.
 
-### Class sync (teacher → students over the local Wi-Fi)
+### Class sync (teacher ↔ students ↔ classmates over the local Wi-Fi)
 
 Notes are shared only within one **school + class/stream + subject**.
-The code is in `lib/collaboration/sync/`, with tests in
+The code is in `lib/collaboration/sync/` (one server, `ClassShareServer`,
+with a teacher role and a classmate role), with tests in
 `test/class_sync_e2e_test.dart` and `test/class_crypto_test.dart`. Don't
 loosen any of these rules:
+
+- **The sharer approves every join.** After a correct code, the joining
+  device waits (2 min) while the teacher — or the sharing student — sees
+  its learner's name and taps Accept/Decline (`JoinRequestsCard`). Decline
+  or no answer hands over nothing.
 
 - **School.** It's set in Admin → School on the teacher's device. A student
   device adopts it at its first join and refuses classes from any other
   school.
-- **Joining.** The teacher's Class sync screen shows a join code (30 min,
-  locked after 20 wrong tries). The student types it in Collaborate → Join
-  a class.
-  - The code never crosses the network. A PBKDF2-stretched proof does.
+- **Joining.** The teacher's Class sync screen (Teacher → Class sync,
+  PIN-gated) shows a join code (30 min, locked after 20 wrong tries). The
+  student types it on **Class sync** in the main menu (`/class-sync`,
+  `ClassSyncScreen`), deliberately outside `/teacher*` so no PIN is needed.
+  Either side can be any Android phone or Windows/Linux PC.
+  - The teacher's device is found by UDP broadcast + mDNS. Phone hotspots
+    often block both, so the teacher screen also shows its IP address and
+    the student screen accepts it typed in (`sync_address.dart`).
+  - The code never crosses the network. A PBKDF2-stretched proof does. One
+    random code per sharing session (`Random.secure`), 30 minutes.
   - The reply gives the device the class key and pins the teacher device's
     Ed25519 public key. The class is created locally with the teacher's
     `groupUuid`.
@@ -165,20 +184,46 @@ loosen any of these rules:
   *and* has a `resource_shares` row for that class.
   - Notes are never shared until the teacher ticks a class (Lesson
     materials → Share with classes).
-  - Received notes are never passed on.
-  - Joined classes are never served.
-- **Every request** is MAC'd with the class key and names the school.
-  Anything wrong gets the same bare 404.
-- **Every reply** is AES-GCM encrypted with the class key and signed by the
-  teacher's key over the requester's nonce. A classmate holding the key
-  can't pose as the teacher, and old replies can't be replayed.
+  - Received notes are never served *as this device's own* (teacher role).
+- **Teacher-signed manifests.** Every channel (class+subject) carries the
+  teacher's Ed25519 signature over school, class, subject, digest and a
+  **version that only goes up** (`served_channels`, bumped on every digest
+  change including an unshare). Receivers keep it in `sync_state`.
+- **Classmates pass notes on — verbatim only.** A student device that
+  joined through the teacher can share that class's received notes
+  (Class sync → Share with classmates, own code + Accept). Rules:
+  - Only to devices that **already joined the class through the teacher**
+    (`joinClassmate` refuses otherwise). A classmate can't admit anyone.
+  - A relayed subject is taken only if its manifest verifies against the
+    **pinned teacher key**, its chunks hash to the signed digest, and its
+    version is **strictly newer** than this device's (including a
+    tombstone left when the teacher unshared it). A classmate can't edit,
+    invent or remove anything, and can't roll back a subject this device
+    already synced. Known gap: a device that hasn't synced with the teacher
+    since an unshare has no tombstone yet, so it still accepts that subject
+    from a classmate until its next teacher sync.
+  - A classmate sync never deletes; only a teacher sync drops subjects.
+  - Pulling from a classmate needs the session token they handed over at
+    Accept (requests are MAC'd with it), not just the class key.
+- **Every request** is MAC'd (class key; classmate role: session token) and
+  names the school. Anything wrong gets the same bare 404.
+- **Every reply** is AES-GCM encrypted with the class key and bound to the
+  requester's nonce. Teacher replies are also signed with the teacher key,
+  so a classmate can't pose as the teacher and old replies can't be
+  replayed.
 - **Receiving.** Each subject is replaced whole, in one transaction, and
-  only if every chunk verifies. The version is a digest over chunk hashes,
-  so edits and removals propagate. Subjects no longer shared are deleted.
+  only if every chunk verifies. Edits and removals from the teacher
+  propagate; removed subjects leave a tombstone row.
+- **Progress back to the teacher.** On every sync *with the teacher*, the
+  student device sends an encrypted report per learner of that class on
+  the device (`progress_report.dart`): totals, per-topic mastery,
+  strengths/weaknesses — never chats. The teacher stores the latest per
+  learner in `member_reports` and shows it in Teacher → Class sync →
+  Class progress. Deleting the class clears it.
 - **Shared devices.** Tutor retrieval sees this device's own notes plus
   received notes for the **active learner's** class only
   (`TopicResourceDao._visibleTo`).
-- **Protocol v2 only.** Devices on older builds can't sync with upgraded
+- **Protocol v3 only.** Devices on older builds can't sync with upgraded
   ones.
 
 ## Student Memory Engine

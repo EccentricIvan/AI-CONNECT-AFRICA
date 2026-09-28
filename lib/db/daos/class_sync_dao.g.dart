@@ -9,6 +9,8 @@ mixin _$ClassSyncDaoMixin on DatabaseAccessor<OticDatabase> {
   $SyncIdentityTable get syncIdentity => attachedDatabase.syncIdentity;
   $TopicResourcesTable get topicResources => attachedDatabase.topicResources;
   $SyncStateTable get syncState => attachedDatabase.syncState;
+  $ServedChannelsTable get servedChannels => attachedDatabase.servedChannels;
+  $MemberReportsTable get memberReports => attachedDatabase.memberReports;
   ClassSyncDaoManager get managers => ClassSyncDaoManager(this);
 }
 
@@ -31,4 +33,11 @@ class ClassSyncDaoManager {
       );
   $$SyncStateTableTableManager get syncState =>
       $$SyncStateTableTableManager(_db.attachedDatabase, _db.syncState);
+  $$ServedChannelsTableTableManager get servedChannels =>
+      $$ServedChannelsTableTableManager(
+        _db.attachedDatabase,
+        _db.servedChannels,
+      );
+  $$MemberReportsTableTableManager get memberReports =>
+      $$MemberReportsTableTableManager(_db.attachedDatabase, _db.memberReports);
 }

@@ -1,10 +1,15 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../../collaboration/sync/class_crypto.dart';
+import '../../collaboration/sync/progress_report.dart';
 import '../../collaboration/sync/sync_ids.dart';
 import '../otic_database.dart';
 import '../tables/class_groups_table.dart';
+import '../tables/member_reports_table.dart';
 import '../tables/resource_shares_table.dart';
+import '../tables/served_channels_table.dart';
 import '../tables/sync_identity_table.dart';
 import '../tables/sync_state_table.dart';
 import '../tables/topic_resources_table.dart';
@@ -24,6 +29,8 @@ part 'class_sync_dao.g.dart';
     SyncIdentity,
     TopicResources,
     SyncState,
+    ServedChannels,
+    MemberReports,
   ],
 )
 class ClassSyncDao extends DatabaseAccessor<OticDatabase>
@@ -105,8 +112,30 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
             ..where((t) => t.groupUuid.equals(uuid) & t.joined.equals(false)))
           .getSingleOrNull();
 
+  /// A class this device joined through its teacher, with everything a
+  /// classmate share needs (key, school, pinned teacher key). Null otherwise.
+  Future<ClassGroup?> joinedByUuid(String uuid) async {
+    final g = await (select(classGroups)
+          ..where((t) => t.groupUuid.equals(uuid) & t.joined.equals(true)))
+        .getSingleOrNull();
+    if (g == null ||
+        g.classKey == null ||
+        g.schoolId == null ||
+        g.teacherPublicKey == null) {
+      return null;
+    }
+    return g;
+  }
+
   /// Gives an owned class its key and school the first time it's synced.
-  Future<ClassGroup> ensureClassKey(ClassGroup group) async {
+  ///
+  /// Re-reads the row first: [group] may be a copy from before the key was
+  /// minted, and minting a second key would lock out every student who
+  /// already joined with the first.
+  Future<ClassGroup> ensureClassKey(ClassGroup stale) async {
+    final group = await (select(
+      classGroups,
+    )..where((t) => t.id.equals(stale.id))).getSingle();
     if (group.classKey != null && group.schoolId != null) return group;
     final me = await identity();
     await (update(classGroups)..where((t) => t.id.equals(group.id))).write(
@@ -237,27 +266,171 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
     return [for (final r in rows) topicResources.map(r.data)];
   }
 
+  /// The version to sign [subjectId]'s channel of [classUuid] with, now that
+  /// its digest is [digest]. Goes up by one whenever the digest changes, and
+  /// never down — see [ServedChannels].
+  Future<int> servedVersion(
+    String classUuid,
+    String subjectId,
+    String digest,
+  ) => transaction(() async {
+    final row = await _served(classUuid, subjectId);
+    if (row == null) {
+      await into(servedChannels).insert(
+        ServedChannelsCompanion.insert(
+          classGroupUuid: classUuid,
+          subjectId: subjectId,
+          digest: Value(digest),
+          version: 1,
+        ),
+      );
+      return 1;
+    }
+    if (row.digest == digest) return row.version;
+    await (update(servedChannels)..where((t) => t.id.equals(row.id))).write(
+      ServedChannelsCompanion(
+        digest: Value(digest),
+        version: Value(row.version + 1),
+      ),
+    );
+    return row.version + 1;
+  });
+
+  /// Marks every channel of [classUuid] no longer in [shared] as removed,
+  /// with a new version — so re-sharing it later is newer still, and a
+  /// classmate's old copy of it is never newer than the removal.
+  Future<void> retireUnshared(String classUuid, Set<String> shared) =>
+      transaction(() async {
+        final rows = await (select(servedChannels)..where(
+              (t) => t.classGroupUuid.equals(classUuid) & t.digest.isNotNull(),
+            ))
+            .get();
+        for (final r in rows.where((r) => !shared.contains(r.subjectId))) {
+          await (update(servedChannels)..where((t) => t.id.equals(r.id)))
+              .write(
+                ServedChannelsCompanion(
+                  digest: const Value(null),
+                  version: Value(r.version + 1),
+                ),
+              );
+        }
+      });
+
+  Future<ServedChannel?> _served(String classUuid, String subjectId) =>
+      (select(servedChannels)..where(
+            (t) =>
+                t.classGroupUuid.equals(classUuid) &
+                t.subjectId.equals(subjectId),
+          ))
+          .getSingleOrNull();
+
+  // ── Members' progress (teacher device) ──────────────────────────────────
+
+  /// Stores each learner's latest report, replacing their previous one —
+  /// all in one transaction, so a class list never shows half a sync.
+  Future<void> saveMemberReports(
+    String classUuid,
+    List<ProgressReport> reports,
+  ) => transaction(() async {
+    final at = DateTime.now().toUtc().toIso8601String();
+    for (final r in reports) {
+      await into(memberReports).insert(
+        MemberReportsCompanion.insert(
+          classGroupUuid: classUuid,
+          memberKey: r.memberKey,
+          name: r.name,
+          reportJson: jsonEncode(r.toJson()),
+          receivedAt: at,
+        ),
+        onConflict: DoUpdate(
+          (_) => MemberReportsCompanion(
+            name: Value(r.name),
+            reportJson: Value(jsonEncode(r.toJson())),
+            receivedAt: Value(at),
+          ),
+          target: [memberReports.classGroupUuid, memberReports.memberKey],
+        ),
+      );
+    }
+  });
+
+  /// Every member's latest report for [classUuid], by name.
+  Stream<List<({ProgressReport report, String receivedAt})>> watchMemberReports(
+    String classUuid,
+  ) =>
+      (select(memberReports)
+            ..where((t) => t.classGroupUuid.equals(classUuid))
+            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+          .watch()
+          .map(
+            (rows) => [
+              for (final r in rows)
+                if (_report(r.reportJson) case final report?)
+                  (report: report, receivedAt: r.receivedAt),
+            ],
+          );
+
+  static ProgressReport? _report(String json) {
+    try {
+      return ProgressReport.fromJson(jsonDecode(json));
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Receiving (student device) ──────────────────────────────────────────
 
-  Future<String?> channelDigestFor(String classUuid, String subjectId) async {
-    final row =
-        await (select(syncState)..where(
+  /// This device's record of one channel: digest, the teacher's version and
+  /// signature. Null when it never had the channel.
+  Future<SyncStateData?> channelState(String classUuid, String subjectId) =>
+      (select(syncState)..where(
+            (t) =>
+                t.classGroupUuid.equals(classUuid) &
+                t.subjectId.equals(subjectId),
+          ))
+          .getSingleOrNull();
+
+  Future<String?> channelDigestFor(String classUuid, String subjectId) async =>
+      (await channelState(classUuid, subjectId))?.channelDigest;
+
+  /// Channels of [classUuid] this device holds with the teacher's signature
+  /// — what it can pass on to a classmate. Tombstones are not offered.
+  Future<List<SyncStateData>> relayableChannels(String classUuid) =>
+      (select(syncState)..where(
+            (t) =>
+                t.classGroupUuid.equals(classUuid) &
+                t.channelDigest.isNotNull() &
+                t.channelVersion.isNotNull() &
+                t.manifestSig.isNotNull(),
+          ))
+          .get();
+
+  /// The chunks this device received for one channel, in arrival order —
+  /// passed on to a classmate exactly as the teacher sent them.
+  Future<List<TopicResource>> receivedChunks(
+    String classUuid,
+    String subjectId,
+  ) =>
+      (select(topicResources)
+            ..where(
               (t) =>
                   t.classGroupUuid.equals(classUuid) &
                   t.subjectId.equals(subjectId),
-            ))
-            .getSingleOrNull();
-    return row?.channelDigest;
-  }
+            )
+            ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+          .get();
 
   /// Replaces this device's copy of one class+subject channel in one
   /// transaction — edits and removals on the teacher's side arrive as-is,
-  /// with no duplicates left behind.
+  /// with no duplicates left behind. [version] and [manifestSig] are the
+  /// teacher's, kept so the channel can be passed on.
   Future<void> replaceChannel({
     required String classUuid,
     required String subjectId,
     required List<TopicResourcesCompanion> rows,
     required String digest,
+    int? version,
+    String? manifestSig,
   }) => transaction(() async {
     await (delete(topicResources)..where(
           (t) =>
@@ -280,26 +453,59 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
         subjectId: subjectId,
         lastSyncedAt: at,
         channelDigest: Value(digest),
+        channelVersion: Value(version),
+        manifestSig: Value(manifestSig),
       ),
       onConflict: DoUpdate(
         (_) => SyncStateCompanion(
           lastSyncedAt: Value(at),
           channelDigest: Value(digest),
+          channelVersion: Value(version),
+          manifestSig: Value(manifestSig),
         ),
         target: [syncState.classGroupUuid, syncState.subjectId],
       ),
     );
   });
 
-  /// Drops channels of [classUuid] the teacher no longer shares.
+  /// Records the teacher's version and signature for a channel whose notes
+  /// are already current here (same digest) — e.g. a copy synced before
+  /// channels were signed, which could not otherwise be passed on.
+  Future<void> updateManifest({
+    required String classUuid,
+    required String subjectId,
+    required int version,
+    required String manifestSig,
+  }) =>
+      (update(syncState)..where(
+            (t) =>
+                t.classGroupUuid.equals(classUuid) &
+                t.subjectId.equals(subjectId),
+          ))
+          .write(
+            SyncStateCompanion(
+              channelVersion: Value(version),
+              manifestSig: Value(manifestSig),
+            ),
+          );
+
+  /// Drops channels of [classUuid] the teacher no longer shares. Only a
+  /// sync straight with the teacher may call this — a classmate's list of
+  /// subjects says nothing about what the teacher still shares.
+  ///
+  /// The channel's sync_state row stays behind as a tombstone (no digest,
+  /// version kept), so a classmate's older copy can't bring it back.
   Future<int> dropChannelsExcept(
     String classUuid,
     Set<String> keepSubjects,
   ) => transaction(() async {
     final gone =
-        (await (select(
-              syncState,
-            )..where((t) => t.classGroupUuid.equals(classUuid))).get())
+        (await (select(syncState)..where(
+                  (t) =>
+                      t.classGroupUuid.equals(classUuid) &
+                      t.channelDigest.isNotNull(),
+                ))
+                .get())
             .map((r) => r.subjectId)
             .toSet();
     final localSubjects = await customSelect(
@@ -316,12 +522,17 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
                 t.subjectId.equals(subject),
           ))
           .go();
-      await (delete(syncState)..where(
+      await (update(syncState)..where(
             (t) =>
                 t.classGroupUuid.equals(classUuid) &
                 t.subjectId.equals(subject),
           ))
-          .go();
+          .write(
+            const SyncStateCompanion(
+              channelDigest: Value(null),
+              manifestSig: Value(null),
+            ),
+          );
     }
     return gone.length;
   });

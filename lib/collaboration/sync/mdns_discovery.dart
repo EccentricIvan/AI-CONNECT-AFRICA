@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:nsd/nsd.dart' as nsd;
 
-/// One [TeacherSyncServer] found via mDNS/NSD.
+/// One [ClassShareServer] found via mDNS/NSD.
 class MdnsSyncPeer {
   const MdnsSyncPeer({
     required this.name,
@@ -17,7 +17,7 @@ class MdnsSyncPeer {
   final int port;
 }
 
-/// mDNS/DNS-SD (Bonjour) discovery for [TeacherSyncServer], additive to the
+/// mDNS/DNS-SD (Bonjour) discovery for [ClassShareServer], additive to the
 /// UDP broadcast [LanDiscoveryService] already does for classmate presence
 /// — not a replacement for it.
 ///
@@ -54,7 +54,7 @@ class MdnsSyncDiscovery {
           Platform.isMacOS ||
           Platform.isWindows);
 
-  /// Announces this device's running [TeacherSyncServer] over mDNS.
+  /// Announces this device's running [ClassShareServer] over mDNS.
   /// A no-op (not an error) on an unsupported platform.
   Future<void> registerServer({
     required String className,

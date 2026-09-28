@@ -11,6 +11,7 @@ import '../../db/providers/db_provider.dart';
 import '../../features/achievements/achievements_screen.dart';
 import '../../features/admin/admin_screen.dart';
 import '../../features/certificates/certificates_screen.dart';
+import '../../features/collaborate/class_sync_screen.dart';
 import '../../features/create/create_screen.dart';
 import '../../features/app_dev_lab/app_chat_builder_screen.dart';
 import '../../features/app_dev_lab/app_dev_lab_screen.dart';
@@ -166,6 +167,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/achievements',
             builder: (_, __) => const AchievementsScreen(),
+          ),
+          // Student side of class sync — deliberately outside /teacher*, so
+          // no teacher PIN: the join code is what grants access.
+          GoRoute(
+            path: '/class-sync',
+            builder: (_, __) => const ClassSyncScreen(),
           ),
           GoRoute(
             path: '/certificates',

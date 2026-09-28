@@ -89,11 +89,14 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
     if (uuid != null) {
       // FKs aren't enforced (see CLAUDE.md): clear the class's sync
       // rows by hand — its note shares on a teacher device, the notes
-      // it received and its sync bookkeeping on a student device.
+      // it received and its sync bookkeeping on a student device, and its
+      // channel versions and members' progress reports on a teacher device.
       for (final table in [
         'resource_shares',
         'topic_resources',
         'sync_state',
+        'served_channels',
+        'member_reports',
       ]) {
         await customStatement('DELETE FROM $table WHERE class_group_uuid = ?', [
           uuid,

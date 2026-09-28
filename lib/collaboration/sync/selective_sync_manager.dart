@@ -6,15 +6,18 @@ import 'package:http/http.dart' as http;
 
 import '../../db/otic_database.dart';
 import 'class_crypto.dart';
-import 'routing_envelope.dart';
-import 'teacher_sync_server.dart'
+import 'class_share_server.dart'
     show
         kChannelPath,
         kClassHeader,
         kHandshakePath,
+        kJoinApprovalTimeout,
         kJoinPath,
         kMacHeader,
-        kNonceHeader;
+        kNonceHeader,
+        kReportPath;
+import 'progress_report.dart';
+import 'routing_envelope.dart';
 
 /// One malformed or mismatched block, kept for a post-sync report rather
 /// than only a running count.
@@ -24,7 +27,7 @@ class RejectedChunk {
   final String? routingKey;
 }
 
-/// What one [SelectiveSyncManager.syncClass] run actually did.
+/// What one sync run actually did.
 class SyncResult {
   const SyncResult({
     required this.subjectsChecked,
@@ -32,8 +35,12 @@ class SyncResult {
     required this.chunksInserted,
     required this.rejected,
     this.subjectsRemoved = 0,
+    this.learnersReported = 0,
     this.error,
   });
+
+  /// Learners on this device whose progress the teacher received.
+  final int learnersReported;
 
   final int subjectsChecked;
   final int subjectsUpdated;
@@ -45,12 +52,20 @@ class SyncResult {
   final String? error;
 
   bool get ok => error == null;
+
+  static SyncResult failed(String error) => SyncResult(
+    subjectsChecked: 0,
+    subjectsUpdated: 0,
+    chunksInserted: 0,
+    rejected: const [],
+    error: error,
+  );
 }
 
-/// A teacher sync server seen on the network.
+/// A sharing device seen on the network (or typed in).
 typedef TeacherEndpoint = ({String address, int port});
 
-/// Outcome of typing a join code.
+/// Outcome of typing a teacher's join code.
 class JoinResult {
   const JoinResult.joined(ClassGroup this.group, this.schoolName)
     : error = null;
@@ -62,18 +77,50 @@ class JoinResult {
   bool get ok => group != null;
 }
 
+/// Access a classmate granted this device: their address, the class, and
+/// the session token that lets this device pull from them. Held in memory
+/// only — it ends when either device stops.
+class ClassmateSession {
+  const ClassmateSession({
+    required this.endpoint,
+    required this.group,
+    required this.token,
+  });
+  final TeacherEndpoint endpoint;
+  final ClassGroup group;
+  final String token;
+}
+
+/// Outcome of typing a classmate's code.
+class ClassmateJoinResult {
+  const ClassmateJoinResult.joined(ClassmateSession this.session)
+    : error = null;
+  const ClassmateJoinResult.failed(String this.error) : session = null;
+  final ClassmateSession? session;
+  final String? error;
+  bool get ok => session != null;
+}
+
 /// A student device's side of class sync: joining a class with the
-/// teacher's code, then pulling that class's shared notes.
+/// teacher's code, pulling that class's notes from the teacher, and pulling
+/// them from a classmate who is passing them on.
 ///
 /// Each subject is replaced as a whole, in one transaction, and only when
 /// every chunk checks out — a teacher's edits and removals arrive exactly,
 /// and a bad reply never leaves half a subject behind. A failing subject
 /// never stops the next one.
+///
+/// Every subject comes with the teacher's signed manifest (digest +
+/// version). From a classmate, a subject is taken only if that signature
+/// checks against the teacher key pinned at join and its version is newer
+/// than this device's — a classmate can pass notes on, but can't edit,
+/// invent, remove or roll back any of them.
 class SelectiveSyncManager {
   SelectiveSyncManager(
     this._db, {
     http.Client? client,
     this.joinRounds = kJoinKdfRounds,
+    this.approvalTimeout = kJoinApprovalTimeout,
   }) : _client = client ?? http.Client();
 
   final OticDatabase _db;
@@ -82,15 +129,52 @@ class SelectiveSyncManager {
   /// PBKDF2 rounds for join codes — lowered only in tests.
   final int joinRounds;
 
+  /// How long a join waits for the sharer's Accept.
+  final Duration approvalTimeout;
+
   static const _timeout = Duration(seconds: 20);
 
   // ── Join ────────────────────────────────────────────────────────────────
 
-  /// Tries [typedCode] against each teacher on the network. The code never
-  /// leaves this device: only a proof derived from it does.
+  /// Sends a join proof for [code] to each endpoint in turn and returns the
+  /// first opened bundle. The code never leaves this device: only a proof
+  /// derived from it does. Waits while the sharer decides.
+  Future<Map<String, Object?>?> _requestJoin(
+    List<TeacherEndpoint> endpoints,
+    String code,
+    String name,
+  ) async {
+    final salt = newNonce();
+    final secret = await joinSecret(code, salt, rounds: joinRounds);
+    final proof = await joinProof(secret, salt);
+    for (final t in endpoints) {
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('http://${t.address}:${t.port}/$kJoinPath'),
+              headers: const {'content-type': 'application/json'},
+              body: jsonEncode({'nonce': salt, 'proof': proof, 'name': name}),
+            )
+            .timeout(approvalTimeout + _timeout);
+        if (response.statusCode != 200) continue;
+        final opened = await openJoinBundle(
+          secret,
+          salt,
+          (jsonDecode(response.body) as Map)['bundle'],
+        );
+        if (opened is Map) return Map<String, Object?>.from(opened);
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /// Tries [typedCode] against each teacher on the network, as [name].
   Future<JoinResult> joinClass({
     required List<TeacherEndpoint> teachers,
     required String typedCode,
+    String name = '',
   }) async {
     final code = normalizeJoinCode(typedCode);
     if (code == null) {
@@ -103,36 +187,14 @@ class SelectiveSyncManager {
         'No teacher is sharing a class on this Wi-Fi right now.',
       );
     }
-    final salt = newNonce();
-    final secret = await joinSecret(code, salt, rounds: joinRounds);
-    final proof = await joinProof(secret, salt);
-
-    for (final t in teachers) {
-      final Map<String, Object?> bundle;
-      try {
-        final response = await _client
-            .post(
-              Uri.parse('http://${t.address}:${t.port}/$kJoinPath'),
-              headers: const {'content-type': 'application/json'},
-              body: jsonEncode({'nonce': salt, 'proof': proof}),
-            )
-            .timeout(_timeout);
-        if (response.statusCode != 200) continue;
-        final opened = await openJoinBundle(
-          secret,
-          salt,
-          (jsonDecode(response.body) as Map)['bundle'],
-        );
-        if (opened is! Map) continue;
-        bundle = Map<String, Object?>.from(opened);
-      } catch (_) {
-        continue;
-      }
-      return _acceptBundle(bundle);
+    final bundle = await _requestJoin(teachers, code, name);
+    if (bundle == null) {
+      return const JoinResult.failed(
+        'You weren’t let in. Check the code, that it hasn’t expired, and that '
+        'your teacher tapped Accept.',
+      );
     }
-    return const JoinResult.failed(
-      'No teacher accepted that code. Check it, and that the code hasn’t expired.',
-    );
+    return _acceptBundle(bundle);
   }
 
   Future<JoinResult> _acceptBundle(Map<String, Object?> b) async {
@@ -175,7 +237,74 @@ class SelectiveSyncManager {
     return JoinResult.joined(group, school);
   }
 
-  // ── Sync ────────────────────────────────────────────────────────────────
+  /// Tries a classmate's [typedCode]. Only works for a class this device
+  /// already joined through the teacher — a classmate can pass the
+  /// teacher's notes on, never let someone into the class.
+  Future<ClassmateJoinResult> joinClassmate({
+    required List<TeacherEndpoint> classmates,
+    required String typedCode,
+    String name = '',
+  }) async {
+    final code = normalizeJoinCode(typedCode);
+    if (code == null) {
+      return const ClassmateJoinResult.failed(
+        'That isn’t a code — it has 8 letters and numbers, like K7M4-P9QX.',
+      );
+    }
+    if (classmates.isEmpty) {
+      return const ClassmateJoinResult.failed(
+        'No classmate is sharing on this Wi-Fi right now. Type their '
+        'address if they are.',
+      );
+    }
+    final salt = newNonce();
+    final secret = await joinSecret(code, salt, rounds: joinRounds);
+    final proof = await joinProof(secret, salt);
+    for (final c in classmates) {
+      final Map<String, Object?> b;
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('http://${c.address}:${c.port}/$kJoinPath'),
+              headers: const {'content-type': 'application/json'},
+              body: jsonEncode({'nonce': salt, 'proof': proof, 'name': name}),
+            )
+            .timeout(approvalTimeout + _timeout);
+        if (response.statusCode != 200) continue;
+        final opened = await openJoinBundle(
+          secret,
+          salt,
+          (jsonDecode(response.body) as Map)['bundle'],
+        );
+        if (opened is! Map) continue;
+        b = Map<String, Object?>.from(opened);
+      } catch (_) {
+        continue;
+      }
+      final uuid = b['class_group_uuid'], token = b['session_token'];
+      if (uuid is! String || token is! String) {
+        return const ClassmateJoinResult.failed(
+          'Your classmate’s device sent incomplete details.',
+        );
+      }
+      final group = await _db.classSyncDao.joinedByUuid(uuid);
+      if (group == null || group.schoolId != b['school_id']) {
+        return const ClassmateJoinResult.failed(
+          'That classmate is sharing a class this device hasn’t joined. Join '
+          'your class with your teacher’s code first.',
+        );
+      }
+      return ClassmateJoinResult.joined(
+        ClassmateSession(endpoint: c, group: group, token: token),
+      );
+    }
+    return const ClassmateJoinResult.failed(
+      'You weren’t let in. Check the code, that it hasn’t expired, and that '
+      'your classmate tapped Accept.',
+    );
+  }
+
+  // ── Sync with the teacher ───────────────────────────────────────────────
 
   /// Pulls every subject [group] has shared notes in from [teacher].
   Future<SyncResult> syncClass({
@@ -189,68 +318,226 @@ class SelectiveSyncManager {
         classKey == null ||
         teacherKey == null ||
         schoolId == null) {
-      return const SyncResult(
-        subjectsChecked: 0,
-        subjectsUpdated: 0,
-        chunksInserted: 0,
-        rejected: [],
-        error: 'Join this class with your teacher’s code first.',
-      );
+      return SyncResult.failed('Join this class with your teacher’s code first.');
     }
-    Future<Map<String, Object?>> call(String path, Map<String, Object?> body) =>
-        _signedCall(
-          teacher,
-          path,
-          body,
-          uuid: uuid,
-          classKey: classKey,
-          teacherKey: teacherKey,
-        );
+    Future<Map<String, Object?>> call(
+      String path,
+      Map<String, Object?> body, {
+      Future<Map<String, Object?>> Function(String nonce)? extra,
+    }) => _signedCall(
+      teacher,
+      path,
+      body,
+      uuid: uuid,
+      macKey: classKey,
+      extra: extra,
+      open: (nonce, sealed) => openReply(
+        classKey: classKey,
+        teacherPublicKey: teacherKey,
+        requestNonce: nonce,
+        sealed: sealed,
+      ),
+    );
 
-    final Map<String, int> subjectsSeen;
-    final Map<String, String> digests;
+    final List<ChannelManifest> manifests;
     try {
-      final hello = await call(kHandshakePath, {'school_id': schoolId});
-      digests = {};
-      for (final s in (hello['subjects'] as List? ?? const [])) {
-        if (s is Map && s['subject_id'] is String && s['digest'] is String) {
-          digests[s['subject_id'] as String] = s['digest'] as String;
-        }
-      }
-      subjectsSeen = {for (final s in digests.keys) s: 0};
+      manifests = await _manifests(
+        await call(kHandshakePath, {'school_id': schoolId}),
+        schoolId: schoolId,
+        classUuid: uuid,
+      );
     } catch (e) {
-      return SyncResult(
-        subjectsChecked: 0,
-        subjectsUpdated: 0,
-        chunksInserted: 0,
-        rejected: const [],
-        error: e is SyncTrustError
+      return SyncResult.failed(
+        e is SyncTrustError
             ? 'That device isn’t your class’s teacher: ${e.message}.'
             : 'Could not sync with the teacher’s device. Make sure it is still sharing '
                   '${group.className}${group.streamName == null ? '' : ' ${group.streamName}'}.',
       );
     }
 
-    final removed = await _db.classSyncDao.dropChannelsExcept(
-      uuid,
-      subjectsSeen.keys.toSet(),
+    // Straight from the teacher, the list of subjects is authoritative:
+    // anything not on it was unshared.
+    final removed = await _db.classSyncDao.dropChannelsExcept(uuid, {
+      for (final m in manifests) m.subjectId,
+    });
+    final run = await _pullChannels(
+      manifests,
+      group: group,
+      call: (path, body) => call(path, body),
+      fromTeacher: true,
     );
+
+    // Then tell the teacher how this device's learners in the class are
+    // doing. Best-effort: a failed report never fails the sync.
+    var reported = 0;
+    try {
+      final me = await _db.classSyncDao.identity();
+      final deviceKey = (await signingPublicKey(me.signingSeed)).substring(
+        0,
+        16,
+      );
+      final reports = await buildProgressReports(
+        _db,
+        group,
+        deviceKey: deviceKey,
+      );
+      if (reports.isNotEmpty) {
+        final ack = await call(
+          kReportPath,
+          {'school_id': schoolId},
+          extra: (nonce) async => {
+            'report': await sealReport(
+              classKey: classKey,
+              requestNonce: nonce,
+              json: [for (final r in reports) r.toJson()],
+            ),
+          },
+        );
+        reported = ack['saved'] is int ? ack['saved'] as int : 0;
+      }
+    } catch (_) {}
+
+    return SyncResult(
+      subjectsChecked: manifests.length,
+      subjectsUpdated: run.updated,
+      chunksInserted: run.inserted,
+      subjectsRemoved: removed,
+      rejected: run.rejected,
+      learnersReported: reported,
+    );
+  }
+
+  // ── Sync with a classmate ───────────────────────────────────────────────
+
+  /// Pulls from a classmate every subject whose teacher-signed version is
+  /// newer than this device's. Never removes anything: a classmate's list
+  /// says nothing about what the teacher still shares.
+  Future<SyncResult> syncFromClassmate(ClassmateSession session) async {
+    final group = session.group;
+    final uuid = group.groupUuid!, classKey = group.classKey!;
+    final schoolId = group.schoolId!;
+    Future<Map<String, Object?>> call(String path, Map<String, Object?> body) =>
+        _signedCall(
+          session.endpoint,
+          path,
+          body,
+          uuid: uuid,
+          macKey: session.token,
+          open: (nonce, sealed) => openRelayReply(
+            classKey: classKey,
+            requestNonce: nonce,
+            sealed: sealed,
+          ),
+        );
+
+    final List<ChannelManifest> manifests;
+    try {
+      manifests = await _manifests(
+        await call(kHandshakePath, {'school_id': schoolId}),
+        schoolId: schoolId,
+        classUuid: uuid,
+      );
+    } catch (e) {
+      return SyncResult.failed(
+        'Could not get notes from your classmate. Make sure they are still '
+        'sharing, then try again.',
+      );
+    }
+    final run = await _pullChannels(
+      manifests,
+      group: group,
+      call: call,
+      fromTeacher: false,
+    );
+    return SyncResult(
+      subjectsChecked: manifests.length,
+      subjectsUpdated: run.updated,
+      chunksInserted: run.inserted,
+      rejected: run.rejected,
+    );
+  }
+
+  // ── Shared pulling ──────────────────────────────────────────────────────
+
+  Future<List<ChannelManifest>> _manifests(
+    Map<String, Object?> hello, {
+    required String schoolId,
+    required String classUuid,
+  }) async {
+    final out = <ChannelManifest>[];
+    for (final s in (hello['subjects'] as List? ?? const [])) {
+      final m = ChannelManifest.fromJson(
+        s,
+        schoolId: schoolId,
+        classUuid: classUuid,
+      );
+      if (m != null) out.add(m);
+    }
+    return out;
+  }
+
+  Future<({int updated, int inserted, List<RejectedChunk> rejected})>
+  _pullChannels(
+    List<ChannelManifest> manifests, {
+    required ClassGroup group,
+    required Future<Map<String, Object?>> Function(
+      String path,
+      Map<String, Object?> body,
+    )
+    call,
+    required bool fromTeacher,
+  }) async {
+    final uuid = group.groupUuid!;
+    final dao = _db.classSyncDao;
     var updated = 0;
     var inserted = 0;
     final rejected = <RejectedChunk>[];
 
-    for (final entry in digests.entries) {
-      final subject = entry.key;
-      final routingKey = '$uuid/$subject';
+    for (final m in manifests) {
+      final routingKey = '$uuid/${m.subjectId}';
       try {
-        if (await _db.classSyncDao.channelDigestFor(uuid, subject) ==
-            entry.value) {
+        if (!await verifyManifest(m, group.teacherPublicKey!)) {
+          rejected.add(
+            RejectedChunk(
+              reason: 'not signed by your class’s teacher',
+              routingKey: routingKey,
+            ),
+          );
           continue;
+        }
+        final local = await dao.channelState(uuid, m.subjectId);
+        if (fromTeacher) {
+          if (local?.channelDigest == m.digest) {
+            if (local!.channelVersion != m.version ||
+                local.manifestSig != m.signature) {
+              await dao.updateManifest(
+                classUuid: uuid,
+                subjectId: m.subjectId,
+                version: m.version,
+                manifestSig: m.signature,
+              );
+            }
+            continue;
+          }
+        } else {
+          // From a classmate: only strictly newer than what this device
+          // has — including a subject the teacher removed (tombstone).
+          final have = local?.channelVersion;
+          if (have != null && m.version <= have) continue;
+          if (local?.channelDigest == m.digest && have == null) {
+            await dao.updateManifest(
+              classUuid: uuid,
+              subjectId: m.subjectId,
+              version: m.version,
+              manifestSig: m.signature,
+            );
+            continue;
+          }
         }
 
         final reply = await call(kChannelPath, {
-          'school_id': schoolId,
-          'subject_id': subject,
+          'school_id': group.schoolId,
+          'subject_id': m.subjectId,
         });
         final rows = <TopicResourcesCompanion>[];
         final ids = <String>[];
@@ -258,7 +545,7 @@ class SelectiveSyncManager {
         for (final raw in (reply['chunks'] as List? ?? const [])) {
           try {
             final envelope = ResourceChunkEnvelope.fromJson(raw);
-            rows.add(_ingest(envelope, routingKey, uuid, subject));
+            rows.add(_ingest(envelope, routingKey, uuid, m.subjectId));
             ids.add(envelope.chunkId);
           } on FormatException catch (e) {
             bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
@@ -267,11 +554,12 @@ class SelectiveSyncManager {
           }
         }
         final digest = await channelDigest(ids);
-        if (bad.isEmpty &&
-            (digest != reply['digest'] || digest != entry.value)) {
+        if (bad.isEmpty && digest != m.digest) {
           bad.add(
             RejectedChunk(
-              reason: 'the notes changed while syncing — sync again',
+              reason: fromTeacher
+                  ? 'the notes changed while syncing — sync again'
+                  : 'the notes don’t match what your teacher signed',
               routingKey: routingKey,
             ),
           );
@@ -281,11 +569,13 @@ class SelectiveSyncManager {
           rejected.addAll(bad);
           continue;
         }
-        await _db.classSyncDao.replaceChannel(
+        await dao.replaceChannel(
           classUuid: uuid,
-          subjectId: subject,
+          subjectId: m.subjectId,
           rows: rows,
           digest: digest,
+          version: m.version,
+          manifestSig: m.signature,
         );
         updated++;
         inserted += rows.length;
@@ -298,35 +588,29 @@ class SelectiveSyncManager {
         );
       }
     }
-
-    return SyncResult(
-      subjectsChecked: digests.length,
-      subjectsUpdated: updated,
-      chunksInserted: inserted,
-      subjectsRemoved: removed,
-      rejected: rejected,
-    );
+    return (updated: updated, inserted: inserted, rejected: rejected);
   }
 
   Future<Map<String, Object?>> _signedCall(
-    TeacherEndpoint teacher,
+    TeacherEndpoint endpoint,
     String path,
     Map<String, Object?> body, {
     required String uuid,
-    required String classKey,
-    required String teacherKey,
+    required String macKey,
+    required Future<Object?> Function(String nonce, Object? sealed) open,
+    Future<Map<String, Object?>> Function(String nonce)? extra,
   }) async {
-    final raw = jsonEncode(body);
     final nonce = newNonce();
+    final raw = jsonEncode({...body, if (extra != null) ...await extra(nonce)});
     final response = await _client
         .post(
-          Uri.parse('http://${teacher.address}:${teacher.port}/$path'),
+          Uri.parse('http://${endpoint.address}:${endpoint.port}/$path'),
           headers: {
             'content-type': 'application/json',
             kClassHeader: uuid,
             kNonceHeader: nonce,
             kMacHeader: await requestMac(
-              classKey: classKey,
+              classKey: macKey,
               path: path,
               nonce: nonce,
               body: raw,
@@ -337,15 +621,10 @@ class SelectiveSyncManager {
         .timeout(_timeout);
     if (response.statusCode != 200) {
       throw StateError(
-        'the teacher’s device refused this request (${response.statusCode})',
+        'the sharing device refused this request (${response.statusCode})',
       );
     }
-    final opened = await openReply(
-      classKey: classKey,
-      teacherPublicKey: teacherKey,
-      requestNonce: nonce,
-      sealed: jsonDecode(response.body),
-    );
+    final opened = await open(nonce, jsonDecode(response.body));
     if (opened is! Map) throw const SyncTrustError('reply is not an object');
     return Map<String, Object?>.from(opened);
   }

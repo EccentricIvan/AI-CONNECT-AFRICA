@@ -184,6 +184,127 @@ void main() {
     },
   );
 
+  group('channel manifests', () {
+    Future<ChannelManifest> signed(String seed, {int version = 3}) async =>
+        ChannelManifest(
+          schoolId: 's',
+          classUuid: 'c',
+          subjectId: 'chemistry',
+          digest: 'd',
+          version: version,
+          signature: await signManifest(
+            signingSeed: seed,
+            schoolId: 's',
+            classUuid: 'c',
+            subjectId: 'chemistry',
+            digest: 'd',
+            version: version,
+          ),
+        );
+
+    test('verify with the teacher key, fail with any other', () async {
+      final teacher = newSigningSeed();
+      final m = await signed(teacher);
+      expect(await verifyManifest(m, await signingPublicKey(teacher)), isTrue);
+      expect(
+        await verifyManifest(m, await signingPublicKey(newSigningSeed())),
+        isFalse,
+      );
+    });
+
+    test('any changed field breaks the signature', () async {
+      final teacher = newSigningSeed();
+      final pub = await signingPublicKey(teacher);
+      final m = await signed(teacher);
+      ChannelManifest tweak({
+        String? school,
+        String? cls,
+        String? subject,
+        String? digest,
+        int? version,
+      }) => ChannelManifest(
+        schoolId: school ?? m.schoolId,
+        classUuid: cls ?? m.classUuid,
+        subjectId: subject ?? m.subjectId,
+        digest: digest ?? m.digest,
+        version: version ?? m.version,
+        signature: m.signature,
+      );
+      for (final bad in [
+        tweak(school: 'x'),
+        tweak(cls: 'x'),
+        tweak(subject: 'x'),
+        tweak(digest: 'x'),
+        tweak(version: 4),
+      ]) {
+        expect(await verifyManifest(bad, pub), isFalse);
+      }
+      expect(
+        await verifyManifest(tweak(), pub),
+        isTrue,
+        reason: 'untouched still verifies',
+      );
+    });
+
+    test('a garbage signature is a no, not a crash', () async {
+      final pub = await signingPublicKey(newSigningSeed());
+      const m = ChannelManifest(
+        schoolId: 's',
+        classUuid: 'c',
+        subjectId: 'x',
+        digest: 'd',
+        version: 1,
+        signature: '!!not base64!!',
+      );
+      expect(await verifyManifest(m, pub), isFalse);
+    });
+  });
+
+  test('relay replies and reports only open with the class key and nonce',
+      () async {
+    final key = newClassKey();
+    final nonce = newNonce();
+    final relay = await sealRelayReply(
+      classKey: key,
+      requestNonce: nonce,
+      json: {'a': 1},
+    );
+    expect(
+      await openRelayReply(classKey: key, requestNonce: nonce, sealed: relay),
+      {'a': 1},
+    );
+    expect(
+      () => openRelayReply(
+        classKey: newClassKey(),
+        requestNonce: nonce,
+        sealed: relay,
+      ),
+      throwsA(isA<SyncTrustError>()),
+    );
+    expect(
+      () => openRelayReply(
+        classKey: key,
+        requestNonce: newNonce(),
+        sealed: relay,
+      ),
+      throwsA(isA<SyncTrustError>()),
+    );
+    final report = await sealReport(
+      classKey: key,
+      requestNonce: nonce,
+      json: [1],
+    );
+    expect(
+      await openReport(classKey: key, requestNonce: nonce, sealed: report),
+      [1],
+    );
+    // A report can't be opened as a relay reply or vice versa.
+    expect(
+      () => openRelayReply(classKey: key, requestNonce: nonce, sealed: report),
+      throwsA(isA<SyncTrustError>()),
+    );
+  });
+
   test('the full join stretch takes a noticeable but bearable time', () async {
     final watch = Stopwatch()..start();
     await joinSecret('K7M4P9QX', newNonce());

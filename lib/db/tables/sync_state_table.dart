@@ -1,11 +1,11 @@
 import 'package:drift/drift.dart';
 
 /// One row per (class/stream, subject) channel this device has pulled from
-/// a teacher's sync server — the local half of "last_sync_timestamp".
+/// a teacher (or a classmate passing the teacher's notes on).
 ///
-/// Lives on the pulling device only. A teacher's device never reads this
-/// table; [TeacherSyncServer] is stateless per request, computing its
-/// answer straight from `topic_resources` each time.
+/// Lives on the receiving device. A student sharing with classmates reads
+/// it to hand on the teacher's signed manifests unchanged; a teacher's
+/// device keeps its own versions in `ServedChannels` instead.
 @TableIndex(
   name: 'idx_sync_state_channel',
   columns: {#classGroupUuid, #subjectId},
@@ -34,6 +34,16 @@ class SyncState extends Table {
 
   /// The channel digest (see `channelDigest`) this device last replaced its
   /// copy of the channel with. The next sync skips the channel while the
-  /// teacher's digest still matches.
+  /// teacher's digest still matches. Null on a tombstone: a subject the
+  /// teacher stopped sharing, kept so a classmate can't bring it back.
   TextColumn get channelDigest => text().nullable()();
+
+  /// The teacher's version of this channel (see `ServedChannels`). A copy
+  /// relayed by a classmate is taken only when its version is higher.
+  IntColumn get channelVersion => integer().nullable()();
+
+  /// The teacher's signature over this channel's manifest — kept so this
+  /// device can pass the channel on and the next device can check it came
+  /// from the teacher unchanged.
+  TextColumn get manifestSig => text().nullable()();
 }

@@ -211,6 +211,41 @@ void main() {
     await reupgraded.close();
   });
 
+  test('a v16 database with synced notes upgrades to v17, keeps them, and '
+      'can re-run the step', () async {
+    final dir = await Directory.systemTemp.createTemp('otic_migration_test');
+    final file = File(p.join(dir.path, 'test.sqlite'));
+    addTearDown(() async {
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    final seed = OticDatabase.forTesting(NativeDatabase(file));
+    await seed.customStatement(
+      "INSERT INTO sync_state (class_group_uuid, subject_id, last_synced_at, "
+      "channel_digest) VALUES ('c1', 'chemistry', '2026-09-01', 'd1')",
+    );
+    await seed.customStatement('DROP TABLE served_channels');
+    await seed.customStatement('DROP TABLE member_reports');
+    await seed.customStatement('ALTER TABLE sync_state DROP COLUMN channel_version');
+    await seed.customStatement('ALTER TABLE sync_state DROP COLUMN manifest_sig');
+    await seed.customStatement('PRAGMA user_version = 16');
+    await seed.close();
+
+    for (var run = 0; run < 2; run++) {
+      final db = OticDatabase.forTesting(NativeDatabase(file));
+      final kept = await db.classSyncDao.channelState('c1', 'chemistry');
+      expect(kept?.channelDigest, 'd1');
+      expect(
+        kept?.channelVersion == null,
+        isTrue,
+        reason: 'no version until resync',
+      );
+      expect(await db.classSyncDao.servedVersion('c1', 'chemistry', 'd1'), 1);
+      await db.customStatement('PRAGMA user_version = 16');
+      await db.close();
+    }
+  });
+
   test('a badge earned before schema 14 backfills its counter on upgrade, '
       'instead of showing Completed next to a 0/5 bar', () async {
     final dir = await Directory.systemTemp.createTemp('otic_migration_test');
