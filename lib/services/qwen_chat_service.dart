@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../ai_core/inference/decode_profile.dart';
 import '../ai_core/inference/inference_engine.dart';
 import '../ai_core/inference/litert_lm_engine.dart';
 import '../ai_core/inference/runtime_config.dart';
@@ -13,7 +14,7 @@ import 'hybrid_model_orchestrator.dart';
 /// Conversational chat/tutor brain.
 ///
 /// - **Android** → LiteRT-LM (`.litertlm`) with NNAPI/GPU + pinned system KV
-/// - **Windows** → llama.cpp GGUF with deterministic greedy decode
+/// - **Windows** → llama.cpp GGUF, decoding as prose (decode_profile.dart)
 ///
 /// System instructions are pinned once ([warmKvCache]) so later turns only
 /// append the student message (low TTFT).
@@ -70,24 +71,26 @@ class QwenChatService {
     late final StreamController<String> controller;
     controller = StreamController<String>(
       onListen: () {
-        HybridModelOrchestrator.instance.runExclusive(() async {
-          try {
-            await _beforeGenerate(systemPrompt);
-            await _engine.generate(
-              prompt: englishUser,
-              systemPrompt: systemPrompt ?? kTutorContract,
-              maxTokens: maxTokens,
-              temperature: kChatTemperature,
-              onToken: (token) async {
-                if (!controller.isClosed) controller.add(token);
-              },
-            );
-          } catch (e, st) {
-            if (!controller.isClosed) controller.addError(e, st);
-          } finally {
-            if (!controller.isClosed) await controller.close();
-          }
-        });
+        HybridModelOrchestrator.instance.runExclusive(
+          () => runAsProse(() async {
+            try {
+              await _beforeGenerate(systemPrompt);
+              await _engine.generate(
+                prompt: englishUser,
+                systemPrompt: systemPrompt ?? kTutorContract,
+                maxTokens: maxTokens,
+                temperature: kChatTemperature,
+                onToken: (token) async {
+                  if (!controller.isClosed) controller.add(token);
+                },
+              );
+            } catch (e, st) {
+              if (!controller.isClosed) controller.addError(e, st);
+            } finally {
+              if (!controller.isClosed) await controller.close();
+            }
+          }),
+        );
       },
     );
     return controller.stream;
@@ -99,16 +102,18 @@ class QwenChatService {
     int maxTokens = kMaxNewTokens,
     TokenCallback? onToken,
   }) {
-    return HybridModelOrchestrator.instance.runExclusive(() async {
-      await _beforeGenerate(systemPrompt);
-      return _engine.generate(
-        prompt: englishUser,
-        systemPrompt: systemPrompt ?? kTutorContract,
-        maxTokens: maxTokens,
-        temperature: kChatTemperature,
-        onToken: onToken,
-      );
-    });
+    return HybridModelOrchestrator.instance.runExclusive(
+      () => runAsProse(() async {
+        await _beforeGenerate(systemPrompt);
+        return _engine.generate(
+          prompt: englishUser,
+          systemPrompt: systemPrompt ?? kTutorContract,
+          maxTokens: maxTokens,
+          temperature: kChatTemperature,
+          onToken: onToken,
+        );
+      }),
+    );
   }
 
   // ── Hardgrounded retrieval path ──────────────────────────────────────

@@ -7,9 +7,11 @@ import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/device_tier.dart';
+import 'decode_profile.dart';
 import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'pinned_prompt_cache.dart';
+import 'repetition_guard.dart';
 import 'runtime_config.dart';
 import 'sanitize_llm_response.dart';
 
@@ -72,6 +74,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
   InferenceModel? _model;
   InferenceChat? _pinnedChat;
   String? _pinnedSystem;
+  bool _pinnedProse = false;
   String? _loadedPath;
   int _pinnedTurns = 0;
   Future<void> _gate = Future.value();
@@ -237,20 +240,43 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     }
     if (isolatedTurns) return;
     final sys = PinnedPromptCache.intern(systemPrompt.trim());
-    if (_pinnedChat != null && _pinnedSystem == sys) return;
+    // Only the tutor contract is pinned, and tutor turns decode as prose —
+    // pinning it greedy would just be rebuilt on the first turn.
+    const prose = true;
+    if (_pinnedChat != null && _pinnedSystem == sys && _pinnedProse == prose) {
+      return;
+    }
     await _pinnedChat?.close();
-    _pinnedChat = await _model!.createChat(
-      temperature: kChatTemperature,
+    _pinnedChat = await _createChat(
+      system: sys,
+      maxTokens: kMaxNewTokens,
+      prose: prose,
+      greedyTemperature: kChatTemperature,
+    );
+    _pinnedSystem = sys;
+    _pinnedProse = prose;
+    _pinnedTurns = 0;
+  }
+
+  /// A chat decoding as prose (see decode_profile.dart) or greedily.
+  /// LiteRT-LM has no repetition penalty; prose turns rely on light
+  /// sampling plus [RepetitionGuard].
+  Future<InferenceChat> _createChat({
+    required String? system,
+    required int maxTokens,
+    required bool prose,
+    required double greedyTemperature,
+  }) {
+    return _model!.createChat(
+      temperature: prose ? kProseTemperature : greedyTemperature,
       randomSeed: kRandomSeed,
-      topK: kTopK,
-      topP: kTopP,
-      systemInstruction: sys,
-      maxOutputTokens: kMaxNewTokens,
+      topK: prose ? kProseTopK : kTopK,
+      topP: prose ? kProseTopP : kTopP,
+      systemInstruction: system,
+      maxOutputTokens: maxTokens,
       modelType: modelType,
       isThinking: false,
     );
-    _pinnedSystem = sys;
-    _pinnedTurns = 0;
   }
 
   @override
@@ -261,6 +287,9 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     TokenCallback? onToken,
     String? systemPrompt,
   }) async {
+    // Read synchronously in the caller's zone (see decode_profile.dart).
+    // The translator keeps its own decode and loop checks.
+    final prose = isProseDecode && !isolatedTurns;
     final previous = _gate;
     final done = Completer<void>();
     _gate = done.future;
@@ -273,6 +302,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
           prompt: prompt,
           maxTokens: maxTokens,
           temperature: temperature,
+          prose: prose,
           onToken: onToken,
           systemPrompt: systemPrompt,
         ),
@@ -299,6 +329,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     required String prompt,
     required int maxTokens,
     required double temperature,
+    required bool prose,
     TokenCallback? onToken,
     String? systemPrompt,
   }) async {
@@ -331,6 +362,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
         user: user,
         system: sys.isEmpty ? null : sys,
         maxTokens: maxTokens,
+        prose: prose,
         onToken: onToken,
       );
     }
@@ -339,37 +371,53 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     // LiteRT does not re-prefill the system instruction (KV stays warm).
     if (_pinnedChat == null ||
         _pinnedSystem != sys ||
+        _pinnedProse != prose ||
         _pinnedTurns >= _maxPinnedTurns) {
       await _pinnedChat?.close();
-      _pinnedChat = await _model!.createChat(
-        temperature: kDoSample ? temperature : kChatTemperature,
-        randomSeed: kRandomSeed,
-        topK: kDoSample ? 40 : kTopK,
-        topP: kTopP,
-        systemInstruction: sys,
-        maxOutputTokens: maxTokens,
-        modelType: modelType,
-        isThinking: false,
+      _pinnedChat = await _createChat(
+        system: sys,
+        maxTokens: maxTokens,
+        prose: prose,
+        greedyTemperature: kDoSample ? temperature : kChatTemperature,
       );
       _pinnedSystem = sys;
+      _pinnedProse = prose;
       _pinnedTurns = 0;
     }
 
-    final text = await _stream(_pinnedChat!, user, onToken);
+    final (:text, :looped) = await _stream(_pinnedChat!, user, onToken, prose);
     _pinnedTurns++;
+    if (looped) {
+      // The loop is now in the pinned chat's KV; the next turn would carry
+      // on from it. Start the next turn on a fresh conversation.
+      await resetSession();
+      return text;
+    }
     if (text.trim().isEmpty) {
       // The known empty follow-up turn on a reused chat (see memory
       // flutter-gemma-325-blank-followup): drop the pin and answer once more
       // on a fresh conversation rather than show the student nothing.
       await resetSession();
-      return _oneShot(user: user, system: sys, maxTokens: maxTokens, onToken: onToken);
+      return _oneShot(
+        user: user,
+        system: sys,
+        maxTokens: maxTokens,
+        prose: prose,
+        onToken: onToken,
+      );
     }
     return text;
   }
 
-  Future<String> _stream(InferenceChat chat, String user, TokenCallback? onToken) async {
+  Future<({String text, bool looped})> _stream(
+    InferenceChat chat,
+    String user,
+    TokenCallback? onToken,
+    bool prose,
+  ) async {
     await chat.addQueryChunk(Message.text(text: user, isUser: true));
     final cleaner = SanitizedTokenStream();
+    final guard = prose ? RepetitionGuard() : null;
     final watch = Stopwatch()..start();
     var chunks = 0;
     await for (final response in chat.generateChatResponseAsync()) {
@@ -377,36 +425,47 @@ class LiteRtLmEngineImpl extends InferenceEngine {
         final token = response.token;
         if (token.isEmpty) continue;
         chunks++;
-        final visible = cleaner.add(token);
-        if (visible.isEmpty) continue;
-        await emitToken(onToken, visible);
+        final cleaned = cleaner.add(token);
+        final visible = guard == null ? cleaned : guard.add(cleaned);
+        if (visible.isNotEmpty) await emitToken(onToken, visible);
+        if (guard != null && guard.tripped) {
+          // Leaving the loop alone doesn't stop native decode — ask it to.
+          try {
+            await chat.stopGeneration();
+          } catch (e) {
+            debugPrint('LiteRT-LM $roleKey stopGeneration failed: $e');
+          }
+          break;
+        }
       }
     }
-    final tail = cleaner.flush();
-    if (tail.isNotEmpty) await emitToken(onToken, tail);
     final secs = watch.elapsedMilliseconds / 1000;
     if (secs > 0 && chunks > 0) _lastTokensPerSecond = chunks / secs;
-    return cleaner.text;
+    if (guard != null && guard.tripped) {
+      debugPrint('LiteRT-LM $roleKey: stopped a repeating answer.');
+      return (text: guard.text.trim(), looped: true);
+    }
+    final cleanedTail = cleaner.flush();
+    final tail = guard == null ? cleanedTail : guard.add(cleanedTail) + guard.flush();
+    if (tail.isNotEmpty) await emitToken(onToken, tail);
+    return (text: cleaner.text, looped: false);
   }
 
   Future<String> _oneShot({
     required String user,
     required String? system,
     required int maxTokens,
+    required bool prose,
     TokenCallback? onToken,
   }) async {
-    final chat = await _model!.createChat(
-      temperature: isolatedTurns ? kTranslateTemperature : kCoderTemperature,
-      randomSeed: kRandomSeed,
-      topK: kTopK,
-      topP: kTopP,
-      systemInstruction: system,
-      maxOutputTokens: maxTokens,
-      modelType: modelType,
-      isThinking: false,
+    final chat = await _createChat(
+      system: system,
+      maxTokens: maxTokens,
+      prose: prose,
+      greedyTemperature: isolatedTurns ? kTranslateTemperature : kCoderTemperature,
     );
     try {
-      return await _stream(chat, user, onToken);
+      return (await _stream(chat, user, onToken, prose)).text;
     } finally {
       await chat.close();
     }
@@ -417,6 +476,7 @@ class LiteRtLmEngineImpl extends InferenceEngine {
     await _pinnedChat?.close();
     _pinnedChat = null;
     _pinnedSystem = null;
+    _pinnedProse = false;
     _pinnedTurns = 0;
   }
 

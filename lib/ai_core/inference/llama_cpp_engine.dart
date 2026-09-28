@@ -5,8 +5,10 @@ import 'package:llm_llamacpp/llm_llamacpp.dart' as llama;
 import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'native_ffi_config.dart';
+import 'decode_profile.dart';
 import 'pinned_prompt_cache.dart';
 import 'prompt_budget.dart';
+import 'repetition_guard.dart';
 import 'runtime_config.dart';
 import 'sanitize_llm_response.dart';
 
@@ -134,6 +136,9 @@ class LlamaCppEngineImpl extends InferenceEngine {
     }
 
     final greedyTemp = kDoSample ? temperature : kTutorTemperature;
+    // Read here, synchronously in the caller's zone (see decode_profile.dart).
+    // The translator lane keeps its own decode and loop checks.
+    final prose = isProseDecode && schedulerLane == EngineLane.reason;
     try {
       return await EngineScheduler.instance.exclusive(
         () => _generateLocked(
@@ -142,6 +147,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
           prompt: prompt,
           maxTokens: maxTokens,
           temperature: greedyTemp,
+          prose: prose,
           onToken: onToken,
           systemPrompt: systemPrompt,
         ),
@@ -168,6 +174,7 @@ class LlamaCppEngineImpl extends InferenceEngine {
     required String prompt,
     required int maxTokens,
     required double temperature,
+    required bool prose,
     TokenCallback? onToken,
     String? systemPrompt,
   }) async {
@@ -191,16 +198,28 @@ class LlamaCppEngineImpl extends InferenceEngine {
         ),
       ],
       think: false,
-      generationOptions: llama.GenerationOptions(
-        maxTokens: maxTokens,
-        temperature: temperature,
-        topP: kTopP,
-        topK: kTopK,
-        seed: kRandomSeed,
-      ),
+      // The plugin applies penalties after top-k, so a penalty only bites
+      // when more than one candidate survives — hence prose sampling too.
+      generationOptions: prose
+          ? llama.GenerationOptions(
+              maxTokens: maxTokens,
+              temperature: kProseTemperature,
+              topP: kProseTopP,
+              topK: kProseTopK,
+              repeatPenalty: kProseRepeatPenalty,
+              seed: kRandomSeed,
+            )
+          : llama.GenerationOptions(
+              maxTokens: maxTokens,
+              temperature: temperature,
+              topP: kTopP,
+              topK: kTopK,
+              seed: kRandomSeed,
+            ),
     );
 
     final streamCleaner = SanitizedTokenStream();
+    final guard = prose ? RepetitionGuard() : null;
     final buffer = StringBuffer();
     final done = Completer<void>();
     StreamSubscription<llama.LLMChunk>? sub;
@@ -247,13 +266,22 @@ class LlamaCppEngineImpl extends InferenceEngine {
         _consecutiveSoftFailures = 0;
         _softFailure = null;
         _softFailureUntil = null;
-        final visible = streamCleaner.add(text);
-        if (visible.isEmpty) {
-          arm(_betweenTokensTimeout);
+        if (guard != null && guard.tripped) return;
+        final cleaned = streamCleaner.add(text);
+        final visible = guard == null ? cleaned : guard.add(cleaned);
+        if (visible.isNotEmpty) {
+          buffer.write(visible);
+          unawaited(emitToken(onToken, visible));
+        }
+        if (guard != null && guard.tripped) {
+          // Decoder loop: stop listening. llama.cpp has no mid-decode
+          // cancel, so the isolate runs on to maxTokens in the background,
+          // but nothing more reaches the student.
+          watchdog?.cancel();
+          unawaited(sub?.cancel());
+          if (!done.isCompleted) done.complete();
           return;
         }
-        buffer.write(visible);
-        unawaited(emitToken(onToken, visible));
         arm(_betweenTokensTimeout);
       },
       onError: (Object e, StackTrace st) {
@@ -276,15 +304,22 @@ class LlamaCppEngineImpl extends InferenceEngine {
       await sub.cancel();
     }
 
-    final tail = streamCleaner.flush();
-    if (tail.isNotEmpty) {
-      buffer.write(tail);
-      await emitToken(onToken, tail);
+    if (guard == null || !guard.tripped) {
+      final cleanedTail = streamCleaner.flush();
+      final tail = guard == null
+          ? cleanedTail
+          : guard.add(cleanedTail) + guard.flush();
+      if (tail.isNotEmpty) {
+        buffer.write(tail);
+        await emitToken(onToken, tail);
+      }
     }
 
-    final result = streamCleaner.text.isNotEmpty
-        ? streamCleaner.text
-        : sanitizeLLMResponse(buffer.toString());
+    final result = guard != null && guard.tripped
+        ? guard.text.trim()
+        : streamCleaner.text.isNotEmpty
+            ? streamCleaner.text
+            : sanitizeLLMResponse(buffer.toString());
     if (result.isEmpty) {
       // Qwen3 can burn the whole token budget inside <think>. Throwing here
       // used to tear down the Flutter Windows session ("Lost connection").

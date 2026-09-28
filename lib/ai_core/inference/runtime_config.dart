@@ -4,9 +4,10 @@
 ///   * Reasoning — Qwen2.5-Coder-1.5B-Instruct GGUF via llama.cpp
 ///   * Translation — TranslatePsy-AfriSLM 0.8B GGUF via llama.cpp
 ///
-/// Decode is greedy: [kTutorTemperature] 0.1, [kDoSample] false, [kTopK] 1
-/// so the sampler skips nucleus graphs. Qwen's conversational KV is English
-/// only. AfriSLM never stores tutor history.
+/// Decode is greedy: [kDoSample] false, [kTopK] 1, so the sampler skips
+/// nucleus graphs — except the tutor/chat bubble, which decodes as prose
+/// (see decode_profile.dart) because greedy decoding loops there. Qwen's
+/// conversational KV is English only. AfriSLM never stores tutor history.
 library;
 
 /// Greedy-leaning decode. Chat brain locks to [kChatTemperature] (0.0).

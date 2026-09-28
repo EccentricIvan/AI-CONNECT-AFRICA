@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../inference/decode_profile.dart';
 import '../inference/inference_engine.dart';
 import '../inference/runtime_config.dart';
 import '../../curriculum/curriculum_provider.dart';
@@ -139,15 +140,18 @@ class TutorPipeline {
     final buffer = StringBuffer();
     String text;
     try {
-      text = await _engine.generate(
-        prompt: prompt,
-        systemPrompt: systemPrompt,
-        maxTokens: maxTokens,
-        temperature: kTutorTemperature,
-        onToken: (token) async {
-          buffer.write(token);
-          await emitToken(onToken, token);
-        },
+      // Prose decode + loop guard — see decode_profile.dart.
+      text = await runAsProse(
+        () => _engine.generate(
+          prompt: prompt,
+          systemPrompt: systemPrompt,
+          maxTokens: maxTokens,
+          temperature: kTutorTemperature,
+          onToken: (token) async {
+            buffer.write(token);
+            await emitToken(onToken, token);
+          },
+        ),
       );
     } catch (e, st) {
       debugPrint('TutorPipeline.respond failed: $e\n$st');
