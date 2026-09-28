@@ -83,6 +83,7 @@ enum DemoReason {
   modelNotInstalled,
   ollamaUnavailable,
   loadFailed,
+  unsupportedCpu,
   generic,
 }
 
@@ -92,6 +93,8 @@ extension DemoReasonMessage on DemoReason {
         DemoReason.modelNotInstalled => 'Demo answers — packages not installed',
         DemoReason.ollamaUnavailable => 'Demo answers — translation not ready',
         DemoReason.loadFailed => 'Demo answers — assistant could not start',
+        DemoReason.unsupportedCpu =>
+          'Demo answers — this computer cannot run the offline AI',
         DemoReason.generic => 'Demo answers',
       };
 
@@ -104,6 +107,9 @@ extension DemoReasonMessage on DemoReason {
           'Install the language pack in Settings for answers in your language.',
         DemoReason.loadFailed =>
           'The classroom assistant could not start. Check Settings, then try again.',
+        DemoReason.unsupportedCpu =>
+          "This computer's processor is missing AVX2, which the offline AI "
+          'needs, so replies are sample text. Lessons, labs and previews still work.',
         DemoReason.generic =>
           'Showing sample replies until setup is finished.',
       };

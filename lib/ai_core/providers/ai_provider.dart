@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' show ModelType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../inference/cpu_support.dart';
 import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
 import '../inference/litert_lm_engine.dart';
@@ -182,6 +183,10 @@ class DualModelRuntime {
   }
 
   Future<InferenceEngine?> _loadTranslator() async {
+    if (!androidUsesLiteRt && !cpuSupportsLlamaCpp) {
+      debugPrint('TRANSLATION OFF: this CPU lacks AVX2 (llama.cpp would crash).');
+      return null;
+    }
     try {
       final info = await AfriSlmModelManager().checkModel();
       if (!info.isReady || info.path == null) {
@@ -232,6 +237,11 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
         '(or use Install Packages).',
       );
       return demo(DemoReason.modelNotInstalled);
+    }
+
+    if (!androidUsesLiteRt && !cpuSupportsLlamaCpp) {
+      debugPrint('BRAIN skipped: this CPU lacks AVX2 (llama.cpp would crash).');
+      return demo(DemoReason.unsupportedCpu);
     }
 
     final reasoner = createBrainEngine();

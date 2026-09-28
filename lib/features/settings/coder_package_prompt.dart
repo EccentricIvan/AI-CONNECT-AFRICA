@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai_core/inference/cpu_support.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/model_fetch_service.dart';
 
@@ -12,6 +13,31 @@ Future<bool> promptAndFetchCoderPackage(
   BuildContext context,
   WidgetRef ref,
 ) async {
+  // The coder would load, then crash the app on its first reply.
+  if (!cpuSupportsLlamaCpp) {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(tr(ctx, 'AI coder not supported on this computer')),
+        content: Text(
+          tr(
+            ctx,
+            "This computer's processor is missing AVX2, which the offline AI "
+            'coder needs. You can still edit the code yourself and press RUN '
+            'to see the preview.',
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(tr(ctx, 'OK')),
+          ),
+        ],
+      ),
+    );
+    return false;
+  }
+
   final svc = ref.read(modelFetchServiceProvider);
   if (await svc.isCoderReady()) return true;
   if (!context.mounted) return false;
