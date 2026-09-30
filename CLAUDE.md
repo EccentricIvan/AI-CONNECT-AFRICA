@@ -143,6 +143,33 @@ that `sqlite3_flutter_libs` ships. It is created by raw SQL in
 `OticDatabase._createResourceSearchIndex`, because drift has no FTS5 table
 class, so `createAll` doesn't know about it.
 
+**PDFs, including scans.** `ResourceImportService` reads a PDF page by
+page with PDFium (`pdfrx`, bundled at build time, never downloaded at
+runtime; `lib/services/pdf/`). The hand-rolled `extractPdfText` is only
+the fallback for files PDFium can't open.
+- A page with real embedded text uses it. Any other page is rendered and
+  read by on-device OCR (`lib/services/ocr/`):
+  - Android: ML Kit, with the Latin model bundled in the APK.
+  - Windows: built-in `Windows.Media.Ocr` through the `otic/ocr` channel
+    (`windows/runner/ocr_channel.cpp`, on a worker thread).
+  - Linux: the system `tesseract`, if it's installed.
+- OCR text passes the same `looksLikeRealText` gate, so garbage is dropped.
+  The teacher is told how many pages were scanned, marked or unreadable.
+  Cancel stores nothing.
+- **Diagrams:** the tutor can't see pictures. A caption line ("Figure 3.2
+  …") or a picture region (ink that no text covers) becomes a marker
+  paragraph, e.g. `[DIAGRAM: Figure 3.2 The heart | page 14 of the PDF
+  "Biology Term 1"]`.
+  - The marker travels in the chunk text, through FTS and class sync.
+    `chunkContent` never splits one.
+  - When a retrieved marker relates to the question, `TutorPipeline`
+    appends "Diagram: see …, page 14 of the PDF … open the PDF on your phone
+    or look in the printed copy".
+  - That line is shown once per topic, is added after `_remember` so it
+    never enters memory, and is added before translation.
+  - Page numbers are PDF page numbers, so the caption comes first. The
+    original PDF is still not kept or synced.
+
 `TutorPipeline` searches it on every turn using the matched curriculum
 lesson's title and key terms plus the student's words. The notes share the
 existing 700-char notes slot, because the question sits at the end of the

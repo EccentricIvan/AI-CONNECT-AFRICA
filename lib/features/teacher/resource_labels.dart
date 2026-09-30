@@ -48,10 +48,16 @@ class ResourceLabels {
   static const uploadFile = 'Upload a file';
   static const typeNotes = 'Type notes instead';
   static const uploadHint =
-      'PDF, Word, or a text file. Everything stays on this device.';
+      'PDF (scanned too), Word, or a text file. Everything stays on this device.';
   static const reading = 'Reading your file…';
+  static const readingPage =
+      'Reading page {page} of {total}. Scanned pages take longer.';
+  static const cancelling = 'Stopping…';
   static const readFailed = 'That file could not be used';
   static const fileAdded = 'Added “{title}”';
+  static const pagesScanned = '{count} scanned pages read';
+  static const diagramsMarked = '{count} diagrams marked for students to look at';
+  static const pagesUnreadable = "{count} pages couldn't be read";
 
   // ── Supporting copy ──────────────────────────────────────────────────
   static const noteTitle = 'Note title';

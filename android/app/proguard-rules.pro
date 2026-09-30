@@ -23,3 +23,11 @@
 -dontwarn autovalue.shaded.**
 -dontwarn com.google.auto.**
 -dontwarn com.squareup.javapoet.**
+
+# ML Kit text recognition (scanned PDF pages): only the bundled Latin model
+# is included. The plugin still references the optional script recognisers,
+# which R8 would otherwise report as missing classes.
+-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**

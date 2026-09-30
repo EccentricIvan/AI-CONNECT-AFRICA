@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/pdf/diagram_detector.dart';
 import '../inference/decode_profile.dart';
 import '../inference/inference_engine.dart';
 import '../inference/runtime_config.dart';
@@ -53,6 +55,10 @@ class TutorPipeline {
   SchoolMathSolution? _awaitingMath;
   bool _practiceMiss = false;
 
+  /// Diagram pointers already shown in this topic — so a follow-up that
+  /// retrieves the same note doesn't repeat "look at page 14".
+  final Set<String> _shownDiagrams = {};
+
   /// Process a student message and stream the tutor response.
   /// [onToken] fires with each new token as it arrives.
   /// [safetyNote] is an extra instruction from the emotional safety engine
@@ -81,6 +87,7 @@ class TutorPipeline {
       _nextStage = TutorStage.answer;
       _activeMatch = null;
       _memory.clear();
+      _shownDiagrams.clear();
       await _engine.resetSession();
     } else if (_currentTopic.isEmpty && topic.isNotEmpty) {
       _currentTopic = topic;
@@ -170,6 +177,14 @@ class TutorPipeline {
       languageCode: languageCode,
     );
 
+    // After _remember, so the pointer never becomes part of tutor memory.
+    final pointers = _diagramPointers(classNotes, studentMessage);
+    if (pointers.isNotEmpty) {
+      final extra = '\n\n${pointers.join('\n')}';
+      text = '$text$extra';
+      await emitToken(onToken, extra);
+    }
+
     final followUp = _followUpForStage(stage);
     _advanceStage();
 
@@ -218,6 +233,43 @@ class TutorPipeline {
   static String _clip(String text, int max) =>
       text.length > max ? '${text.substring(0, max - 1)}…' : text;
 
+  /// "See Figure 3.2, page 14 of the PDF…" lines for diagrams in [notes] that
+  /// relate to what the student asked, each at most once per topic.
+  List<String> _diagramPointers(String notes, String studentMessage) {
+    if (!notes.contains('[DIAGRAM: ')) return const [];
+    final asked = _contentWords(
+      '$studentMessage ${_activeMatch?.lesson.keyTerms.keys.join(' ') ?? ''}',
+    );
+    final out = <String>[];
+    for (final (start, end) in DiagramMarker.spans(notes)) {
+      final marker = DiagramMarker.parseAll(notes.substring(start, end)).single;
+      if (_shownDiagrams.contains(marker.key)) continue;
+      final around = notes.substring(
+        math.max(0, start - 300),
+        math.min(notes.length, end + 300),
+      );
+      if (_contentWords('${marker.caption} $around').intersection(asked).isEmpty) {
+        continue;
+      }
+      _shownDiagrams.add(marker.key);
+      out.add(marker.pointer());
+      if (out.length == 2) break;
+    }
+    return out;
+  }
+
+  static const _notTopicWords = {
+    'what', 'when', 'where', 'which', 'with', 'that', 'this', 'from', 'have',
+    'does', 'your', 'about', 'explain', 'tell', 'page', 'diagram', 'figure',
+    'there', 'their', 'they', 'will', 'would', 'could', 'should', 'please',
+  };
+
+  static Set<String> _contentWords(String text) => {
+    for (final m in RegExp(r'[a-z]{4,}').allMatches(text.toLowerCase()))
+      if (!_notTopicWords.contains(m[0]))
+        m[0]!.endsWith('s') ? m[0]!.substring(0, m[0]!.length - 1) : m[0]!,
+  };
+
   String _buildPrompt(
     String studentMessage, {
     String? safetyNote,
@@ -256,13 +308,15 @@ class TutorPipeline {
           'INSTRUCTION: $kCurriculumHybridInstruction '
           '$kTeacherNotesInstruction';
     }
+    final notesBlock =
+        notes.contains('[DIAGRAM: ') ? '$notes $kDiagramInstruction' : notes;
     // Style lives mainly in the pinned system contract — keep this turn short
     // so prefill stays under llama.cpp n_batch on Windows.
     final replyShape = codingCoach
         ? 'REPLY: English. Paragraphs by default; bullets for steps. Fenced code. No thinking narration.'
         : 'REPLY: English. Paragraphs by default; bullets only for lists/steps/named concepts. No thinking narration.';
     final memoryBudget = codingCoach ? 900 : 720;
-    return '''$notes
+    return '''$notesBlock
 $replyShape
 ${safetyNote != null ? '$safetyNote\n' : ''}${_memory.promptBlock(maxChars: memoryBudget)}CURRENT: $q
 Tutor:''';
@@ -435,6 +489,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
     _memory.clear();
     _activeMatch = null;
     _clearMath();
+    _shownDiagrams.clear();
     _memory.restoreFrom(memory);
     _currentTopic = topic;
     _nextStage = nextStage;
@@ -448,6 +503,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
     _activeMath = null;
     _awaitingMath = null;
     _practiceMiss = false;
+    _shownDiagrams.clear();
     unawaited(_engine.resetSession());
   }
 

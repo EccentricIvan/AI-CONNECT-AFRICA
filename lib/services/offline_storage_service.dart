@@ -6,6 +6,7 @@ import '../db/daos/topic_resource_dao.dart';
 import '../db/otic_database.dart';
 import '../db/providers/db_provider.dart';
 import '../db/tables/topic_resources_table.dart';
+import 'pdf/diagram_detector.dart';
 
 /// Local store for teacher-supplied notes, textbook extracts and term
 /// handouts — the dynamic half of the curriculum.
@@ -331,6 +332,14 @@ List<String> chunkContent(String content, {int size = kResourceChunkSize}) {
     } else {
       cut = text.lastIndexOf(' ', end);
       if (cut < floor) cut = end; // no boundary at all: hard cut
+    }
+    // A diagram marker is only useful whole: move the cut before it, or past
+    // it when it starts the window.
+    for (final (mStart, mEnd) in DiagramMarker.spans(text)) {
+      if (mStart < cut && cut < mEnd) {
+        cut = mStart > start ? mStart : mEnd;
+        break;
+      }
     }
     final piece = text.substring(start, cut).trim();
     if (piece.isNotEmpty) chunks.add(piece);

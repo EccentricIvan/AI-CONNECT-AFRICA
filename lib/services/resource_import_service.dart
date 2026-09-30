@@ -5,8 +5,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../db/tables/topic_resources_table.dart';
+import 'ocr/ocr_engine.dart';
 import 'offline_storage_service.dart';
+import 'pdf/diagram_detector.dart';
+import 'pdf/pdf_page_extractor.dart';
 import 'resource_text_extractor.dart';
+
+typedef PdfOpener = Future<PdfPageSource> Function(Uint8List bytes, String name);
+typedef OcrLookup = Future<OcrEngine?> Function();
+
+Future<PdfPageSource> _openWithPdfium(Uint8List bytes, String name) =>
+    PdfrxPageSource.open(bytes, name: name);
 
 /// Turns an uploaded file into retrievable knowledge, end to end and offline.
 ///
@@ -24,9 +33,16 @@ import 'resource_text_extractor.dart';
 /// section named after the file. That is a worse index, not a failure — the
 /// material is still retrievable, just at document granularity.
 class ResourceImportService {
-  const ResourceImportService(this._storage);
+  const ResourceImportService(
+    this._storage, {
+    OcrLookup? ocr,
+    PdfOpener openPdf = _openWithPdfium,
+  }) : _ocr = ocr,
+       _openPdf = openPdf;
 
   final OfflineStorageService _storage;
+  final OcrLookup? _ocr;
+  final PdfOpener _openPdf;
 
   /// Reads [path] and imports it into [subjectId].
   Future<ImportReport> importFile({
@@ -34,6 +50,8 @@ class ResourceImportService {
     required String subjectId,
     int termMarker = kAllTermsMarker,
     String? topicKeyOverride,
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
     final file = File(path);
     final Uint8List bytes;
@@ -51,6 +69,8 @@ class ResourceImportService {
       subjectId: subjectId,
       termMarker: termMarker,
       topicKeyOverride: topicKeyOverride,
+      onProgress: onProgress,
+      isCancelled: isCancelled,
     );
   }
 
@@ -62,19 +82,43 @@ class ResourceImportService {
     required String subjectId,
     int termMarker = kAllTermsMarker,
     String? topicKeyOverride,
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
   }) async {
-    final extracted = extractResourceText(fileName, bytes);
-    if (!extracted.ok) {
-      return ImportReport.failed(
+    final docTitle = _stripExtension(fileName);
+    final String text;
+    final String format;
+    PdfExtraction? pdf;
+
+    if (fileName.toLowerCase().endsWith('.pdf') && bytes.isNotEmpty) {
+      final read = await _readPdf(
         fileName,
-        extracted.failure ?? 'No text could be read from that file.',
+        bytes,
+        docTitle,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
       );
+      if (read.failure != null) {
+        return ImportReport.failed(fileName, read.failure!, cancelled: read.cancelled);
+      }
+      text = read.text;
+      format = 'pdf';
+      pdf = read.pdf;
+    } else {
+      final extracted = extractResourceText(fileName, bytes);
+      if (!extracted.ok) {
+        return ImportReport.failed(
+          fileName,
+          extracted.failure ?? 'No text could be read from that file.',
+        );
+      }
+      text = extracted.text;
+      format = extracted.format;
     }
 
-    final docTitle = _stripExtension(fileName);
     final sections = topicKeyOverride != null
-        ? [ResourceSection(title: docTitle, body: extracted.text)]
-        : splitIntoSections(extracted.text, fallbackTitle: docTitle);
+        ? [ResourceSection(title: docTitle, body: text)]
+        : splitIntoSections(text, fallbackTitle: docTitle);
 
     var chunks = 0;
     final topics = <String>[];
@@ -112,11 +156,76 @@ class ResourceImportService {
     return ImportReport(
       fileName: fileName,
       documentTitle: docTitle,
-      format: extracted.format,
+      format: format,
       chunkCount: chunks,
       topics: topics,
-      wordCount: _countWords(extracted.text),
+      wordCount: _countWords(text),
+      pageCount: pdf?.pages ?? 0,
+      ocrPages: pdf?.ocrPages ?? 0,
+      unreadablePages: pdf?.unreadablePages ?? 0,
+      diagramCount: pdf?.diagrams ?? 0,
     );
+  }
+
+  /// PDFium page by page (with OCR for scans); the hand-rolled reader only
+  /// when PDFium can't open the file at all.
+  Future<({String text, PdfExtraction? pdf, String? failure, bool cancelled})>
+  _readPdf(
+    String fileName,
+    Uint8List bytes,
+    String docTitle, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    PdfPageSource? source;
+    try {
+      source = await _openPdf(bytes, fileName);
+    } catch (e) {
+      debugPrint('PDFium could not open $fileName, using the fallback reader: $e');
+    }
+    if (source == null) {
+      final r = extractPdfText(bytes);
+      return (
+        text: r.text,
+        pdf: null,
+        failure: r.ok ? null : (r.failure ?? 'No text could be read from that PDF.'),
+        cancelled: false,
+      );
+    }
+
+    try {
+      final ocr = await _ocr?.call();
+      final pdf = await extractPdfPages(
+        source,
+        documentTitle: docTitle,
+        ocr: ocr,
+        onProgress: onProgress,
+        isCancelled: isCancelled,
+      );
+      if (pdf.cancelled) {
+        return (text: '', pdf: pdf, failure: 'Import cancelled. Nothing was saved.', cancelled: true);
+      }
+      final hasText = pdf.text.replaceAll(RegExp(r'\[DIAGRAM: [^\]]*\]'), '').trim().isNotEmpty;
+      if (!hasText) {
+        final String why;
+        if (ocr == null && pdf.unreadablePages > 0) {
+          why = 'This PDF is a scan and no text could be read from it. '
+              '${ocrUnavailableReason()}';
+        } else if (pdf.unreadablePages > 0) {
+          why = 'No text could be read from that PDF, even as a scan. The pages '
+              'may be too faint or blurred — try a clearer scan, or type or '
+              'paste the notes in instead.';
+        } else {
+          why = 'That PDF has no text in it.';
+        }
+        return (text: '', pdf: pdf, failure: why, cancelled: false);
+      }
+      return (text: pdf.text, pdf: pdf, failure: null, cancelled: false);
+    } catch (e) {
+      return (text: '', pdf: null, failure: 'That PDF could not be read ($e).', cancelled: false);
+    } finally {
+      await source.close();
+    }
   }
 
   /// Imports typed or pasted text — the path for a teacher with no file.
@@ -173,14 +282,31 @@ class ImportReport {
     required this.chunkCount,
     required this.topics,
     required this.wordCount,
-  }) : failure = null;
+    this.pageCount = 0,
+    this.ocrPages = 0,
+    this.unreadablePages = 0,
+    this.diagramCount = 0,
+  }) : failure = null,
+       cancelled = false;
 
-  const ImportReport.failed(this.fileName, this.failure)
+  const ImportReport.failed(this.fileName, this.failure, {this.cancelled = false})
     : documentTitle = '',
       format = '',
       chunkCount = 0,
       topics = const [],
-      wordCount = 0;
+      wordCount = 0,
+      pageCount = 0,
+      ocrPages = 0,
+      unreadablePages = 0,
+      diagramCount = 0;
+
+  /// PDFs only: pages in the file, pages read by OCR, pages with nothing
+  /// readable, and diagram markers added.
+  final int pageCount;
+  final int ocrPages;
+  final int unreadablePages;
+  final int diagramCount;
+  final bool cancelled;
 
   final String fileName;
   final String documentTitle;
@@ -267,6 +393,7 @@ List<ResourceSection> splitIntoSections(
 bool looksLikeHeading(String line) {
   final t = line.trim();
   if (t.isEmpty || t.length > 80) return false;
+  if (isDiagramMarkerLine(t)) return false;
   // Prose ends in punctuation; headings almost never do.
   if (RegExp(r'[.,;:]$').hasMatch(t)) return false;
   // A heading is a few words, not a paragraph.
@@ -314,7 +441,10 @@ int _countWords(String text) => RegExp(r'\S+').allMatches(text).length;
 // ── Provider ─────────────────────────────────────────────────────────────
 
 final resourceImportServiceProvider = Provider<ResourceImportService>((ref) {
-  return ResourceImportService(ref.watch(offlineStorageServiceProvider));
+  return ResourceImportService(
+    ref.watch(offlineStorageServiceProvider),
+    ocr: () => ref.read(ocrEngineProvider.future),
+  );
 });
 
 /// Debug helper: log what an import produced without a UI.

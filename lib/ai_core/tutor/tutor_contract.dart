@@ -44,6 +44,10 @@ const kCurriculumOnlyInstruction = kCurriculumHybridInstruction;
 const kTeacherNotesInstruction =
     "Use TEACHER'S NOTES as extra class context alongside your own knowledge.";
 
+const kDiagramInstruction =
+    "A [DIAGRAM ...] in TEACHER'S NOTES is a picture you cannot see: don't "
+    'describe it; tell the student to look at it on that page.';
+
 const kTeacherNotesOnlyInstruction =
     "No syllabus match. Use TEACHER'S NOTES as class context, plus reliable "
     'knowledge at a clear school level.';
