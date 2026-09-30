@@ -696,7 +696,7 @@ class SelectiveSyncManager {
     } catch (e) {
       return SyncResult.failed(
         e is SyncTrustError
-            ? 'That device isn’t trusted for this class: ${e.message}.'
+            ? 'That device isn’t your class’s teacher: ${e.message}.'
             : 'Could not sync with ${teacher.address}. Make sure it is still sharing '
                   '${group.className}${group.streamName == null ? '' : ' ${group.streamName}'}.',
       );
@@ -927,7 +927,7 @@ class SelectiveSyncManager {
         if (!await verifyManifest(m, signer)) {
           rejected.add(
             RejectedChunk(
-              reason: 'not signed by a key this class trusts',
+              reason: 'not signed by your class’s teacher',
               routingKey: routingKey,
             ),
           );
