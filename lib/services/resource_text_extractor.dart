@@ -200,8 +200,9 @@ ExtractionResult extractDocxText(Uint8List bytes) {
 /// this: a stream that fails it is discarded rather than stored.
 ///
 /// It also cannot read scanned pages, which contain images and no text at all.
-/// That needs OCR, which is out of scope for a device already running two
-/// models. Such a file is reported as a scan, not as an error.
+/// PDF imports normally go through PDFium with on-device OCR
+/// (`lib/services/pdf/pdf_page_extractor.dart`); this reader is only the
+/// fallback for a file PDFium can't open, and reports a scan as a scan.
 ExtractionResult extractPdfText(Uint8List bytes) {
   try {
     final raw = latin1.decode(bytes, allowInvalid: true);

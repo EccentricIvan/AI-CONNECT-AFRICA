@@ -89,6 +89,8 @@ dependencies:
   # exists, so lib/collaboration/sync/mdns_discovery.dart treats Linux (and
   # web) as "unsupported, fall back to UDP" rather than failing.
   nsd: ^5.0.1
+  pdfrx: ^2.4.8
+  google_mlkit_text_recognition: ^0.17.1
 
 dev_dependencies:
   flutter_test:

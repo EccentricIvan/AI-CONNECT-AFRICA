@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -261,24 +263,60 @@ class _SubjectTile extends ConsumerWidget {
     final path = picked?.files.single.path;
     if (path == null || !context.mounted) return;
 
-    _toast(context, tr(context, ResourceLabels.reading));
+    final progress = ValueNotifier<(int, int)>((0, 0));
+    final cancelling = ValueNotifier<bool>(false);
+    final navigator = Navigator.of(context, rootNavigator: true);
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _ReadingDialog(progress: progress, cancelling: cancelling),
+      ),
+    );
 
-    final report = await ref
-        .read(resourceImportServiceProvider)
-        .importFile(path: path, subjectId: subject.subjectId, termMarker: term);
+    final ImportReport report;
+    try {
+      report = await ref
+          .read(resourceImportServiceProvider)
+          .importFile(
+            path: path,
+            subjectId: subject.subjectId,
+            termMarker: term,
+            onProgress: (done, total) =>
+                progress.value = (done < total ? done + 1 : total, total),
+            isCancelled: () => cancelling.value,
+          );
+    } finally {
+      navigator.pop();
+      progress.dispose();
+      cancelling.dispose();
+    }
     if (!context.mounted) return;
 
     if (!report.ok) {
-      _showFailure(context, report.failure ?? '');
+      if (report.cancelled) {
+        _toast(context, report.failure ?? '');
+      } else {
+        _showFailure(context, report.failure ?? '');
+      }
       return;
     }
     _refresh(ref);
     // Name the file the teacher added — never how it was split inside.
+    final details = [
+      if (report.ocrPages > 0)
+        trFill(context, ResourceLabels.pagesScanned, {'count': '${report.ocrPages}'}),
+      if (report.diagramCount > 0)
+        trFill(context, ResourceLabels.diagramsMarked, {'count': '${report.diagramCount}'}),
+      if (report.unreadablePages > 0)
+        trFill(context, ResourceLabels.pagesUnreadable, {'count': '${report.unreadablePages}'}),
+    ];
     _toast(
       context,
-      trFill(context, ResourceLabels.fileAdded, {
-        'title': report.documentTitle,
-      }),
+      [
+        trFill(context, ResourceLabels.fileAdded, {'title': report.documentTitle}),
+        ...details,
+      ].join(' · '),
     );
   }
 
@@ -568,6 +606,57 @@ void _toast(BuildContext context, String message) {
     ..showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+}
+
+/// Page-by-page progress while a file is read; a scanned book takes minutes.
+class _ReadingDialog extends StatelessWidget {
+  const _ReadingDialog({required this.progress, required this.cancelling});
+
+  final ValueNotifier<(int, int)> progress;
+  final ValueNotifier<bool> cancelling;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: AlertDialog(
+        title: Text(tr(context, ResourceLabels.reading)),
+        content: ValueListenableBuilder<(int, int)>(
+          valueListenable: progress,
+          builder: (context, value, _) {
+            final (page, total) = value;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(value: total == 0 ? null : page / total),
+                if (total > 0) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    trFill(context, ResourceLabels.readingPage, {
+                      'page': '$page',
+                      'total': '$total',
+                    }),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+        actions: [
+          ValueListenableBuilder<bool>(
+            valueListenable: cancelling,
+            builder: (context, stopping, _) => TextButton(
+              onPressed: stopping ? null : () => cancelling.value = true,
+              child: Text(
+                tr(context, stopping ? ResourceLabels.cancelling : ResourceLabels.cancel),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// A failure a teacher needs to read and act on, so it gets a dialog rather
