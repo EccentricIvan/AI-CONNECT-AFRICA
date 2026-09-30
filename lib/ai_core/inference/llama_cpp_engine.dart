@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:llm_llamacpp/llm_llamacpp.dart' as llama;
 
+import 'cpu_support.dart';
 import 'engine_scheduler.dart';
 import 'inference_engine.dart';
 import 'native_ffi_config.dart';
@@ -92,6 +93,10 @@ class LlamaCppEngineImpl extends InferenceEngine {
 
   @override
   Future<void> loadModel(String modelPath) async {
+    if (!cpuSupportsLlamaCpp) {
+      // Decoding would kill the whole process; see cpu_support.dart.
+      throw UnsupportedError('This CPU lacks AVX2, which llama.cpp needs.');
+    }
     _repo?.dispose();
     _repo = llama.LlamaCppChatRepository.withModelPath(
       modelPath,
