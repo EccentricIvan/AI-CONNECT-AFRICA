@@ -217,9 +217,11 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     }
   }
 
-  /// Tries each teacher device found until one is this class's teacher. The
-  /// reply is checked against the teacher key pinned at join, so a wrong or
-  /// fake device can only fail, never feed this one notes.
+  /// Syncs with every teacher device found — the class's own teacher and any
+  /// co-teachers, each of which only carries its own subjects. Every reply
+  /// is checked against keys this device already trusts for the class (the
+  /// teacher's, pinned at join, and the co-teachers in its signed roster),
+  /// so a wrong or fake device can only fail, never feed this one notes.
   Future<void> _syncNow(ClassGroup group) async {
     if (_syncing) return;
     if (_addressInvalid) {
@@ -243,21 +245,19 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     });
     final manager = SelectiveSyncManager(ref.read(dbProvider));
     try {
-      SyncResult? last;
-      for (final teacher in endpoints) {
-        final r = await manager.syncClass(teacher: teacher, group: group);
-        last = r;
-        if (r.ok) break;
-      }
+      final last = await manager.syncClassEverywhere(
+        candidates: endpoints,
+        group: group,
+      );
       if (!mounted) return;
       unawaited(_rememberAddress());
       // The teacher's subject list may have changed.
       ref.invalidate(customSubjectsProvider);
       setState(() {
-        if (last != null && last.ok) {
+        if (last.ok) {
           _result = last;
         } else {
-          _syncError = last?.error;
+          _syncError = last.error;
         }
       });
     } finally {

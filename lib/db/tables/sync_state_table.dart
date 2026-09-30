@@ -46,4 +46,19 @@ class SyncState extends Table {
   /// device can pass the channel on and the next device can check it came
   /// from the teacher unchanged.
   TextColumn get manifestSig => text().nullable()();
+
+  /// The public key that actually signed [channelVersion]/[manifestSig] —
+  /// root's, or a co-teacher's the class roster currently allocates this
+  /// subject to. Null on a channel synced before co-teachers existed,
+  /// treated as root's.
+  TextColumn get manifestSigner => text().nullable()();
+
+  /// Highest version ever accepted from each signer on this channel, as a
+  /// JSON `{publicKey: version}` map — a ratchet independent of which
+  /// signer currently owns the subject. A manifest from signer S at
+  /// version V is accepted only if this map has no entry for S, or V is
+  /// greater than it. Without a per-signer floor, a subject handed back
+  /// from a co-teacher (who reached a high version) to root (whose own
+  /// counter resumes lower) would be wrongly rejected as a rollback.
+  TextColumn get signerVersionsJson => text().nullable()();
 }

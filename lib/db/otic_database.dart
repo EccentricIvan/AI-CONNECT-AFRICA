@@ -11,6 +11,7 @@ import 'daos/badge_dao.dart';
 import 'daos/chat_session_dao.dart';
 import 'daos/class_group_dao.dart';
 import 'daos/class_sync_dao.dart';
+import 'daos/co_teacher_dao.dart';
 import 'daos/custom_subject_dao.dart';
 import 'daos/path_dao.dart';
 import 'daos/project_dao.dart';
@@ -25,6 +26,8 @@ import 'tables/assignments_table.dart';
 import 'tables/chat_sessions_table.dart';
 import 'tables/sync_state_table.dart';
 import 'tables/class_groups_table.dart';
+import 'tables/co_teachers_table.dart';
+import 'tables/co_teaching_classes_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
 import 'tables/learner_subjects_table.dart';
@@ -65,6 +68,8 @@ part 'otic_database.g.dart';
     ServedChannels,
     MemberReports,
     LearnerSubjects,
+    ClassCoTeachers,
+    CoTeachingClasses,
   ],
   daos: [
     StudentDao,
@@ -82,6 +87,7 @@ part 'otic_database.g.dart';
     SyncStateDao,
     AssignmentDao,
     ClassSyncDao,
+    CoTeacherDao,
   ],
 )
 class OticDatabase extends _$OticDatabase {
@@ -96,7 +102,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -390,6 +396,11 @@ class OticDatabase extends _$OticDatabase {
       if (from < 18) {
         // One teacher device per school; the teacher's subjects reach
         // students; learners record the subjects they take.
+        //
+        // Historical note: "one teacher device per school" stopped being
+        // the model at schema 19, which adds co-teachers delegated to
+        // specific subjects. Read this comment as describing the starting
+        // point this step upgraded a device to, not the current rule.
         if (!await _columnExists('sync_identity', 'device_role')) {
           await m.addColumn(syncIdentity, syncIdentity.deviceRole);
         }
@@ -404,6 +415,38 @@ class OticDatabase extends _$OticDatabase {
           await m.create(idxLearnerSubjectsUnique);
         }
         await _backfillDeviceRole();
+      }
+      if (from < 19) {
+        // Multiple teacher devices per school: a root teacher can delegate
+        // a class's subjects to co-teacher devices, each serving from its
+        // own device with its own signing key. Additive and back-compatible
+        // — a class with no co-teachers has rosterVersion/rosterJson null
+        // and every subject still resolves to root's own key, exactly as
+        // before this schema step.
+        if (!await _columnExists('class_groups', 'roster_version')) {
+          await m.addColumn(classGroups, classGroups.rosterVersion);
+        }
+        if (!await _columnExists('class_groups', 'roster_json')) {
+          await m.addColumn(classGroups, classGroups.rosterJson);
+        }
+        if (!await _columnExists('sync_state', 'manifest_signer')) {
+          await m.addColumn(syncState, syncState.manifestSigner);
+        }
+        if (!await _columnExists('sync_state', 'signer_versions_json')) {
+          await m.addColumn(syncState, syncState.signerVersionsJson);
+        }
+        if (!await _tableExists('class_co_teachers')) {
+          await m.createTable(classCoTeachers);
+        }
+        if (!await _indexExists('idx_class_co_teachers_unique')) {
+          await m.create(idxClassCoTeachersUnique);
+        }
+        if (!await _tableExists('co_teaching_classes')) {
+          await m.createTable(coTeachingClasses);
+        }
+        if (!await _indexExists('idx_co_teaching_classes_uuid')) {
+          await m.create(idxCoTeachingClassesUuid);
+        }
       }
     },
   );

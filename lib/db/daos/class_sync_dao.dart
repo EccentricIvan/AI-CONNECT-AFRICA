@@ -234,14 +234,22 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
       });
 
   /// Shares one note — a whole uploaded file, every section of it — with
-  /// exactly [classUuids]. Only classes this device owns are kept, whatever
-  /// the caller passes.
+  /// exactly [classUuids]. Only classes this device may serve that subject
+  /// to are kept, whatever the caller passes: classes it owns (any
+  /// subject), and classes it co-teaches (only the subjects it's allocated
+  /// there). Enforced here, not just in the picker, so a stale screen can't
+  /// share outside this device's lane.
   Future<void> setShares({
     required String subjectId,
     required String documentTitle,
     required Set<String> classUuids,
   }) async {
-    final owned = {for (final c in await ownedClasses()) c.groupUuid!};
+    final owned = {
+      for (final c in await ownedClasses()) c.groupUuid!,
+      for (final d in await attachedDatabase.coTeacherDao.delegatedClasses())
+        if ((jsonDecode(d.subjectIdsJson) as List).contains(subjectId))
+          d.classGroupUuid,
+    };
     await transaction(() async {
       await (delete(resourceShares)..where(
             (t) =>
@@ -541,7 +549,12 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
   /// Replaces this device's copy of one class+subject channel in one
   /// transaction — edits and removals on the teacher's side arrive as-is,
   /// with no duplicates left behind. [version] and [manifestSig] are the
-  /// teacher's, kept so the channel can be passed on.
+  /// signer's, kept so the channel can be passed on. [signer] and
+  /// [signerVersionsJson] feed the per-signer version floor (see
+  /// `sync_state.signer_versions_json`) — pass the map already bumped for
+  /// this acceptance; computing it is the caller's job
+  /// ([SelectiveSyncManager] via [decodeSignerVersions]/[bumpSignerVersion]),
+  /// since accepting the manifest and persisting the floor must agree.
   Future<void> replaceChannel({
     required String classUuid,
     required String subjectId,
@@ -549,6 +562,8 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
     required String digest,
     int? version,
     String? manifestSig,
+    String? signer,
+    String? signerVersionsJson,
   }) => transaction(() async {
     await (delete(topicResources)..where(
           (t) =>
@@ -573,6 +588,8 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
         channelDigest: Value(digest),
         channelVersion: Value(version),
         manifestSig: Value(manifestSig),
+        manifestSigner: Value(signer),
+        signerVersionsJson: Value(signerVersionsJson),
       ),
       onConflict: DoUpdate(
         (_) => SyncStateCompanion(
@@ -580,20 +597,24 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
           channelDigest: Value(digest),
           channelVersion: Value(version),
           manifestSig: Value(manifestSig),
+          manifestSigner: Value(signer),
+          signerVersionsJson: Value(signerVersionsJson),
         ),
         target: [syncState.classGroupUuid, syncState.subjectId],
       ),
     );
   });
 
-  /// Records the teacher's version and signature for a channel whose notes
-  /// are already current here (same digest) — e.g. a copy synced before
+  /// Records a signer's version and signature for a channel whose notes are
+  /// already current here (same digest) — e.g. a copy synced before
   /// channels were signed, which could not otherwise be passed on.
   Future<void> updateManifest({
     required String classUuid,
     required String subjectId,
     required int version,
     required String manifestSig,
+    String? signer,
+    String? signerVersionsJson,
   }) =>
       (update(syncState)..where(
             (t) =>
@@ -604,34 +625,55 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
             SyncStateCompanion(
               channelVersion: Value(version),
               manifestSig: Value(manifestSig),
+              manifestSigner: Value(signer),
+              signerVersionsJson: Value(signerVersionsJson),
             ),
           );
 
-  /// Drops channels of [classUuid] the teacher no longer shares. Only a
-  /// sync straight with the teacher may call this — a classmate's list of
-  /// subjects says nothing about what the teacher still shares.
+  /// Drops channels of [classUuid] currently attributed to [signer] that
+  /// aren't in [keepSubjects] — a signer's own "I no longer share this"
+  /// (an ordinary unshare, or a subject reassigned away by a roster
+  /// change), scoped so it never touches a channel another signer (root, or
+  /// a different co-teacher) currently owns. [treatNullSignerAsThis] is set
+  /// only when [signer] is root's own key: a channel predating co-teachers
+  /// has no recorded signer at all, and such a channel is always root's.
   ///
-  /// The channel's sync_state row stays behind as a tombstone (no digest,
-  /// version kept), so a classmate's older copy can't bring it back.
-  Future<int> dropChannelsExcept(
+  /// Only a sync straight with [signer]'s own device may call this — a
+  /// classmate's list of subjects says nothing about what any signer still
+  /// shares. The channel's sync_state row stays behind as a tombstone (no
+  /// digest, version and signer-floor kept), so an older copy can't bring
+  /// it back.
+  Future<int> dropChannelsForSigner(
     String classUuid,
-    Set<String> keepSubjects,
-  ) => transaction(() async {
-    final gone =
-        (await (select(syncState)..where(
-                  (t) =>
-                      t.classGroupUuid.equals(classUuid) &
-                      t.channelDigest.isNotNull(),
-                ))
-                .get())
-            .map((r) => r.subjectId)
-            .toSet();
-    final localSubjects = await customSelect(
-      'SELECT DISTINCT subject_id FROM topic_resources WHERE class_group_uuid = ?',
-      variables: [Variable.withString(classUuid)],
-      readsFrom: {topicResources},
-    ).get();
-    gone.addAll(localSubjects.map((r) => r.read<String>('subject_id')));
+    String signer,
+    Set<String> keepSubjects, {
+    bool treatNullSignerAsThis = false,
+  }) => transaction(() async {
+    final rows = await (select(syncState)..where(
+              (t) =>
+                  t.classGroupUuid.equals(classUuid) &
+                  t.channelDigest.isNotNull(),
+            ))
+        .get();
+    final gone = rows
+        .where(
+          (r) =>
+              r.manifestSigner == signer ||
+              (r.manifestSigner == null && treatNullSignerAsThis),
+        )
+        .map((r) => r.subjectId)
+        .toSet();
+    if (treatNullSignerAsThis) {
+      // Pre-co-teacher safety net: content stored with no sync_state row at
+      // all yet (shouldn't normally happen, but this predates that
+      // guarantee) is only ever root's to clean up.
+      final localSubjects = await customSelect(
+        'SELECT DISTINCT subject_id FROM topic_resources WHERE class_group_uuid = ?',
+        variables: [Variable.withString(classUuid)],
+        readsFrom: {topicResources},
+      ).get();
+      gone.addAll(localSubjects.map((r) => r.read<String>('subject_id')));
+    }
     gone.removeAll(keepSubjects);
     for (final subject in gone) {
       await (delete(topicResources)..where(
@@ -653,5 +695,60 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
           );
     }
     return gone.length;
+  });
+
+  /// Caches a freshly-verified roster on a joined (or owned) class row —
+  /// student and classmate devices only ever trust a roster they verified
+  /// themselves against root's pinned key; this just persists the result.
+  Future<void> cacheRoster(String classUuid, ClassRoster roster) async {
+    final g = await (select(
+      classGroups,
+    )..where((t) => t.groupUuid.equals(classUuid))).getSingleOrNull();
+    if (g == null) return;
+    await (update(classGroups)..where((t) => t.id.equals(g.id))).write(
+      ClassGroupsCompanion(
+        rosterVersion: Value(roster.version),
+        rosterJson: Value(jsonEncode(roster.toJson())),
+      ),
+    );
+  }
+
+  // ── Co-teacher roster revocation (student/relay device) ─────────────────
+
+  /// Every channel of [classUuid] whose cached signer no longer matches
+  /// [signerFor] under [roster] — dropped the same way a signer's own
+  /// unshare is, since a revoked co-teacher's content is no longer trusted
+  /// regardless of whether the device itself is still reachable.
+  Future<int> applyRosterRevocations(
+    String classUuid,
+    ClassRoster roster,
+    String rootPublicKey,
+  ) => transaction(() async {
+    final rows = await (select(syncState)..where(
+              (t) =>
+                  t.classGroupUuid.equals(classUuid) &
+                  t.channelDigest.isNotNull(),
+            ))
+        .get();
+    var dropped = 0;
+    for (final r in rows) {
+      final currentSigner = r.manifestSigner ?? rootPublicKey;
+      final allowedSigner = roster.signerFor(r.subjectId, rootPublicKey);
+      if (currentSigner == allowedSigner) continue;
+      await (delete(topicResources)..where(
+            (t) =>
+                t.classGroupUuid.equals(classUuid) &
+                t.subjectId.equals(r.subjectId),
+          ))
+          .go();
+      await (update(syncState)..where((t) => t.id.equals(r.id))).write(
+        const SyncStateCompanion(
+          channelDigest: Value(null),
+          manifestSig: Value(null),
+        ),
+      );
+      dropped++;
+    }
+    return dropped;
   });
 }
