@@ -34,4 +34,9 @@ class CustomSubjects extends Table {
 
   /// ISO-8601 UTC, matching `topic_resources.created_at`.
   TextColumn get createdAt => text()();
+
+  /// Null for a subject made on this (teacher) device. On a student device,
+  /// the [ClassGroups.groupUuid] of the class whose teacher offered it — the
+  /// teacher's subject list arrives on every sync and replaces these rows.
+  TextColumn get classGroupUuid => text().nullable()();
 }

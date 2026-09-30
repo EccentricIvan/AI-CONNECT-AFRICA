@@ -52,6 +52,29 @@ void main() {
     });
   });
 
+  group('teacherRoleRedirect — the teacher section only on the teacher device',
+      () {
+    String? gate(String path, String? role) =>
+        teacherRoleRedirect(Uri.parse(path), role: role);
+
+    test('a student device never enters the teacher section', () {
+      expect(gate('/teacher', 'student'), '/student-device');
+      expect(gate('/teacher/materials', 'student'), '/student-device');
+      expect(gate('/teacher/sync', 'student'), '/student-device');
+    });
+
+    test('an undecided device is asked first, keeping the destination', () {
+      expect(gate('/teacher/sync', null), '/teacher-setup?to=%2Fteacher%2Fsync');
+    });
+
+    test('the teacher device goes through; other routes are untouched', () {
+      expect(gate('/teacher', 'teacher'), isNull);
+      expect(gate('/admin', 'student'), isNull);
+      expect(gate('/class-sync', 'student'), isNull);
+      expect(gate('/teacher-setup', null), isNull, reason: 'no loop');
+    });
+  });
+
   group('teacherGateRedirect', () {
     String? gate(String path, {bool unlocked = false, bool pinSet = true}) =>
         teacherGateRedirect(Uri.parse(path),

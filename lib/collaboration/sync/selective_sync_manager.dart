@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
 
+import '../../curriculum/curriculum_provider.dart' show CurriculumService;
 import '../../db/otic_database.dart';
+import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import 'class_crypto.dart';
 import 'class_share_server.dart'
     show
@@ -60,6 +62,35 @@ class SyncResult {
     rejected: const [],
     error: error,
   );
+}
+
+/// The subjects a teacher's handshake offers, checked and clipped: a
+/// well-formed id that isn't a built-in subject's, a short name, an icon key
+/// and a `#rrggbb` colour. Anything else is dropped.
+List<({String id, String name, String icon, String color})> offeredSubjects(
+  Object? catalog,
+) {
+  final idOk = RegExp(r'^[a-z0-9_]{1,60}$');
+  final colorOk = RegExp(r'^#[0-9a-fA-F]{6}$');
+  final out = <({String id, String name, String icon, String color})>[];
+  if (catalog is! List) return out;
+  for (final s in catalog.take(100)) {
+    if (s is! Map) continue;
+    final id = s['id'], name = s['name'], icon = s['icon'], color = s['color'];
+    if (id is! String ||
+        !idOk.hasMatch(id) ||
+        CurriculumService.bundledSubjectIds.contains(id)) {
+      continue;
+    }
+    if (name is! String || name.trim().isEmpty || name.length > 60) continue;
+    out.add((
+      id: id,
+      name: name.trim(),
+      icon: icon is String && icon.length <= 40 ? icon : 'menu_book',
+      color: color is String && colorOk.hasMatch(color) ? color : '#4F46E5',
+    ));
+  }
+  return out;
 }
 
 /// A sharing device seen on the network (or typed in).
@@ -214,6 +245,11 @@ class SelectiveSyncManager {
     final school = schoolName is String ? schoolName : '';
 
     final me = await _db.classSyncDao.identity();
+    if (me.deviceRole == kRoleTeacher) {
+      return const JoinResult.failed(
+        'This is the teacher’s device, so it can’t join a class as a student.',
+      );
+    }
     if (me.schoolId != null && me.schoolId != schoolId) {
       return JoinResult.failed(
         'This device belongs to ${me.schoolName ?? 'another school'}. '
@@ -234,6 +270,7 @@ class SelectiveSyncManager {
       );
     }
     await _db.classSyncDao.adoptSchool(schoolId: schoolId, schoolName: school);
+    await _db.classSyncDao.becomeStudentDevice();
     return JoinResult.joined(group, school);
   }
 
@@ -341,10 +378,16 @@ class SelectiveSyncManager {
 
     final List<ChannelManifest> manifests;
     try {
+      final hello = await call(kHandshakePath, {'school_id': schoolId});
       manifests = await _manifests(
-        await call(kHandshakePath, {'school_id': schoolId}),
+        hello,
         schoolId: schoolId,
         classUuid: uuid,
+      );
+      // The teacher's subjects — only ever taken from the teacher itself.
+      await _db.classSyncDao.replaceReceivedSubjects(
+        uuid,
+        offeredSubjects(hello['catalog']),
       );
     } catch (e) {
       return SyncResult.failed(

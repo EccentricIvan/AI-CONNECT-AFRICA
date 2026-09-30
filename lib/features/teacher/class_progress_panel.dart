@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../collaboration/sync/progress_report.dart';
 import '../../core/theme/app_colors.dart';
+import '../../curriculum/curriculum_models.dart';
+import '../../services/custom_subject_service.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/studio_page.dart';
@@ -31,6 +33,11 @@ class ClassProgressPanel extends ConsumerWidget {
         ? const <({ProgressReport report, String receivedAt})>[]
         : ref.watch(memberReportsProvider(uuid)).valueOrNull ?? const [];
 
+    final names = {
+      for (final s
+          in ref.watch(mergedSubjectsProvider).valueOrNull ?? const <Subject>[])
+        s.id: s.name,
+    };
     final levels = [for (final r in rows) ?r.report.meanLevel];
     final classMean = levels.isEmpty
         ? null
@@ -54,7 +61,12 @@ class ClassProgressPanel extends ConsumerWidget {
                       '${classMean == null ? '' : ' · class mastery $classMean%'}',
             style: TextStyle(fontSize: 12, color: ac.textSecondary),
           ),
-          for (final r in rows) _MemberRow(report: r.report, at: r.receivedAt),
+          for (final r in rows)
+            _MemberRow(
+              report: r.report,
+              at: r.receivedAt,
+              subjectName: (id) => names[id] ?? id.replaceAll('_', ' '),
+            ),
         ],
       ),
     );
@@ -62,10 +74,15 @@ class ClassProgressPanel extends ConsumerWidget {
 }
 
 class _MemberRow extends StatelessWidget {
-  const _MemberRow({required this.report, required this.at});
+  const _MemberRow({
+    required this.report,
+    required this.at,
+    required this.subjectName,
+  });
 
   final ProgressReport report;
   final String at;
+  final String Function(String id) subjectName;
 
   @override
   Widget build(BuildContext context) {
@@ -112,6 +129,11 @@ class _MemberRow extends StatelessWidget {
             facts.join(' · '),
             style: TextStyle(fontSize: 12, color: ac.textSecondary),
           ),
+          if (r.enrolled.isNotEmpty)
+            Text(
+              'Takes: ${r.enrolled.map(subjectName).join(', ')}',
+              style: TextStyle(fontSize: 12, color: ac.textSecondary),
+            ),
           if (weak.isNotEmpty || r.weaknesses.isNotEmpty)
             Text(
               'Needs help: ${{...weak.take(3), ...r.weaknesses.take(2)}.join(', ')}',

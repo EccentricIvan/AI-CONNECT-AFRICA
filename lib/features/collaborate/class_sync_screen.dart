@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../collaboration/lan_discovery.dart';
@@ -14,7 +15,9 @@ import '../../collaboration/sync/sync_address.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import '../../l10n/app_locale.dart';
+import '../../services/custom_subject_service.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../teacher/class_providers.dart';
@@ -248,6 +251,8 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
       }
       if (!mounted) return;
       unawaited(_rememberAddress());
+      // The teacher's subject list may have changed.
+      ref.invalidate(customSubjectsProvider);
       setState(() {
         if (last != null && last.ok) {
           _result = last;
@@ -311,6 +316,43 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     }
     final joined = group != null && group.joined;
     final endpoints = _endpoints;
+    final isTeacherDevice =
+        ref.watch(deviceRoleProvider).valueOrNull == kRoleTeacher;
+
+    if (isTeacherDevice) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: StudioAppBar(
+          title: tr(context, 'Class sync'),
+          subtitle: tr(context, 'This is the teacher’s device'),
+          icon: Icons.sync_rounded,
+          iconColor: AppColors.accentTeal,
+        ),
+        body: MaxWidth(
+          maxWidth: 760,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              StudioCard(
+                accent: AppColors.accentBlue,
+                child: Text(
+                  'This is the teacher’s device, so it shares classes rather '
+                  'than joining them. Open Teacher → Class sync to let '
+                  'students’ devices join and to see their progress.',
+                  style: TextStyle(color: ac.textPrimary, height: 1.5),
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => context.go('/teacher/sync'),
+                icon: const Icon(Icons.school_rounded),
+                label: const Text('Open Teacher → Class sync'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -375,6 +417,10 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                   ],
                 ),
               ),
+              if (studentAsync.valueOrNull case final me?) ...[
+                const SizedBox(height: 16),
+                _MySubjectsCard(studentId: me.id, learnerName: me.name),
+              ],
               const SizedBox(height: 16),
               GetFromClassmateCard(
                 group: group,
@@ -515,6 +561,60 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The subjects a learner says they take — every built-in subject plus the
+/// ones their teacher made. A record for the teacher (it arrives with the
+/// learner's progress); it doesn't hide or unlock anything.
+class _MySubjectsCard extends ConsumerWidget {
+  const _MySubjectsCard({required this.studentId, required this.learnerName});
+
+  final int studentId;
+  final String learnerName;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ac = AppColors.of(context);
+    final subjects = ref.watch(mergedSubjectsProvider).valueOrNull ?? const [];
+    final enrolled =
+        ref.watch(enrolledSubjectsProvider(studentId)).valueOrNull ?? const {};
+    final dao = ref.read(dbProvider).classSyncDao;
+
+    return StudioCard(
+      accent: AppColors.accentGreen,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'My subjects',
+            style: TextStyle(fontWeight: FontWeight.w700, color: ac.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            enrolled.isEmpty
+                ? 'Tick the subjects $learnerName takes. Your teacher sees them '
+                      'next time you sync.'
+                : '${enrolled.length} ticked. Your teacher sees them next time '
+                      'you sync.',
+            style: TextStyle(fontSize: 12, color: ac.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in subjects)
+                FilterChip(
+                  label: Text(s.name),
+                  selected: enrolled.contains(s.id),
+                  onSelected: (on) => dao.setEnrolled(studentId, s.id, on),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -32,6 +32,23 @@ final syncIdentityProvider = StreamProvider<SyncIdentityData?>((ref) {
   return dao.watchIdentity();
 });
 
+/// 'teacher', 'student', or null (undecided) — see `sync_identity`.
+final deviceRoleProvider = StreamProvider<String?>((ref) {
+  if (kIsWeb) return Stream.value('teacher');
+  final dao = ref.watch(dbProvider).classSyncDao;
+  dao.identity();
+  return dao.watchDeviceRole();
+});
+
+/// Subjects the active learner says they take.
+final enrolledSubjectsProvider = StreamProvider.family<Set<String>, int>((
+  ref,
+  studentId,
+) {
+  if (kIsWeb) return Stream.value(const {});
+  return ref.watch(dbProvider).classSyncDao.watchEnrolled(studentId);
+});
+
 /// Classes this device created — the only ones it may share notes with.
 final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) {
   if (kIsWeb) return Stream.value(const []);

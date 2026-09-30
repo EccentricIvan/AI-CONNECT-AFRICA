@@ -6,6 +6,8 @@ import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart
 import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
+import 'package:ai_connect_africa/db/tables/sync_identity_table.dart';
+import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:ai_connect_africa/services/resource_import_service.dart';
 import 'dart:typed_data';
@@ -584,6 +586,121 @@ void main() {
     final first = await teacher.classSyncDao.ensureClassKey(east);
     final again = await teacher.classSyncDao.ensureClassKey(east);
     expect(again.classKey, first.classKey);
+  });
+
+  // ── One teacher device; students enroll ─────────────────────────────────
+
+  group('only the teacher device makes classes and subjects', () {
+    test('joining makes a device a student device, which can’t claim the '
+        'teacher role or share as a teacher', () async {
+      final (db, m) = await student();
+      expect(await db.classSyncDao.deviceRole(), isNull);
+      final g = await join(m, east);
+      expect(await db.classSyncDao.deviceRole(), kRoleStudent);
+      expect(await db.classSyncDao.claimTeacherRole(), isFalse);
+
+      // Even a class it made before joining can't be shared from it.
+      final own = await _class(db, 'Club', '');
+      expect(
+        await ClassShareServer(db, joinRounds: _rounds).openJoinCode(own),
+        isNull,
+      );
+      expect(g.joined, isTrue);
+    });
+
+    test('the teacher device can’t join a class as a student', () async {
+      final (db, m) = await student();
+      expect(await db.classSyncDao.claimTeacherRole(), isTrue);
+      final code = await server.openJoinCode(east);
+      final r = await m.joinClass(teachers: [endpoint], typedCode: code!);
+      expect(r.ok, isFalse);
+      expect(r.error, contains('teacher’s device'));
+    });
+
+    test('the teacher’s subjects reach students, and follow the teacher’s '
+        'edits and removals', () async {
+      final subjects = CustomSubjectService(
+        teacher,
+        OfflineStorageService(teacher),
+      );
+      await subjects.create(name: 'Carpentry');
+      await subjects.create(name: 'Fine Art');
+
+      final (db, m) = await student();
+      final g = await join(m, east);
+      await m.syncClass(teacher: endpoint, group: g);
+      Future<Set<String>> offered() async => {
+        for (final s in await db.customSubjectDao.all()) s.name,
+      };
+      expect(await offered(), {'Carpentry', 'Fine Art'});
+
+      await subjects.rename('fine_art', 'Art and Design');
+      await subjects.delete('carpentry');
+      await m.syncClass(teacher: endpoint, group: g);
+      expect(await offered(), {'Art and Design'});
+    });
+
+    test('a bad subject list keeps only well-formed, non-built-in subjects',
+        () {
+      final ok = offeredSubjects([
+        {'id': 'carpentry', 'name': 'Carpentry', 'color': '#00AA00'},
+        {'id': 'agriculture', 'name': 'Fake farming'}, // built-in id
+        {'id': 'chemistry', 'name': 'Fake chemistry'}, // built-in id
+        {'id': 'Bad Id!', 'name': 'x'},
+        {'id': 'long', 'name': 'x' * 61},
+        'not a map',
+      ]);
+      expect(ok.map((s) => s.id), ['carpentry']);
+      expect(ok.single.color, '#00AA00');
+    });
+
+    test('a classmate can’t offer subjects', () async {
+      await CustomSubjectService(
+        teacher,
+        OfflineStorageService(teacher),
+      ).create(name: 'Carpentry');
+      final (a, ma) = await student();
+      final ga = await join(ma, east);
+      await ma.syncClass(teacher: endpoint, group: ga);
+      // A invents a subject of its own.
+      await a.customSubjectDao.insertSubject(
+        subjectId: 'fake',
+        name: 'Fake',
+        icon: 'menu_book',
+        color: '#000000',
+      );
+      final s = ClassShareServer(a, role: ShareRole.classmate, joinRounds: _rounds);
+      _autoDecide(s);
+      final port = await s.start(classUuids: {ga.groupUuid!}, port: 0);
+      cleanups.add(s.stop);
+
+      final (b, mb) = await student();
+      await join(mb, east);
+      final j = await mb.joinClassmate(
+        classmates: [(address: '127.0.0.1', port: port)],
+        typedCode: (await s.openJoinCode(ga))!,
+      );
+      await mb.syncFromClassmate(j.session!);
+      expect(await b.customSubjectDao.all(), isEmpty);
+    });
+
+    test('the subjects a learner takes reach the teacher', () async {
+      final (db, m) = await student();
+      final g = await join(m, east);
+      final id = await db
+          .into(db.students)
+          .insert(StudentsCompanion.insert(name: 'Amina'));
+      await db.classGroupDao.assignLearner(id, g.id);
+      await db.classSyncDao.setEnrolled(id, 'chemistry', true);
+      await db.classSyncDao.setEnrolled(id, 'physics', true);
+      await db.classSyncDao.setEnrolled(id, 'physics', false);
+      await db.classSyncDao.setEnrolled(id, 'biology', true);
+      await m.syncClass(teacher: endpoint, group: g);
+      final seen = await teacher.classSyncDao
+          .watchMemberReports(east.groupUuid!)
+          .first;
+      expect(seen.single.report.enrolled, ['chemistry', 'biology']);
+    });
   });
 
   // ── Progress back to the teacher ────────────────────────────────────────

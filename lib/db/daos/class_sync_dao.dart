@@ -7,6 +7,8 @@ import '../../collaboration/sync/progress_report.dart';
 import '../../collaboration/sync/sync_ids.dart';
 import '../otic_database.dart';
 import '../tables/class_groups_table.dart';
+import '../tables/custom_subjects_table.dart';
+import '../tables/learner_subjects_table.dart';
 import '../tables/member_reports_table.dart';
 import '../tables/resource_shares_table.dart';
 import '../tables/served_channels_table.dart';
@@ -31,6 +33,8 @@ part 'class_sync_dao.g.dart';
     SyncState,
     ServedChannels,
     MemberReports,
+    CustomSubjects,
+    LearnerSubjects,
   ],
 )
 class ClassSyncDao extends DatabaseAccessor<OticDatabase>
@@ -67,6 +71,35 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
         schoolId: Value(me.schoolId ?? newSyncId()),
         schoolName: Value(name.trim()),
       ),
+    );
+  }
+
+  // ── This device's role ──────────────────────────────────────────────────
+
+  /// [kRoleTeacher], [kRoleStudent], or null (undecided).
+  Future<String?> deviceRole() async => (await identity()).deviceRole;
+
+  Stream<String?> watchDeviceRole() =>
+      watchIdentity().map((row) => row?.deviceRole);
+
+  /// Makes this the teacher device. False on a student device — a device
+  /// that joined a class through a teacher can't claim the class.
+  Future<bool> claimTeacherRole() async {
+    final role = await deviceRole();
+    if (role == kRoleStudent) return false;
+    if (role == kRoleTeacher) return true;
+    await (update(syncIdentity)..where((t) => t.id.equals(1))).write(
+      const SyncIdentityCompanion(deviceRole: Value(kRoleTeacher)),
+    );
+    return true;
+  }
+
+  /// Marks this a student device, on its first join through a teacher.
+  /// Never downgrades a teacher device (joining refuses those anyway).
+  Future<void> becomeStudentDevice() async {
+    if (await deviceRole() != null) return;
+    await (update(syncIdentity)..where((t) => t.id.equals(1))).write(
+      const SyncIdentityCompanion(deviceRole: Value(kRoleStudent)),
     );
   }
 
@@ -323,6 +356,91 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
                 t.subjectId.equals(subjectId),
           ))
           .getSingleOrNull();
+
+  // ── Subjects the teacher offers ─────────────────────────────────────────
+
+  /// Subjects made on this device — the list a teacher device sends with
+  /// every sync.
+  Future<List<CustomSubject>> ownSubjects() =>
+      (select(customSubjects)
+            ..where((t) => t.classGroupUuid.isNull())
+            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+          .get();
+
+  /// Replaces the subjects [classUuid]'s teacher offers with [offered], in
+  /// one transaction. A subject this device made itself is never touched,
+  /// and one already received from another class keeps its row.
+  Future<void> replaceReceivedSubjects(
+    String classUuid,
+    List<({String id, String name, String icon, String color})> offered,
+  ) => transaction(() async {
+    final keep = {for (final s in offered) s.id};
+    await (delete(customSubjects)..where(
+          (t) =>
+              t.classGroupUuid.equals(classUuid) & t.subjectId.isNotIn(keep),
+        ))
+        .go();
+    final at = DateTime.now().toUtc().toIso8601String();
+    for (final s in offered) {
+      final existing = await (select(
+        customSubjects,
+      )..where((t) => t.subjectId.equals(s.id))).getSingleOrNull();
+      if (existing == null) {
+        await into(customSubjects).insert(
+          CustomSubjectsCompanion.insert(
+            subjectId: s.id,
+            name: s.name,
+            icon: Value(s.icon),
+            color: Value(s.color),
+            createdAt: at,
+            classGroupUuid: Value(classUuid),
+          ),
+        );
+      } else if (existing.classGroupUuid == classUuid) {
+        await (update(customSubjects)..where((t) => t.id.equals(existing.id)))
+            .write(
+              CustomSubjectsCompanion(
+                name: Value(s.name),
+                icon: Value(s.icon),
+                color: Value(s.color),
+              ),
+            );
+      }
+    }
+  });
+
+  // ── Subjects a learner takes ────────────────────────────────────────────
+
+  Stream<Set<String>> watchEnrolled(int studentId) =>
+      (select(learnerSubjects)..where((t) => t.studentId.equals(studentId)))
+          .watch()
+          .map((rows) => {for (final r in rows) r.subjectId});
+
+  Future<List<String>> enrolledSubjects(int studentId) async => [
+    for (final r in await (select(learnerSubjects)
+          ..where((t) => t.studentId.equals(studentId))
+          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+        .get())
+      r.subjectId,
+  ];
+
+  Future<void> setEnrolled(int studentId, String subjectId, bool enrolled) async {
+    if (!enrolled) {
+      await (delete(learnerSubjects)..where(
+            (t) => t.studentId.equals(studentId) & t.subjectId.equals(subjectId),
+          ))
+          .go();
+      return;
+    }
+    await into(learnerSubjects).insert(
+      LearnerSubjectsCompanion.insert(
+        studentId: studentId,
+        subjectId: subjectId,
+        enrolledAt: DateTime.now().toUtc().toIso8601String(),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
 
   // ── Members' progress (teacher device) ──────────────────────────────────
 

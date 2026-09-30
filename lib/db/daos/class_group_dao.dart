@@ -97,6 +97,8 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
         'sync_state',
         'served_channels',
         'member_reports',
+        // Subjects its teacher offered (a student device's copy).
+        'custom_subjects',
       ]) {
         await customStatement('DELETE FROM $table WHERE class_group_uuid = ?', [
           uuid,
