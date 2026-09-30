@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../collaboration/lan_discovery.dart';
 import '../../collaboration/sync/class_crypto.dart';
@@ -19,6 +20,7 @@ import '../../shared/widgets/studio_page.dart';
 import '../collaborate/join_requests.dart';
 import 'class_progress_panel.dart';
 import 'class_providers.dart';
+import 'co_teacher_widgets.dart';
 
 /// Shares one class/stream's notes with its students' devices on the same
 /// Wi-Fi/hotspot.
@@ -38,6 +40,14 @@ class TeacherSyncScreen extends ConsumerStatefulWidget {
 class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
   ClassShareServer? _server;
   LanDiscoveryService? _announcer;
+
+  /// Serves the classes this device co-teaches — separate from [_server]
+  /// (one owned class at a time, with join codes), since a co-teacher never
+  /// admits students and a device may co-teach without owning any class.
+  ClassShareServer? _coServer;
+  LanDiscoveryService? _coAnnouncer;
+  int? _coPort;
+  bool _coStarting = false;
   final MdnsSyncDiscovery _mdns = MdnsSyncDiscovery();
   int? _selectedId;
   bool _starting = false;
@@ -72,8 +82,138 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
     _tick?.cancel();
     _server?.dispose();
     _announcer?.dispose();
+    _coServer?.dispose();
+    _coAnnouncer?.dispose();
     _mdns.dispose();
     super.dispose();
+  }
+
+  bool get _coRunning => _coServer?.isRunning ?? false;
+
+  Future<void> _startCoTeaching(
+    List<CoTeachingClass> delegated,
+    SyncIdentityData identity,
+  ) async {
+    setState(() => _coStarting = true);
+    try {
+      final server = ClassShareServer(ref.read(dbProvider));
+      final port = await server.start(
+        classUuids: {for (final c in delegated) c.classGroupUuid},
+        port: 0,
+      );
+      final announcer = LanDiscoveryService(
+        displayName:
+            'Co-teacher · ${delegated.map(delegatedClassLabel).join(', ')}',
+        role: 'teacher',
+        syncPort: port,
+        schoolTag: schoolTag(identity.schoolId),
+      );
+      await announcer.start();
+      if (!mounted) {
+        await server.stop();
+        announcer.dispose();
+        return;
+      }
+      setState(() {
+        _coServer = server;
+        _coAnnouncer = announcer;
+        _coPort = port;
+      });
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not start sharing: $e');
+    } finally {
+      if (mounted) setState(() => _coStarting = false);
+    }
+  }
+
+  Future<void> _stopCoTeaching() async {
+    await _coServer?.stop();
+    _coAnnouncer?.dispose();
+    if (!mounted) return;
+    setState(() {
+      _coServer = null;
+      _coAnnouncer = null;
+      _coPort = null;
+    });
+  }
+
+  /// Classes this device co-teaches: start/stop sharing them, and the way
+  /// to join another teacher's class as a co-teacher.
+  List<Widget> _coTeachingSection(
+    List<CoTeachingClass> delegated,
+    SyncIdentityData? identity,
+  ) {
+    final ac = AppColors.of(context);
+    final names = subjectNames(ref);
+    return [
+      const SizedBox(height: 20),
+      if (delegated.isNotEmpty)
+        StudioCard(
+          accent: AppColors.accentBlue,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Classes you co-teach',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: ac.textPrimary,
+                ),
+              ),
+              for (final c in delegated)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '${delegatedClassLabel(c)} — '
+                    '${delegatedSubjects(c).isEmpty ? 'revoked' : delegatedSubjects(c).map(names).join(', ')}',
+                    style: TextStyle(color: ac.textSecondary),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: _coStarting || identity == null
+                    ? null
+                    : () => _coRunning
+                          ? _stopCoTeaching()
+                          : _startCoTeaching(delegated, identity),
+                icon: Icon(
+                  _coRunning ? Icons.stop_rounded : Icons.play_arrow_rounded,
+                ),
+                label: Text(
+                  _coRunning
+                      ? 'Stop sharing co-taught classes'
+                      : 'Start sharing co-taught classes',
+                ),
+              ),
+              if (_coRunning && _coPort != null && _addresses.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Sharing on ${_addresses.map((a) => '$a:$_coPort').join(', ')}. '
+                    'Students get your notes when they sync, alongside the '
+                    'class teacher’s.',
+                    style: TextStyle(fontSize: 12, color: ac.textSecondary),
+                  ),
+                )
+              else if (_coRunning)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Sharing. Students get your notes when they sync, '
+                    'alongside the class teacher’s.',
+                    style: TextStyle(fontSize: 12, color: ac.textSecondary),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: () => context.push('/teacher/co-teach'),
+        icon: const Icon(Icons.group_add_rounded, size: 18),
+        label: const Text('Co-teach another teacher’s class'),
+      ),
+    ];
   }
 
   Future<void> _stop() async {
@@ -195,6 +335,9 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
   Widget build(BuildContext context) {
     final classesAsync = ref.watch(ownedClassesProvider);
     final identity = ref.watch(syncIdentityProvider).valueOrNull;
+    final delegated =
+        ref.watch(delegatedClassesProvider).valueOrNull ??
+        const <CoTeachingClass>[];
     final ac = AppColors.of(context);
 
     return Scaffold(
@@ -211,15 +354,17 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (classes) {
           if (classes.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
+            return ListView(
+              padding: const EdgeInsets.all(24),
+              children: [
+                const Text(
                   'Create a class/stream first (Teacher → Add class), '
-                  'then come back here to share its notes.',
+                  'then come back here to share its notes — or co-teach '
+                  'another teacher’s class below.',
                   textAlign: TextAlign.center,
                 ),
-              ),
+                ..._coTeachingSection(delegated, identity),
+              ],
             );
           }
           final selected = classes.firstWhere(
@@ -309,7 +454,10 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                   onNewCode: () => _newCode(selected),
                 ),
                 const SizedBox(height: 12),
-                JoinRequestsCard(server: _server!),
+                JoinRequestsCard(
+                  server: _server!,
+                  subjectName: subjectNames(ref),
+                ),
                 if (_addresses.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   StudioCard(
@@ -364,6 +512,9 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 20),
+              CoTeachersCard(group: selected, server: _server),
+              ..._coTeachingSection(delegated, identity),
               const SizedBox(height: 20),
               ClassProgressPanel(group: selected),
               const SizedBox(height: 20),

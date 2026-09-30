@@ -9,9 +9,13 @@ import '../../shared/widgets/studio_page.dart';
 /// Nothing is handed over until Accept is tapped; unanswered requests time
 /// out on their own.
 class JoinRequestsCard extends StatelessWidget {
-  const JoinRequestsCard({super.key, required this.server});
+  const JoinRequestsCard({super.key, required this.server, this.subjectName});
 
   final ClassShareServer server;
+
+  /// Turns a subject id into its display name, for a co-teacher request's
+  /// "would teach" line. Falls back to the id itself.
+  final String Function(String subjectId)? subjectName;
 
   @override
   Widget build(BuildContext context) {
@@ -49,12 +53,32 @@ class JoinRequestsCard extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [
-                      const Icon(Icons.person_outline_rounded, size: 20),
+                      Icon(
+                        p.kind == PendingJoinKind.coTeacher
+                            ? Icons.school_rounded
+                            : Icons.person_outline_rounded,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          p.address.isEmpty ? p.name : '${p.name} · ${p.address}',
-                          style: TextStyle(color: ac.textPrimary),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.address.isEmpty
+                                  ? p.name
+                                  : '${p.name} · ${p.address}',
+                              style: TextStyle(color: ac.textPrimary),
+                            ),
+                            if (p.kind == PendingJoinKind.coTeacher)
+                              Text(
+                                'Co-teacher for: ${p.subjectIds.map(subjectName ?? (s) => s).join(', ')}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: ac.textSecondary,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       TextButton(

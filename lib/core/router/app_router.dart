@@ -29,6 +29,7 @@ import '../../features/practice/practice_screen.dart';
 import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
+import '../../features/teacher/join_as_co_teacher_screen.dart';
 import '../../features/teacher/teacher_sync_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/teacher/teacher_pin.dart';
@@ -127,6 +128,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/teacher/sync',
             builder: (_, __) => const TeacherSyncScreen(),
+          ),
+          GoRoute(
+            path: '/teacher/co-teach',
+            builder: (_, __) => const JoinAsCoTeacherScreen(),
           ),
           GoRoute(
             path: '/learn/subject/:id',

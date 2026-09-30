@@ -6,12 +6,13 @@ import 'package:http/http.dart' as http;
 
 import '../../curriculum/curriculum_provider.dart' show CurriculumService;
 import '../../db/otic_database.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
+import '../../db/tables/sync_identity_table.dart' show kRoleStudent, kRoleTeacher;
 import 'class_crypto.dart';
 import 'class_share_server.dart'
     show
         kChannelPath,
         kClassHeader,
+        kCoTeacherJoinPath,
         kHandshakePath,
         kJoinApprovalTimeout,
         kJoinPath,
@@ -20,6 +21,23 @@ import 'class_share_server.dart'
         kReportPath;
 import 'progress_report.dart';
 import 'routing_envelope.dart';
+
+/// [json] decoded as a `{publicKey: version}` floor map — see
+/// `sync_state.signer_versions_json`. Malformed or absent decodes to empty,
+/// which is the correct "nothing accepted from anyone yet" starting point.
+Map<String, int> decodeSignerVersions(String? json) {
+  if (json == null) return const {};
+  try {
+    final decoded = jsonDecode(json);
+    if (decoded is! Map) return const {};
+    return {
+      for (final e in decoded.entries)
+        if (e.value is num) e.key as String: (e.value as num).toInt(),
+    };
+  } catch (_) {
+    return const {};
+  }
+}
 
 /// One malformed or mismatched block, kept for a post-sync report rather
 /// than only a running count.
@@ -130,6 +148,14 @@ class ClassmateJoinResult {
   final ClassmateSession? session;
   final String? error;
   bool get ok => session != null;
+}
+
+/// Outcome of typing a co-teacher invite code.
+class CoTeacherJoinResult {
+  const CoTeacherJoinResult.joined() : error = null, ok = true;
+  const CoTeacherJoinResult.failed(String this.error) : ok = false;
+  final String? error;
+  final bool ok;
 }
 
 /// A student device's side of class sync: joining a class with the
@@ -341,22 +367,280 @@ class SelectiveSyncManager {
     );
   }
 
+  // ── Join as a co-teacher ────────────────────────────────────────────────
+
+  /// Tries a co-teacher invite [typedCode] against each candidate root
+  /// device on the network, as [name]. Refuses on a device that already
+  /// joined a class as a student — a co-teacher is still a teacher device,
+  /// and a student device can't become one (mirrors
+  /// `ClassSyncDao.claimTeacherRole`'s own guard).
+  Future<CoTeacherJoinResult> joinAsCoTeacher({
+    required List<TeacherEndpoint> roots,
+    required String typedCode,
+    String name = '',
+  }) async {
+    final code = normalizeJoinCode(typedCode);
+    if (code == null) {
+      return const CoTeacherJoinResult.failed(
+        'That isn’t an invite code — it has 8 letters and numbers, like '
+        'K7M4-P9QX.',
+      );
+    }
+    if (roots.isEmpty) {
+      return const CoTeacherJoinResult.failed(
+        'No teacher device is sharing on this Wi-Fi right now.',
+      );
+    }
+    final me = await _db.classSyncDao.identity();
+    if (me.deviceRole == kRoleStudent) {
+      return const CoTeacherJoinResult.failed(
+        'This device already joined a class as a student, so it can’t '
+        'also become a co-teacher.',
+      );
+    }
+    final myPublicKey = await signingPublicKey(me.signingSeed);
+    final salt = newNonce();
+    final secret = await joinSecret(code, salt, rounds: joinRounds);
+    final proof = await coTeacherJoinProof(secret, salt, myPublicKey);
+
+    for (final t in roots) {
+      final Map<String, Object?> b;
+      try {
+        final response = await _client
+            .post(
+              Uri.parse('http://${t.address}:${t.port}/$kCoTeacherJoinPath'),
+              headers: const {'content-type': 'application/json'},
+              body: jsonEncode({
+                'nonce': salt,
+                'proof': proof,
+                'name': name,
+                'device_public_key': myPublicKey,
+              }),
+            )
+            .timeout(approvalTimeout + _timeout);
+        if (response.statusCode != 200) continue;
+        final opened = await openJoinBundle(
+          secret,
+          salt,
+          (jsonDecode(response.body) as Map)['bundle'],
+        );
+        if (opened is! Map) continue;
+        b = Map<String, Object?>.from(opened);
+      } catch (_) {
+        continue;
+      }
+
+      final schoolId = b['school_id'], schoolName = b['school_name'];
+      final uuid = b['class_group_uuid'], className = b['class_name'];
+      final classKey = b['class_key'], rootKey = b['root_public_key'];
+      final stream = b['stream_name'];
+      if (schoolId is! String ||
+          uuid is! String ||
+          className is! String ||
+          classKey is! String ||
+          rootKey is! String) {
+        return const CoTeacherJoinResult.failed(
+          'The teacher’s device sent incomplete details.',
+        );
+      }
+      final roster = ClassRoster.fromJson(
+        b['roster'],
+        schoolId: schoolId,
+        classUuid: uuid,
+      );
+      if (roster == null || !await verifyRoster(roster, rootKey)) {
+        return const CoTeacherJoinResult.failed(
+          'The teacher’s device sent a roster that doesn’t check out — try '
+          'again, and make sure both devices are up to date.',
+        );
+      }
+      // Only ever trust what the root's own signature grants this device —
+      // never the plain-text echo of subject ids alongside it.
+      final mine = [
+        for (final e in roster.entries)
+          if (e.publicKey == myPublicKey) ...e.subjectIds,
+      ];
+      if (mine.isEmpty) {
+        return const CoTeacherJoinResult.failed(
+          'The teacher’s device didn’t confirm this device’s subjects in '
+          'its signed roster.',
+        );
+      }
+      if (me.schoolId != null && me.schoolId != schoolId) {
+        return CoTeacherJoinResult.failed(
+          'This device belongs to ${me.schoolName ?? 'another school'}. '
+          'That class is at ${schoolName is String && schoolName.isNotEmpty ? schoolName : 'a different school'}, so it can’t be co-taught here.',
+        );
+      }
+      if (me.schoolId == null) {
+        await _db.classSyncDao.adoptSchool(
+          schoolId: schoolId,
+          schoolName: schoolName is String ? schoolName : '',
+        );
+      }
+      await _db.classSyncDao.claimTeacherRole();
+      await _db.coTeacherDao.upsertDelegatedClass(
+        classUuid: uuid,
+        className: className,
+        streamName: stream is String && stream.isNotEmpty ? stream : null,
+        schoolId: schoolId,
+        classKey: classKey,
+        rootPublicKey: rootKey,
+        subjectIds: mine,
+        roster: roster,
+      );
+      return const CoTeacherJoinResult.joined();
+    }
+    return const CoTeacherJoinResult.failed(
+      'You weren’t let in. Check the code, that it hasn’t expired, and that '
+      'the teacher tapped Accept.',
+    );
+  }
+
+  /// Co-teacher device: asks root (any of [roots]) for [delegated]'s current
+  /// roster and stores this device's allocation from it — the only way a
+  /// co-teacher learns it was given another subject, lost one, or was
+  /// revoked outright. True when a root answered with a valid roster.
+  /// Students are never at risk while this hasn't run: they verify every
+  /// manifest against their own copy of the roster regardless of what this
+  /// device still believes it may serve.
+  Future<bool> refreshDelegatedClass({
+    required List<TeacherEndpoint> roots,
+    required CoTeachingClass delegated,
+  }) async {
+    final me = await _db.classSyncDao.identity();
+    final myKey = await signingPublicKey(me.signingSeed);
+    for (final root in roots) {
+      try {
+        final hello = await _signedCall(
+          root,
+          kHandshakePath,
+          {'school_id': delegated.schoolId},
+          uuid: delegated.classGroupUuid,
+          macKey: delegated.classKey,
+          open: (nonce, sealed) => openReply(
+            classKey: delegated.classKey,
+            teacherPublicKey: delegated.rootPublicKey,
+            requestNonce: nonce,
+            sealed: sealed,
+          ),
+        );
+        final roster = ClassRoster.fromJson(
+          hello['roster'],
+          schoolId: delegated.schoolId,
+          classUuid: delegated.classGroupUuid,
+        );
+        if (roster == null ||
+            roster.version < delegated.rosterVersion ||
+            !await verifyRoster(roster, delegated.rootPublicKey)) {
+          continue;
+        }
+        await _db.coTeacherDao.updateCachedRoster(
+          delegated.classGroupUuid,
+          roster,
+          myKey,
+        );
+        return true;
+      } catch (_) {
+        continue;
+      }
+    }
+    return false;
+  }
+
   // ── Sync with the teacher ───────────────────────────────────────────────
 
-  /// Pulls every subject [group] has shared notes in from [teacher].
+  /// Every discovered [candidates] that answer for [group], merged. Unlike
+  /// [syncClass], never stops at the first success: with co-teachers, a
+  /// class's subjects can come from several devices at once — root's own
+  /// endpoint and each co-teacher's — and each only ever carries its own
+  /// allocated subjects, so a full sync needs all of them, not just
+  /// whichever answers first.
+  Future<SyncResult> syncClassEverywhere({
+    required List<TeacherEndpoint> candidates,
+    required ClassGroup group,
+  }) async {
+    if (candidates.isEmpty) {
+      return SyncResult.failed(
+        'No teacher is sharing on this Wi-Fi right now.',
+      );
+    }
+    var current = group;
+    final results = <TeacherEndpoint, SyncResult>{};
+    for (final endpoint in candidates) {
+      results[endpoint] = await syncClass(teacher: endpoint, group: current);
+      current = await _refreshedGroup(current);
+    }
+    // One retry pass: an endpoint that failed here — e.g. a co-teacher this
+    // device had no cached roster to verify against yet — may succeed now,
+    // if another endpoint's reply this same round supplied a fresher one
+    // (see the bootstrap note on [syncClass]).
+    for (final endpoint in candidates) {
+      if (results[endpoint]!.ok) continue;
+      results[endpoint] = await syncClass(teacher: endpoint, group: current);
+      current = await _refreshedGroup(current);
+    }
+    return _mergeResults(results.values);
+  }
+
+  Future<ClassGroup> _refreshedGroup(ClassGroup group) async =>
+      await _db.classSyncDao.joinedByUuid(group.groupUuid!) ?? group;
+
+  SyncResult _mergeResults(Iterable<SyncResult> results) {
+    final ok = results.where((r) => r.ok).toList();
+    if (ok.isEmpty) return results.first;
+    return SyncResult(
+      subjectsChecked: ok.fold(0, (a, r) => a + r.subjectsChecked),
+      subjectsUpdated: ok.fold(0, (a, r) => a + r.subjectsUpdated),
+      chunksInserted: ok.fold(0, (a, r) => a + r.chunksInserted),
+      subjectsRemoved: ok.fold(0, (a, r) => a + r.subjectsRemoved),
+      learnersReported: ok.fold(0, (a, r) => a + r.learnersReported),
+      rejected: [
+        for (final r in results)
+          if (r.ok)
+            ...r.rejected
+          else
+            RejectedChunk(reason: r.error ?? 'a teacher device could not be reached'),
+      ],
+    );
+  }
+
+  /// Pulls every subject [teacher] signs for [group] — root's own device,
+  /// or one of the class's co-teacher devices; [syncClassEverywhere] calls
+  /// this once per discovered endpoint.
+  ///
+  /// Which key actually answered isn't known in advance: [teacher] might be
+  /// root or any co-teacher, so the reply is opened against every key this
+  /// device currently trusts for the class (root's pinned key, plus every
+  /// key in its cached roster) until one verifies. **Bootstrapping**: the
+  /// very first contact with a class is always root's own join bundle
+  /// (only root admits students), and that bundle already carries the
+  /// class's current roster if one exists — so even a student who joins
+  /// after a co-teacher does has a cached roster before ever syncing. A
+  /// student who joined *before* a co-teacher existed only gets the
+  /// updated roster from a reply that includes one — see
+  /// [syncClassEverywhere]'s retry pass for what covers a co-teacher's
+  /// endpoint being tried before root's in the same round.
   Future<SyncResult> syncClass({
     required TeacherEndpoint teacher,
     required ClassGroup group,
   }) async {
     final uuid = group.groupUuid, classKey = group.classKey;
-    final teacherKey = group.teacherPublicKey, schoolId = group.schoolId;
+    final rootKey = group.teacherPublicKey, schoolId = group.schoolId;
     if (!group.joined ||
         uuid == null ||
         classKey == null ||
-        teacherKey == null ||
+        rootKey == null ||
         schoolId == null) {
       return SyncResult.failed('Join this class with your teacher’s code first.');
     }
+    var roster = _decodeCachedRoster(group, schoolId: schoolId, classUuid: uuid);
+    final candidateKeys = <String>{
+      rootKey,
+      ...?roster?.entries.map((e) => e.publicKey),
+    }.toList();
+
+    String? signer;
     Future<Map<String, Object?>> call(
       String path,
       Map<String, Object?> body, {
@@ -368,80 +652,118 @@ class SelectiveSyncManager {
       uuid: uuid,
       macKey: classKey,
       extra: extra,
-      open: (nonce, sealed) => openReply(
-        classKey: classKey,
-        teacherPublicKey: teacherKey,
-        requestNonce: nonce,
-        sealed: sealed,
-      ),
+      open: (nonce, sealed) async {
+        SyncTrustError? lastError;
+        for (final key in candidateKeys) {
+          try {
+            final opened = await openReply(
+              classKey: classKey,
+              teacherPublicKey: key,
+              requestNonce: nonce,
+              sealed: sealed,
+            );
+            signer = key;
+            return opened;
+          } on SyncTrustError catch (e) {
+            lastError = e;
+          }
+        }
+        throw lastError ??
+            const SyncTrustError('reply is not signed by a key this class trusts');
+      },
     );
 
     final List<ChannelManifest> manifests;
     try {
       final hello = await call(kHandshakePath, {'school_id': schoolId});
-      manifests = await _manifests(
-        hello,
+      manifests = await _manifests(hello, schoolId: schoolId, classUuid: uuid);
+      roster = await _refreshRosterIfNewer(
+        hello['roster'],
+        current: roster,
+        rootKey: rootKey,
+        uuid: uuid,
         schoolId: schoolId,
-        classUuid: uuid,
       );
-      // The teacher's subjects — only ever taken from the teacher itself.
-      await _db.classSyncDao.replaceReceivedSubjects(
-        uuid,
-        offeredSubjects(hello['catalog']),
-      );
+      // Root's own subjects — only ever taken from root's own reply. A
+      // co-teacher's reply never carries a catalog (see
+      // ClassShareServer._handshake).
+      if (hello['catalog'] != null) {
+        await _db.classSyncDao.replaceReceivedSubjects(
+          uuid,
+          offeredSubjects(hello['catalog']),
+        );
+      }
     } catch (e) {
       return SyncResult.failed(
         e is SyncTrustError
-            ? 'That device isn’t your class’s teacher: ${e.message}.'
-            : 'Could not sync with the teacher’s device. Make sure it is still sharing '
+            ? 'That device isn’t trusted for this class: ${e.message}.'
+            : 'Could not sync with ${teacher.address}. Make sure it is still sharing '
                   '${group.className}${group.streamName == null ? '' : ' ${group.streamName}'}.',
       );
     }
 
-    // Straight from the teacher, the list of subjects is authoritative:
-    // anything not on it was unshared.
-    final removed = await _db.classSyncDao.dropChannelsExcept(uuid, {
-      for (final m in manifests) m.subjectId,
-    });
+    final answeredBy = signer ?? rootKey;
+    // A manifest's subject must actually be this device's to sign, by the
+    // roster — one answering for a subject the roster doesn't grant it is
+    // rejected here even though its own transport signature checked out.
+    final trusted = [
+      for (final m in manifests)
+        if ((roster?.signerFor(m.subjectId, rootKey) ?? rootKey) == answeredBy)
+          m,
+    ];
+
+    // This signer's own list is authoritative for whatever it signs —
+    // anything of its own not on it was unshared, or reassigned away.
+    // Scoped so it can never touch another signer's channels: root
+    // syncing can't drop a co-teacher's, and vice versa.
+    final removed = await _db.classSyncDao.dropChannelsForSigner(
+      uuid,
+      answeredBy,
+      {for (final m in trusted) m.subjectId},
+      treatNullSignerAsThis: answeredBy == rootKey,
+    );
     final run = await _pullChannels(
-      manifests,
+      trusted,
       group: group,
+      signerFor: (_) => answeredBy,
       call: (path, body) => call(path, body),
       fromTeacher: true,
     );
 
-    // Then tell the teacher how this device's learners in the class are
-    // doing. Best-effort: a failed report never fails the sync.
+    // Then tell root how this device's learners in the class are doing —
+    // never a co-teacher, whose server refuses reports outright.
+    // Best-effort: a failed report never fails the sync.
     var reported = 0;
-    try {
-      final me = await _db.classSyncDao.identity();
-      final deviceKey = (await signingPublicKey(me.signingSeed)).substring(
-        0,
-        16,
-      );
-      final reports = await buildProgressReports(
-        _db,
-        group,
-        deviceKey: deviceKey,
-      );
-      if (reports.isNotEmpty) {
-        final ack = await call(
-          kReportPath,
-          {'school_id': schoolId},
-          extra: (nonce) async => {
-            'report': await sealReport(
-              classKey: classKey,
-              requestNonce: nonce,
-              json: [for (final r in reports) r.toJson()],
-            ),
-          },
+    if (answeredBy == rootKey) {
+      try {
+        final me = await _db.classSyncDao.identity();
+        final deviceKey = (await signingPublicKey(
+          me.signingSeed,
+        )).substring(0, 16);
+        final reports = await buildProgressReports(
+          _db,
+          group,
+          deviceKey: deviceKey,
         );
-        reported = ack['saved'] is int ? ack['saved'] as int : 0;
-      }
-    } catch (_) {}
+        if (reports.isNotEmpty) {
+          final ack = await call(
+            kReportPath,
+            {'school_id': schoolId},
+            extra: (nonce) async => {
+              'report': await sealReport(
+                classKey: classKey,
+                requestNonce: nonce,
+                json: [for (final r in reports) r.toJson()],
+              ),
+            },
+          );
+          reported = ack['saved'] is int ? ack['saved'] as int : 0;
+        }
+      } catch (_) {}
+    }
 
     return SyncResult(
-      subjectsChecked: manifests.length,
+      subjectsChecked: trusted.length,
       subjectsUpdated: run.updated,
       chunksInserted: run.inserted,
       subjectsRemoved: removed,
@@ -450,15 +772,61 @@ class SelectiveSyncManager {
     );
   }
 
+  ClassRoster? _decodeCachedRoster(
+    ClassGroup group, {
+    required String schoolId,
+    required String classUuid,
+  }) {
+    if (group.rosterJson == null) return null;
+    try {
+      return ClassRoster.fromJson(
+        jsonDecode(group.rosterJson!),
+        schoolId: schoolId,
+        classUuid: classUuid,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// If [rawRoster] parses, is newer than [current], and is genuinely
+  /// signed by [rootKey], caches it and drops any channel it revokes trust
+  /// from — before pulling anything else this round, so a revoked
+  /// co-teacher's content never lingers past the sync that learns of it.
+  /// Returns the roster now in effect (the fresh one, or [current]
+  /// unchanged).
+  Future<ClassRoster?> _refreshRosterIfNewer(
+    Object? rawRoster, {
+    required ClassRoster? current,
+    required String rootKey,
+    required String uuid,
+    required String schoolId,
+  }) async {
+    if (rawRoster == null) return current;
+    final fresh = ClassRoster.fromJson(
+      rawRoster,
+      schoolId: schoolId,
+      classUuid: uuid,
+    );
+    if (fresh == null || fresh.version <= (current?.version ?? -1)) {
+      return current;
+    }
+    if (!await verifyRoster(fresh, rootKey)) return current;
+    await _db.classSyncDao.cacheRoster(uuid, fresh);
+    await _db.classSyncDao.applyRosterRevocations(uuid, fresh, rootKey);
+    return fresh;
+  }
+
   // ── Sync with a classmate ───────────────────────────────────────────────
 
-  /// Pulls from a classmate every subject whose teacher-signed version is
-  /// newer than this device's. Never removes anything: a classmate's list
-  /// says nothing about what the teacher still shares.
+  /// Pulls from a classmate every subject whose signer-scoped version is
+  /// newer than this device's. Never drops anything: a classmate's list
+  /// says nothing about what any signer still shares — only a sync
+  /// straight with the signer itself does that (see [syncClass]).
   Future<SyncResult> syncFromClassmate(ClassmateSession session) async {
     final group = session.group;
     final uuid = group.groupUuid!, classKey = group.classKey!;
-    final schoolId = group.schoolId!;
+    final schoolId = group.schoolId!, rootKey = group.teacherPublicKey!;
     Future<Map<String, Object?>> call(String path, Map<String, Object?> body) =>
         _signedCall(
           session.endpoint,
@@ -473,12 +841,17 @@ class SelectiveSyncManager {
           ),
         );
 
+    var roster = _decodeCachedRoster(group, schoolId: schoolId, classUuid: uuid);
     final List<ChannelManifest> manifests;
     try {
-      manifests = await _manifests(
-        await call(kHandshakePath, {'school_id': schoolId}),
+      final hello = await call(kHandshakePath, {'school_id': schoolId});
+      manifests = await _manifests(hello, schoolId: schoolId, classUuid: uuid);
+      roster = await _refreshRosterIfNewer(
+        hello['roster'],
+        current: roster,
+        rootKey: rootKey,
+        uuid: uuid,
         schoolId: schoolId,
-        classUuid: uuid,
       );
     } catch (e) {
       return SyncResult.failed(
@@ -486,9 +859,14 @@ class SelectiveSyncManager {
         'sharing, then try again.',
       );
     }
+    // A relayed batch can mix subjects from several original signers (root
+    // and any co-teacher this classmate itself synced) — resolved per
+    // manifest from the roster, not assumed constant for the whole call.
+    final resolvedRoster = roster;
     final run = await _pullChannels(
       manifests,
       group: group,
+      signerFor: (m) => resolvedRoster?.signerFor(m.subjectId, rootKey) ?? rootKey,
       call: call,
       fromTeacher: false,
     );
@@ -519,10 +897,16 @@ class SelectiveSyncManager {
     return out;
   }
 
+  /// [signerFor] resolves, per manifest, the key that's allowed to sign its
+  /// subject: a constant (whichever device this call is talking to
+  /// directly) for a direct teacher/co-teacher sync, or per-subject from
+  /// the class roster for a classmate relay, whose one batch can mix
+  /// several original signers.
   Future<({int updated, int inserted, List<RejectedChunk> rejected})>
   _pullChannels(
     List<ChannelManifest> manifests, {
     required ClassGroup group,
+    required String Function(ChannelManifest m) signerFor,
     required Future<Map<String, Object?>> Function(
       String path,
       Map<String, Object?> body,
@@ -538,45 +922,42 @@ class SelectiveSyncManager {
 
     for (final m in manifests) {
       final routingKey = '$uuid/${m.subjectId}';
+      final signer = signerFor(m);
       try {
-        if (!await verifyManifest(m, group.teacherPublicKey!)) {
+        if (!await verifyManifest(m, signer)) {
           rejected.add(
             RejectedChunk(
-              reason: 'not signed by your class’s teacher',
+              reason: 'not signed by a key this class trusts',
               routingKey: routingKey,
             ),
           );
           continue;
         }
         final local = await dao.channelState(uuid, m.subjectId);
-        if (fromTeacher) {
-          if (local?.channelDigest == m.digest) {
-            if (local!.channelVersion != m.version ||
-                local.manifestSig != m.signature) {
-              await dao.updateManifest(
-                classUuid: uuid,
-                subjectId: m.subjectId,
-                version: m.version,
-                manifestSig: m.signature,
-              );
-            }
-            continue;
-          }
-        } else {
-          // From a classmate: only strictly newer than what this device
-          // has — including a subject the teacher removed (tombstone).
-          final have = local?.channelVersion;
-          if (have != null && m.version <= have) continue;
-          if (local?.channelDigest == m.digest && have == null) {
+        final floors = decodeSignerVersions(local?.signerVersionsJson);
+        final floor = floors[signer];
+
+        if (local?.channelDigest == m.digest &&
+            local?.manifestSigner == signer) {
+          if (local!.channelVersion != m.version ||
+              local.manifestSig != m.signature) {
             await dao.updateManifest(
               classUuid: uuid,
               subjectId: m.subjectId,
               version: m.version,
               manifestSig: m.signature,
+              signer: signer,
+              signerVersionsJson: jsonEncode({...floors, signer: m.version}),
             );
-            continue;
           }
+          continue;
         }
+        // Gated only by this signer's own floor — never another signer's
+        // version number, which is what makes a handoff safe in either
+        // direction (see sync_state.signer_versions_json). A subject the
+        // teacher removed is a tombstone at some floor value; a classmate
+        // relaying an older copy of it can't bring it back.
+        if (floor != null && m.version <= floor) continue;
 
         final reply = await call(kChannelPath, {
           'school_id': group.schoolId,
@@ -619,6 +1000,8 @@ class SelectiveSyncManager {
           digest: digest,
           version: m.version,
           manifestSig: m.signature,
+          signer: signer,
+          signerVersionsJson: jsonEncode({...floors, signer: m.version}),
         );
         updated++;
         inserted += rows.length;

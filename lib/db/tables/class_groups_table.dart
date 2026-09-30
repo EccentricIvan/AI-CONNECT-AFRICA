@@ -55,4 +55,16 @@ class ClassGroups extends Table {
   /// True on a student device for a class it joined from a teacher; false
   /// for a class this device created. Only created classes are ever served.
   BoolColumn get joined => boolean().withDefault(const Constant(false))();
+
+  // ── Co-teachers (lib/db/tables/co_teachers_table.dart) ─────────────────
+
+  /// The newest root-signed `ClassRoster` version this device has verified
+  /// for this class. Null/absent means no co-teacher has ever existed for
+  /// it, which behaves identically to before this existed — every subject
+  /// resolves to [teacherPublicKey].
+  IntColumn get rosterVersion => integer().nullable()();
+
+  /// The cached roster itself (JSON), re-verified against [teacherPublicKey]
+  /// whenever it's used, never trusted on its own.
+  TextColumn get rosterJson => text().nullable()();
 }

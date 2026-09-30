@@ -385,6 +385,173 @@ Future<bool> verifyManifest(ChannelManifest m, String teacherPublicKey) async {
 /// without it get nothing, even with the class key.
 String newSessionToken() => b64(randomBytes(24));
 
+// ── Co-teacher roster: which key may sign which subject ────────────────────
+//
+// A class has one root teacher device, which may delegate specific subjects
+// to co-teacher devices. Manifests are already signed per (class, subject)
+// channel ([signManifest]/[verifyManifest]) against one pinned key; the
+// roster is what tells a device WHICH key is currently allowed to sign a
+// given subject, without changing those two functions or [openReply] at all.
+// Only the root ever signs a roster — a co-teacher forwards it unchanged.
+
+/// One co-teacher's slice of a class, as the root signs it.
+class RosterEntry {
+  const RosterEntry({
+    required this.publicKey,
+    required this.name,
+    required this.subjectIds,
+  });
+
+  final String publicKey;
+  final String name;
+  final List<String> subjectIds;
+
+  Map<String, Object?> toJson() => {
+    'public_key': publicKey,
+    'name': name,
+    'subject_ids': subjectIds,
+  };
+
+  static RosterEntry? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final key = json['public_key'], name = json['name'];
+    final subjects = json['subject_ids'];
+    if (key is! String || name is! String || subjects is! List) return null;
+    return RosterEntry(
+      publicKey: key,
+      name: name,
+      subjectIds: [for (final s in subjects) if (s is String) s],
+    );
+  }
+}
+
+/// A class's full co-teacher allocation, as the root signs it. [schoolId]
+/// and [classUuid] come from the caller's own request context, never trusted
+/// from the wire — the same rule [ChannelManifest.fromJson] follows.
+class ClassRoster {
+  const ClassRoster({
+    required this.schoolId,
+    required this.classUuid,
+    required this.version,
+    required this.entries,
+    required this.signature,
+  });
+
+  final String schoolId;
+  final String classUuid;
+  final int version;
+  final List<RosterEntry> entries;
+  final String signature;
+
+  /// The key allowed to sign [subjectId] right now: the entry that
+  /// allocates it, or [rootPublicKey] when nothing does — undelegated stays
+  /// root's.
+  String signerFor(String subjectId, String rootPublicKey) {
+    for (final e in entries) {
+      if (e.subjectIds.contains(subjectId)) return e.publicKey;
+    }
+    return rootPublicKey;
+  }
+
+  Map<String, Object?> toJson() => {
+    'version': version,
+    'entries': [for (final e in entries) e.toJson()],
+    'sig': signature,
+  };
+
+  static ClassRoster? fromJson(
+    Object? json, {
+    required String schoolId,
+    required String classUuid,
+  }) {
+    if (json is! Map) return null;
+    final version = json['version'], sig = json['sig'];
+    final rawEntries = json['entries'];
+    if (version is! int || sig is! String || rawEntries is! List) {
+      return null;
+    }
+    return ClassRoster(
+      schoolId: schoolId,
+      classUuid: classUuid,
+      version: version,
+      entries: [
+        for (final e in rawEntries)
+          if (RosterEntry.fromJson(e) case final entry?) entry,
+      ],
+      signature: sig,
+    );
+  }
+}
+
+/// A digest over a canonical (sorted-by-key) encoding of [entries] — the same
+/// role [channelDigest] plays for chunk ids, so a re-ordered list still
+/// signs and verifies identically.
+Future<String> rosterEntriesDigest(List<RosterEntry> entries) async {
+  final sorted = [...entries]..sort((a, b) => a.publicKey.compareTo(b.publicKey));
+  final canonical = [
+    for (final e in sorted)
+      '${e.publicKey}|${e.name}|${(([...e.subjectIds]..sort())).join(",")}',
+  ].join('\n');
+  final hash = await Sha256().hash(utf8.encode(canonical));
+  return b64(hash.bytes);
+}
+
+List<int> _rosterBytes(
+  String schoolId,
+  String classUuid,
+  int version,
+  String entriesDigest,
+) => utf8.encode('otic-roster-v1\n$schoolId\n$classUuid\n$version\n$entriesDigest');
+
+/// The root's signature over one version of a class's co-teacher roster.
+Future<String> signRoster({
+  required String signingSeed,
+  required String schoolId,
+  required String classUuid,
+  required int version,
+  required List<RosterEntry> entries,
+}) async {
+  final digest = await rosterEntriesDigest(entries);
+  final pair = await _ed25519.newKeyPairFromSeed(unb64(signingSeed));
+  final sig = await _ed25519.sign(
+    _rosterBytes(schoolId, classUuid, version, digest),
+    keyPair: pair,
+  );
+  return b64(sig.bytes);
+}
+
+/// True when [r] was signed by [rootPublicKey] — the class's root teacher,
+/// never a co-teacher (co-teachers only ever forward a roster, unchanged).
+Future<bool> verifyRoster(ClassRoster r, String rootPublicKey) async {
+  try {
+    final digest = await rosterEntriesDigest(r.entries);
+    return await _ed25519.verify(
+      _rosterBytes(r.schoolId, r.classUuid, r.version, digest),
+      signature: Signature(
+        unb64(r.signature),
+        publicKey: SimplePublicKey(unb64(rootPublicKey), type: KeyPairType.ed25519),
+      ),
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Proof a device joining as a co-teacher knows the invite code, binding its
+/// own signing public key into the MAC so the key can't be swapped in
+/// transit — [joinProof] alone only binds the code, not who's presenting it.
+Future<String> coTeacherJoinProof(
+  String secret,
+  String salt,
+  String devicePublicKey,
+) async {
+  final mac = await _hmac.calculateMac(
+    utf8.encode('otic-coteacher-join-proof-v1\n$salt\n$devicePublicKey'),
+    secretKey: SecretKey(unb64(secret)),
+  );
+  return b64(mac.bytes);
+}
+
 // ── Join codes ─────────────────────────────────────────────────────────────
 
 /// No 0/O, 1/I: codes are read off a screen and typed on a phone.

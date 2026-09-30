@@ -128,9 +128,21 @@ class _SubjectTile extends ConsumerWidget {
     final shares =
         ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
         const {};
-    final classes =
-        ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[];
-    final classNames = {for (final c in classes) c.groupUuid: classLabel(c)};
+    // Where this subject's notes may go: classes this device owns, plus
+    // classes it co-teaches *this* subject in.
+    final classes = <({String uuid, String label})>[
+      for (final c
+          in ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[])
+        (uuid: c.groupUuid!, label: classLabel(c)),
+      for (final d
+          in ref.watch(delegatedClassesProvider).valueOrNull ??
+              const <CoTeachingClass>[])
+        if (delegatedSubjects(d).contains(subject.subjectId))
+          (uuid: d.classGroupUuid, label: delegatedClassLabel(d)),
+    ];
+    final classNames = <String?, String>{
+      for (final c in classes) c.uuid: c.label,
+    };
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -417,7 +429,7 @@ class _SubjectTile extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     ResourceSummary resource,
-    List<ClassGroup> classes,
+    List<({String uuid, String label})> classes,
     Set<String> current,
   ) async {
     if (classes.isEmpty) {
@@ -445,12 +457,12 @@ class _SubjectTile extends ConsumerWidget {
                 children: [
                   for (final c in classes)
                     CheckboxListTile(
-                      value: picked.contains(c.groupUuid),
-                      title: Text(classLabel(c)),
+                      value: picked.contains(c.uuid),
+                      title: Text(c.label),
                       onChanged: (on) => setState(
                         () => on == true
-                            ? picked.add(c.groupUuid!)
-                            : picked.remove(c.groupUuid),
+                            ? picked.add(c.uuid)
+                            : picked.remove(c.uuid),
                       ),
                     ),
                   Padding(

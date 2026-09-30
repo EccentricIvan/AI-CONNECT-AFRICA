@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -54,6 +56,37 @@ final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) {
   if (kIsWeb) return Stream.value(const []);
   return ref.watch(dbProvider).classSyncDao.watchOwnedClasses();
 });
+
+/// Root device: co-teachers of one class, by name.
+final coTeachersProvider =
+    StreamProvider.family<List<ClassCoTeacher>, String>((ref, classUuid) {
+      if (kIsWeb) return Stream.value(const []);
+      return ref.watch(dbProvider).coTeacherDao.watchCoTeachers(classUuid);
+    });
+
+/// Co-teacher device: classes this device serves as a delegate.
+final delegatedClassesProvider = StreamProvider<List<CoTeachingClass>>((ref) {
+  if (kIsWeb) return Stream.value(const []);
+  return ref.watch(dbProvider).coTeacherDao.watchDelegatedClasses();
+});
+
+/// A delegated class's allocated subject ids.
+Set<String> delegatedSubjects(CoTeachingClass c) {
+  try {
+    return {
+      for (final s in jsonDecode(c.subjectIdsJson) as List)
+        if (s is String) s,
+    };
+  } catch (_) {
+    return const {};
+  }
+}
+
+/// "S2 East" for a delegated class.
+String delegatedClassLabel(CoTeachingClass c) {
+  final stream = c.streamName?.trim() ?? '';
+  return stream.isEmpty ? c.className : '${c.className} $stream';
+}
 
 /// For one subject: each note title → the classes it is shared with.
 final noteSharesProvider =

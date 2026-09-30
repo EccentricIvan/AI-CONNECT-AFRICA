@@ -8,9 +8,9 @@ import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 
 /// Shown the first time anyone opens the teacher section on a device that
-/// is neither the teacher's nor a student's yet. One device per school is
-/// the teacher's: classes and subjects are made there, students' devices
-/// join it, and their progress arrives there.
+/// is neither a teacher's nor a student's yet. A teacher's device creates
+/// classes and subjects, students' devices join it, and their progress
+/// arrives there; other teachers' devices can co-teach its classes' subjects.
 class TeacherDeviceSetupScreen extends ConsumerStatefulWidget {
   const TeacherDeviceSetupScreen({super.key, required this.destination});
 
@@ -46,7 +46,7 @@ class _TeacherDeviceSetupScreenState
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
         title: 'Teacher’s device',
-        subtitle: 'One device per school is the teacher’s',
+        subtitle: 'Where classes are created and shared',
         icon: Icons.school_rounded,
         iconColor: AppColors.accentBlue,
         showBack: true,
@@ -64,7 +64,10 @@ class _TeacherDeviceSetupScreenState
                 'subjects, share lesson notes, and see how every student is '
                 'doing. Students’ phones and PCs join your classes from their '
                 'own Class sync screen.\n\n'
-                'A student’s device can never become the teacher’s. Set a '
+                'If another teacher already runs your class, choose this too, '
+                'then join their class as a co-teacher for your subject '
+                '(Class sync → Co-teach another teacher’s class).\n\n'
+                'A student’s device can never become a teacher’s. Set a '
                 'teacher PIN afterwards (Settings → Teacher PIN) so learners '
                 'can’t open this section.',
                 style: TextStyle(color: ac.textPrimary, height: 1.5),

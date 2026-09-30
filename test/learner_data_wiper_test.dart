@@ -491,6 +491,10 @@ void main() {
       // Deleting the class clears both (ClassGroupDao.deleteClass).
       'served_channels',
       'member_reports',
+      // Co-teachers: root's allocations, and a co-teacher device's own
+      // record of classes it serves — device/class data, not a learner's.
+      'class_co_teachers',
+      'co_teaching_classes',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

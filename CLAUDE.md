@@ -250,7 +250,27 @@ loosen any of these rules:
 - **Shared devices.** Tutor retrieval sees this device's own notes plus
   received notes for the **active learner's** class only
   (`TopicResourceDao._visibleTo`).
-- **Protocol v3 only.** Devices on older builds can't sync with upgraded
+- **Co-teachers (schema 19).** A class's root teacher device can invite
+  other teacher devices as co-teachers for specific subjects
+  (`api/v4/coteacher/join`, own code + Accept; `CoTeacherDao`).
+  - Allocation is **disjoint**: one signer per (class, subject), enforced
+    at invite time.
+  - Root publishes a root-signed, versioned `ClassRoster`
+    (`class_crypto.dart`) saying which key may sign which subject. It
+    travels in join bundles and handshakes and is forwarded verbatim by
+    co-teachers and classmates. Only root ever signs one.
+  - A manifest is accepted only from the key the roster allocates its
+    subject to. Undelegated subjects stay root's.
+  - Version floors are **per signer** (`sync_state.signer_versions_json`),
+    so handoffs are safe both ways.
+  - A signer's own sync only drops its own channels (`dropChannelsForSigner`).
+  - Revoking a co-teacher bumps the roster, and clients drop its channels
+    on their next sync with a device holding the newer roster.
+  - Co-teachers can't admit students, publish a subject catalog, or
+    receive progress reports.
+  - A delegated class lives in `co_teaching_classes`, never in
+    `class_groups`.
+- **Protocol v4 only.** Devices on older builds can't sync with upgraded
   ones.
 
 ## Student Memory Engine
