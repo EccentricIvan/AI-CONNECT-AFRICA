@@ -24,7 +24,12 @@ class ProgressReport {
     required this.topics,
     required this.strengths,
     required this.weaknesses,
+    this.enrolled = const [],
   });
+
+  /// Subject ids the learner says they take (a record, not a lock).
+  final List<String> enrolled;
+  static const maxEnrolled = 30;
 
   final String memberKey;
   final String name;
@@ -68,6 +73,7 @@ class ProgressReport {
     ],
     'strengths': strengths,
     'weaknesses': weaknesses,
+    'enrolled': enrolled,
   };
 
   /// Reads a report from another device. Null when it isn't one. Every
@@ -112,6 +118,11 @@ class ProgressReport {
       topics: topics,
       strengths: strings(json['strengths']),
       weaknesses: strings(json['weaknesses']),
+      enrolled: [
+        if (json['enrolled'] case final List ids)
+          for (final id in ids.take(maxEnrolled))
+            if (id is String && RegExp(r'^[a-z0-9_]{1,60}$').hasMatch(id)) id,
+      ],
     );
   }
 
@@ -152,6 +163,9 @@ Future<List<ProgressReport>> buildProgressReports(
         topics: [for (final p in progress) (topic: p.topic, level: p.level)],
         strengths: _list(s.strengthsJson),
         weaknesses: _list(s.weaknessesJson),
+        enrolled: (await db.classSyncDao.enrolledSubjects(
+          s.id,
+        )).take(ProgressReport.maxEnrolled).toList(),
       ),
     );
   }

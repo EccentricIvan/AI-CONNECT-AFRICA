@@ -8,6 +8,8 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/tutor/programming_topic.dart';
 import '../../app.dart';
 import '../../db/providers/db_provider.dart';
+import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
+import '../../features/teacher/teacher_device_screens.dart';
 import '../../features/achievements/achievements_screen.dart';
 import '../../features/admin/admin_screen.dart';
 import '../../features/certificates/certificates_screen.dart';
@@ -52,6 +54,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       // Teacher and Admin areas sit behind the teacher PIN, when one is set.
       if (!isTeacherRoute(state.uri.path)) return null;
+      // …and the teacher section only opens on the teacher's device.
+      final byRole = teacherRoleRedirect(
+        state.uri,
+        role: kIsWeb ? kRoleTeacher : await _deviceRole(ref),
+      );
+      if (byRole != null) return byRole;
       return teacherGateRedirect(
         state.uri,
         unlocked: ref.read(teacherUnlockedProvider),
@@ -175,6 +183,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const ClassSyncScreen(),
           ),
           GoRoute(
+            path: '/teacher-setup',
+            builder: (_, state) {
+              final to = state.uri.queryParameters['to'] ?? '/teacher';
+              return TeacherDeviceSetupScreen(
+                destination: isTeacherRoute(Uri.parse(to).path)
+                    ? to
+                    : '/teacher',
+              );
+            },
+          ),
+          GoRoute(
+            path: '/student-device',
+            builder: (_, __) => const StudentDeviceScreen(),
+          ),
+          GoRoute(
             path: '/certificates',
             builder: (_, __) => const CertificatesScreen(),
           ),
@@ -215,6 +238,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// This device's role, or null when undecided or unreadable.
+Future<String?> _deviceRole(Ref ref) async {
+  try {
+    return await ref.read(dbProvider).classSyncDao.deviceRole();
+  } catch (e) {
+    debugPrint('device role unavailable: $e');
+    return null;
+  }
+}
 
 /// Where to send someone who has not finished onboarding, or null.
 Future<String?> _onboardingRedirect(Ref ref) async {

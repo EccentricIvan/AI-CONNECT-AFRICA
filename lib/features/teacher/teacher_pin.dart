@@ -74,6 +74,27 @@ bool isTeacherRoute(String location) =>
     location == '/admin' ||
     location.startsWith('/admin/');
 
+/// Where a request for the teacher section goes, given this device's
+/// [role] (`sync_identity.device_role`), or null to carry on to the PIN
+/// check. Only one device per school is the teacher's:
+///
+/// * a student device → `/student-device`, never into the teacher section;
+/// * an undecided device → `/teacher-setup`, which asks before making this
+///   the teacher device (carrying the destination on);
+/// * the teacher device → through.
+///
+/// Admin routes aren't role-gated: every device has learners to manage.
+String? teacherRoleRedirect(Uri uri, {required String? role}) {
+  final path = uri.path;
+  if (path != '/teacher' && !path.startsWith('/teacher/')) return null;
+  if (role == 'student') return '/student-device';
+  if (role == null) {
+    return Uri(path: '/teacher-setup', queryParameters: {'to': uri.toString()})
+        .toString();
+  }
+  return null;
+}
+
 /// Where the router should send a request for [uri], or null to let it
 /// through: a locked teacher route goes to the PIN screen, carrying the
 /// original destination so the teacher lands where they were going.

@@ -6,6 +6,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
+import '../../db/tables/sync_identity_table.dart' show kRoleStudent;
 import 'class_crypto.dart';
 import 'progress_report.dart';
 import 'routing_envelope.dart';
@@ -212,7 +213,11 @@ class ClassShareServer {
     if (uuid == null) return null;
     final ClassGroup? usable;
     if (role == ShareRole.teacher) {
-      if (group.joined) return null;
+      // A student device never shares as a teacher, whatever it owns.
+      if (group.joined ||
+          await _db.classSyncDao.deviceRole() == kRoleStudent) {
+        return null;
+      }
       final keyed = await _db.classSyncDao.ensureClassKey(group);
       usable = keyed.schoolId == null ? null : keyed;
     } else {
@@ -470,7 +475,18 @@ class ClassShareServer {
         });
       }
     }
-    return {'class_group_uuid': uuid, 'subjects': manifests};
+    return {
+      'class_group_uuid': uuid,
+      'subjects': manifests,
+      // The subjects this teacher made, so students can see and enroll in
+      // them. Only in the teacher's (signed) reply — a classmate can't
+      // offer subjects.
+      if (role == ShareRole.teacher)
+        'catalog': [
+          for (final s in await dao.ownSubjects())
+            {'id': s.subjectId, 'name': s.name, 'icon': s.icon, 'color': s.color},
+        ],
+    };
   }
 
   /// Teacher only: stores the members' progress a student device sent.

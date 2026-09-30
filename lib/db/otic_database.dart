@@ -27,6 +27,7 @@ import 'tables/sync_state_table.dart';
 import 'tables/class_groups_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
+import 'tables/learner_subjects_table.dart';
 import 'tables/learning_paths_table.dart';
 import 'tables/member_reports_table.dart';
 import 'tables/resource_shares_table.dart';
@@ -63,6 +64,7 @@ part 'otic_database.g.dart';
     SyncIdentity,
     ServedChannels,
     MemberReports,
+    LearnerSubjects,
   ],
   daos: [
     StudentDao,
@@ -94,7 +96,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -385,8 +387,64 @@ class OticDatabase extends _$OticDatabase {
           await m.create(idxMemberReportsMember);
         }
       }
+      if (from < 18) {
+        // One teacher device per school; the teacher's subjects reach
+        // students; learners record the subjects they take.
+        if (!await _columnExists('sync_identity', 'device_role')) {
+          await m.addColumn(syncIdentity, syncIdentity.deviceRole);
+        }
+        if (await _tableExists('custom_subjects') &&
+            !await _columnExists('custom_subjects', 'class_group_uuid')) {
+          await m.addColumn(customSubjects, customSubjects.classGroupUuid);
+        }
+        if (!await _tableExists('learner_subjects')) {
+          await m.createTable(learnerSubjects);
+        }
+        if (!await _indexExists('idx_learner_subjects_unique')) {
+          await m.create(idxLearnerSubjectsUnique);
+        }
+        await _backfillDeviceRole();
+      }
     },
   );
+
+  /// Decides an existing device's role from what it already did, since the
+  /// teacher section used to be open on every device:
+  ///
+  ///  1. It created a class and actually shared it (the class has a key) →
+  ///     teacher — even if it also joined someone's class, because its
+  ///     students' devices depend on it.
+  ///  2. Otherwise, it joined a class through a teacher → student.
+  ///  3. Otherwise, it created a class → teacher.
+  ///  4. Otherwise it stays undecided until it does one or the other.
+  ///
+  /// Raw SQL: generated classes would expect today's columns mid-upgrade.
+  Future<void> _backfillDeviceRole() async {
+    if (!await _tableExists('sync_identity') ||
+        !await _tableExists('class_groups')) {
+      return;
+    }
+    Future<bool> any(String where) async =>
+        (await customSelect(
+          'SELECT 1 FROM class_groups WHERE $where LIMIT 1',
+        ).getSingleOrNull()) !=
+        null;
+    final String? role;
+    if (await any('joined = 0 AND group_uuid IS NOT NULL AND class_key IS NOT NULL')) {
+      role = kRoleTeacher;
+    } else if (await any('joined = 1')) {
+      role = kRoleStudent;
+    } else if (await any('joined = 0')) {
+      role = kRoleTeacher;
+    } else {
+      role = null;
+    }
+    if (role == null) return;
+    await customStatement(
+      'UPDATE sync_identity SET device_role = ? WHERE device_role IS NULL',
+      [role],
+    );
+  }
 
   Future<bool> _tableExists(String name) async {
     final row = await customSelect(

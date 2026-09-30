@@ -14,6 +14,16 @@ class SyncIdentity extends Table {
   TextColumn get schoolName => text().nullable()();
   TextColumn get signingSeed => text()();
 
+  /// What this device is to its school: [kRoleTeacher], [kRoleStudent], or
+  /// null until it becomes one. The teacher device is where classes and
+  /// subjects are made and students' progress arrives; a device becomes a
+  /// student device when it joins a class through a teacher, and then can't
+  /// create classes or subjects or claim the teacher role.
+  TextColumn get deviceRole => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }
+
+const kRoleTeacher = 'teacher';
+const kRoleStudent = 'student';

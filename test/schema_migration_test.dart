@@ -1,7 +1,8 @@
 import 'dart:io';
 
 import 'package:ai_connect_africa/db/otic_database.dart';
-import 'package:drift/drift.dart' hide isNotNull;
+import 'package:ai_connect_africa/db/tables/sync_identity_table.dart';
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -244,6 +245,57 @@ void main() {
       await db.customStatement('PRAGMA user_version = 16');
       await db.close();
     }
+  });
+
+  group('v17 → v18 decides each existing device’s role', () {
+    Future<String?> roleAfterUpgrade(List<String> classRows) async {
+      final dir = await Directory.systemTemp.createTemp('otic_migration_test');
+      addTearDown(() async {
+        if (await dir.exists()) await dir.delete(recursive: true);
+      });
+      final file = File(p.join(dir.path, 'test.sqlite'));
+      final seed = OticDatabase.forTesting(NativeDatabase(file));
+      await seed.classSyncDao.identity();
+      for (final values in classRows) {
+        await seed.customStatement(
+          'INSERT INTO class_groups (class_name, group_uuid, class_key, joined, '
+          'created_at) VALUES $values',
+        );
+      }
+      await seed.customStatement(
+        'ALTER TABLE sync_identity DROP COLUMN device_role',
+      );
+      await seed.customStatement('PRAGMA user_version = 17');
+      await seed.close();
+      final db = OticDatabase.forTesting(NativeDatabase(file));
+      final role = await db.classSyncDao.deviceRole();
+      await db.close();
+      return role;
+    }
+
+    const shared = "('S2', 'u1', 'key', 0, 0)";
+    const made = "('S3', 'u2', NULL, 0, 0)";
+    const joined = "('S2', 'u3', 'key', 1, 0)";
+
+    test('a device that shared a class is the teacher’s', () async {
+      expect(await roleAfterUpgrade([shared]), kRoleTeacher);
+      expect(
+        await roleAfterUpgrade([shared, joined]),
+        kRoleTeacher,
+        reason: 'its students depend on it',
+      );
+    });
+
+    test('a device that only joined is a student’s', () async {
+      expect(await roleAfterUpgrade([joined]), kRoleStudent);
+      expect(await roleAfterUpgrade([made, joined]), kRoleStudent);
+    });
+
+    test('a device that only made a class is the teacher’s; none stays open',
+        () async {
+      expect(await roleAfterUpgrade([made]), kRoleTeacher);
+      expect(await roleAfterUpgrade([]), isNull);
+    });
   });
 
   test('a badge earned before schema 14 backfills its counter on upgrade, '

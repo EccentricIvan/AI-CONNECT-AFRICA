@@ -5532,6 +5532,17 @@ class $CustomSubjectsTable extends CustomSubjects
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -5540,6 +5551,7 @@ class $CustomSubjectsTable extends CustomSubjects
     icon,
     color,
     createdAt,
+    classGroupUuid,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -5592,6 +5604,15 @@ class $CustomSubjectsTable extends CustomSubjects
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -5625,6 +5646,10 @@ class $CustomSubjectsTable extends CustomSubjects
         DriftSqlType.string,
         data['${effectivePrefix}created_at'],
       )!,
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      ),
     );
   }
 
@@ -5654,6 +5679,11 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
 
   /// ISO-8601 UTC, matching `topic_resources.created_at`.
   final String createdAt;
+
+  /// Null for a subject made on this (teacher) device. On a student device,
+  /// the [ClassGroups.groupUuid] of the class whose teacher offered it — the
+  /// teacher's subject list arrives on every sync and replaces these rows.
+  final String? classGroupUuid;
   const CustomSubject({
     required this.id,
     required this.subjectId,
@@ -5661,6 +5691,7 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
     required this.icon,
     required this.color,
     required this.createdAt,
+    this.classGroupUuid,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5671,6 +5702,9 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
     map['icon'] = Variable<String>(icon);
     map['color'] = Variable<String>(color);
     map['created_at'] = Variable<String>(createdAt);
+    if (!nullToAbsent || classGroupUuid != null) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    }
     return map;
   }
 
@@ -5682,6 +5716,9 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
       icon: Value(icon),
       color: Value(color),
       createdAt: Value(createdAt),
+      classGroupUuid: classGroupUuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(classGroupUuid),
     );
   }
 
@@ -5697,6 +5734,7 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
       icon: serializer.fromJson<String>(json['icon']),
       color: serializer.fromJson<String>(json['color']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
+      classGroupUuid: serializer.fromJson<String?>(json['classGroupUuid']),
     );
   }
   @override
@@ -5709,6 +5747,7 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
       'icon': serializer.toJson<String>(icon),
       'color': serializer.toJson<String>(color),
       'createdAt': serializer.toJson<String>(createdAt),
+      'classGroupUuid': serializer.toJson<String?>(classGroupUuid),
     };
   }
 
@@ -5719,6 +5758,7 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
     String? icon,
     String? color,
     String? createdAt,
+    Value<String?> classGroupUuid = const Value.absent(),
   }) => CustomSubject(
     id: id ?? this.id,
     subjectId: subjectId ?? this.subjectId,
@@ -5726,6 +5766,9 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
     icon: icon ?? this.icon,
     color: color ?? this.color,
     createdAt: createdAt ?? this.createdAt,
+    classGroupUuid: classGroupUuid.present
+        ? classGroupUuid.value
+        : this.classGroupUuid,
   );
   CustomSubject copyWithCompanion(CustomSubjectsCompanion data) {
     return CustomSubject(
@@ -5735,6 +5778,9 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
       icon: data.icon.present ? data.icon.value : this.icon,
       color: data.color.present ? data.color.value : this.color,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
     );
   }
 
@@ -5746,13 +5792,15 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
           ..write('name: $name, ')
           ..write('icon: $icon, ')
           ..write('color: $color, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('classGroupUuid: $classGroupUuid')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, subjectId, name, icon, color, createdAt);
+  int get hashCode =>
+      Object.hash(id, subjectId, name, icon, color, createdAt, classGroupUuid);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -5762,7 +5810,8 @@ class CustomSubject extends DataClass implements Insertable<CustomSubject> {
           other.name == this.name &&
           other.icon == this.icon &&
           other.color == this.color &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.classGroupUuid == this.classGroupUuid);
 }
 
 class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
@@ -5772,6 +5821,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
   final Value<String> icon;
   final Value<String> color;
   final Value<String> createdAt;
+  final Value<String?> classGroupUuid;
   const CustomSubjectsCompanion({
     this.id = const Value.absent(),
     this.subjectId = const Value.absent(),
@@ -5779,6 +5829,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.classGroupUuid = const Value.absent(),
   });
   CustomSubjectsCompanion.insert({
     this.id = const Value.absent(),
@@ -5787,6 +5838,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
     this.icon = const Value.absent(),
     this.color = const Value.absent(),
     required String createdAt,
+    this.classGroupUuid = const Value.absent(),
   }) : subjectId = Value(subjectId),
        name = Value(name),
        createdAt = Value(createdAt);
@@ -5797,6 +5849,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
     Expression<String>? icon,
     Expression<String>? color,
     Expression<String>? createdAt,
+    Expression<String>? classGroupUuid,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -5805,6 +5858,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
       if (icon != null) 'icon': icon,
       if (color != null) 'color': color,
       if (createdAt != null) 'created_at': createdAt,
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
     });
   }
 
@@ -5815,6 +5869,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
     Value<String>? icon,
     Value<String>? color,
     Value<String>? createdAt,
+    Value<String?>? classGroupUuid,
   }) {
     return CustomSubjectsCompanion(
       id: id ?? this.id,
@@ -5823,6 +5878,7 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
       icon: icon ?? this.icon,
       color: color ?? this.color,
       createdAt: createdAt ?? this.createdAt,
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
     );
   }
 
@@ -5847,6 +5903,9 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
     return map;
   }
 
@@ -5858,7 +5917,8 @@ class CustomSubjectsCompanion extends UpdateCompanion<CustomSubject> {
           ..write('name: $name, ')
           ..write('icon: $icon, ')
           ..write('color: $color, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('classGroupUuid: $classGroupUuid')
           ..write(')'))
         .toString();
   }
@@ -9169,8 +9229,25 @@ class $SyncIdentityTable extends SyncIdentity
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deviceRoleMeta = const VerificationMeta(
+    'deviceRole',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, schoolId, schoolName, signingSeed];
+  late final GeneratedColumn<String> deviceRole = GeneratedColumn<String>(
+    'device_role',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    schoolId,
+    schoolName,
+    signingSeed,
+    deviceRole,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -9209,6 +9286,12 @@ class $SyncIdentityTable extends SyncIdentity
     } else if (isInserting) {
       context.missing(_signingSeedMeta);
     }
+    if (data.containsKey('device_role')) {
+      context.handle(
+        _deviceRoleMeta,
+        deviceRole.isAcceptableOrUnknown(data['device_role']!, _deviceRoleMeta),
+      );
+    }
     return context;
   }
 
@@ -9234,6 +9317,10 @@ class $SyncIdentityTable extends SyncIdentity
         DriftSqlType.string,
         data['${effectivePrefix}signing_seed'],
       )!,
+      deviceRole: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_role'],
+      ),
     );
   }
 
@@ -9249,11 +9336,19 @@ class SyncIdentityData extends DataClass
   final String? schoolId;
   final String? schoolName;
   final String signingSeed;
+
+  /// What this device is to its school: [kRoleTeacher], [kRoleStudent], or
+  /// null until it becomes one. The teacher device is where classes and
+  /// subjects are made and students' progress arrives; a device becomes a
+  /// student device when it joins a class through a teacher, and then can't
+  /// create classes or subjects or claim the teacher role.
+  final String? deviceRole;
   const SyncIdentityData({
     required this.id,
     this.schoolId,
     this.schoolName,
     required this.signingSeed,
+    this.deviceRole,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9266,6 +9361,9 @@ class SyncIdentityData extends DataClass
       map['school_name'] = Variable<String>(schoolName);
     }
     map['signing_seed'] = Variable<String>(signingSeed);
+    if (!nullToAbsent || deviceRole != null) {
+      map['device_role'] = Variable<String>(deviceRole);
+    }
     return map;
   }
 
@@ -9279,6 +9377,9 @@ class SyncIdentityData extends DataClass
           ? const Value.absent()
           : Value(schoolName),
       signingSeed: Value(signingSeed),
+      deviceRole: deviceRole == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceRole),
     );
   }
 
@@ -9292,6 +9393,7 @@ class SyncIdentityData extends DataClass
       schoolId: serializer.fromJson<String?>(json['schoolId']),
       schoolName: serializer.fromJson<String?>(json['schoolName']),
       signingSeed: serializer.fromJson<String>(json['signingSeed']),
+      deviceRole: serializer.fromJson<String?>(json['deviceRole']),
     );
   }
   @override
@@ -9302,6 +9404,7 @@ class SyncIdentityData extends DataClass
       'schoolId': serializer.toJson<String?>(schoolId),
       'schoolName': serializer.toJson<String?>(schoolName),
       'signingSeed': serializer.toJson<String>(signingSeed),
+      'deviceRole': serializer.toJson<String?>(deviceRole),
     };
   }
 
@@ -9310,11 +9413,13 @@ class SyncIdentityData extends DataClass
     Value<String?> schoolId = const Value.absent(),
     Value<String?> schoolName = const Value.absent(),
     String? signingSeed,
+    Value<String?> deviceRole = const Value.absent(),
   }) => SyncIdentityData(
     id: id ?? this.id,
     schoolId: schoolId.present ? schoolId.value : this.schoolId,
     schoolName: schoolName.present ? schoolName.value : this.schoolName,
     signingSeed: signingSeed ?? this.signingSeed,
+    deviceRole: deviceRole.present ? deviceRole.value : this.deviceRole,
   );
   SyncIdentityData copyWithCompanion(SyncIdentityCompanion data) {
     return SyncIdentityData(
@@ -9326,6 +9431,9 @@ class SyncIdentityData extends DataClass
       signingSeed: data.signingSeed.present
           ? data.signingSeed.value
           : this.signingSeed,
+      deviceRole: data.deviceRole.present
+          ? data.deviceRole.value
+          : this.deviceRole,
     );
   }
 
@@ -9335,13 +9443,15 @@ class SyncIdentityData extends DataClass
           ..write('id: $id, ')
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
-          ..write('signingSeed: $signingSeed')
+          ..write('signingSeed: $signingSeed, ')
+          ..write('deviceRole: $deviceRole')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, schoolId, schoolName, signingSeed);
+  int get hashCode =>
+      Object.hash(id, schoolId, schoolName, signingSeed, deviceRole);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -9349,7 +9459,8 @@ class SyncIdentityData extends DataClass
           other.id == this.id &&
           other.schoolId == this.schoolId &&
           other.schoolName == this.schoolName &&
-          other.signingSeed == this.signingSeed);
+          other.signingSeed == this.signingSeed &&
+          other.deviceRole == this.deviceRole);
 }
 
 class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
@@ -9357,29 +9468,34 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
   final Value<String?> schoolId;
   final Value<String?> schoolName;
   final Value<String> signingSeed;
+  final Value<String?> deviceRole;
   const SyncIdentityCompanion({
     this.id = const Value.absent(),
     this.schoolId = const Value.absent(),
     this.schoolName = const Value.absent(),
     this.signingSeed = const Value.absent(),
+    this.deviceRole = const Value.absent(),
   });
   SyncIdentityCompanion.insert({
     this.id = const Value.absent(),
     this.schoolId = const Value.absent(),
     this.schoolName = const Value.absent(),
     required String signingSeed,
+    this.deviceRole = const Value.absent(),
   }) : signingSeed = Value(signingSeed);
   static Insertable<SyncIdentityData> custom({
     Expression<int>? id,
     Expression<String>? schoolId,
     Expression<String>? schoolName,
     Expression<String>? signingSeed,
+    Expression<String>? deviceRole,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (schoolId != null) 'school_id': schoolId,
       if (schoolName != null) 'school_name': schoolName,
       if (signingSeed != null) 'signing_seed': signingSeed,
+      if (deviceRole != null) 'device_role': deviceRole,
     });
   }
 
@@ -9388,12 +9504,14 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     Value<String?>? schoolId,
     Value<String?>? schoolName,
     Value<String>? signingSeed,
+    Value<String?>? deviceRole,
   }) {
     return SyncIdentityCompanion(
       id: id ?? this.id,
       schoolId: schoolId ?? this.schoolId,
       schoolName: schoolName ?? this.schoolName,
       signingSeed: signingSeed ?? this.signingSeed,
+      deviceRole: deviceRole ?? this.deviceRole,
     );
   }
 
@@ -9412,6 +9530,9 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     if (signingSeed.present) {
       map['signing_seed'] = Variable<String>(signingSeed.value);
     }
+    if (deviceRole.present) {
+      map['device_role'] = Variable<String>(deviceRole.value);
+    }
     return map;
   }
 
@@ -9421,7 +9542,8 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
           ..write('id: $id, ')
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
-          ..write('signingSeed: $signingSeed')
+          ..write('signingSeed: $signingSeed, ')
+          ..write('deviceRole: $deviceRole')
           ..write(')'))
         .toString();
   }
@@ -10203,6 +10325,310 @@ class MemberReportsCompanion extends UpdateCompanion<MemberReport> {
   }
 }
 
+class $LearnerSubjectsTable extends LearnerSubjects
+    with TableInfo<$LearnerSubjectsTable, LearnerSubject> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LearnerSubjectsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _studentIdMeta = const VerificationMeta(
+    'studentId',
+  );
+  @override
+  late final GeneratedColumn<int> studentId = GeneratedColumn<int>(
+    'student_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _enrolledAtMeta = const VerificationMeta(
+    'enrolledAt',
+  );
+  @override
+  late final GeneratedColumn<String> enrolledAt = GeneratedColumn<String>(
+    'enrolled_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, studentId, subjectId, enrolledAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'learner_subjects';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LearnerSubject> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('student_id')) {
+      context.handle(
+        _studentIdMeta,
+        studentId.isAcceptableOrUnknown(data['student_id']!, _studentIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_studentIdMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('enrolled_at')) {
+      context.handle(
+        _enrolledAtMeta,
+        enrolledAt.isAcceptableOrUnknown(data['enrolled_at']!, _enrolledAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_enrolledAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LearnerSubject map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LearnerSubject(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      studentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}student_id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      enrolledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}enrolled_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LearnerSubjectsTable createAlias(String alias) {
+    return $LearnerSubjectsTable(attachedDatabase, alias);
+  }
+}
+
+class LearnerSubject extends DataClass implements Insertable<LearnerSubject> {
+  final int id;
+  final int studentId;
+  final String subjectId;
+
+  /// ISO-8601 UTC.
+  final String enrolledAt;
+  const LearnerSubject({
+    required this.id,
+    required this.studentId,
+    required this.subjectId,
+    required this.enrolledAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['student_id'] = Variable<int>(studentId);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['enrolled_at'] = Variable<String>(enrolledAt);
+    return map;
+  }
+
+  LearnerSubjectsCompanion toCompanion(bool nullToAbsent) {
+    return LearnerSubjectsCompanion(
+      id: Value(id),
+      studentId: Value(studentId),
+      subjectId: Value(subjectId),
+      enrolledAt: Value(enrolledAt),
+    );
+  }
+
+  factory LearnerSubject.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LearnerSubject(
+      id: serializer.fromJson<int>(json['id']),
+      studentId: serializer.fromJson<int>(json['studentId']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      enrolledAt: serializer.fromJson<String>(json['enrolledAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'studentId': serializer.toJson<int>(studentId),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'enrolledAt': serializer.toJson<String>(enrolledAt),
+    };
+  }
+
+  LearnerSubject copyWith({
+    int? id,
+    int? studentId,
+    String? subjectId,
+    String? enrolledAt,
+  }) => LearnerSubject(
+    id: id ?? this.id,
+    studentId: studentId ?? this.studentId,
+    subjectId: subjectId ?? this.subjectId,
+    enrolledAt: enrolledAt ?? this.enrolledAt,
+  );
+  LearnerSubject copyWithCompanion(LearnerSubjectsCompanion data) {
+    return LearnerSubject(
+      id: data.id.present ? data.id.value : this.id,
+      studentId: data.studentId.present ? data.studentId.value : this.studentId,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      enrolledAt: data.enrolledAt.present
+          ? data.enrolledAt.value
+          : this.enrolledAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearnerSubject(')
+          ..write('id: $id, ')
+          ..write('studentId: $studentId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('enrolledAt: $enrolledAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, studentId, subjectId, enrolledAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LearnerSubject &&
+          other.id == this.id &&
+          other.studentId == this.studentId &&
+          other.subjectId == this.subjectId &&
+          other.enrolledAt == this.enrolledAt);
+}
+
+class LearnerSubjectsCompanion extends UpdateCompanion<LearnerSubject> {
+  final Value<int> id;
+  final Value<int> studentId;
+  final Value<String> subjectId;
+  final Value<String> enrolledAt;
+  const LearnerSubjectsCompanion({
+    this.id = const Value.absent(),
+    this.studentId = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.enrolledAt = const Value.absent(),
+  });
+  LearnerSubjectsCompanion.insert({
+    this.id = const Value.absent(),
+    required int studentId,
+    required String subjectId,
+    required String enrolledAt,
+  }) : studentId = Value(studentId),
+       subjectId = Value(subjectId),
+       enrolledAt = Value(enrolledAt);
+  static Insertable<LearnerSubject> custom({
+    Expression<int>? id,
+    Expression<int>? studentId,
+    Expression<String>? subjectId,
+    Expression<String>? enrolledAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (studentId != null) 'student_id': studentId,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (enrolledAt != null) 'enrolled_at': enrolledAt,
+    });
+  }
+
+  LearnerSubjectsCompanion copyWith({
+    Value<int>? id,
+    Value<int>? studentId,
+    Value<String>? subjectId,
+    Value<String>? enrolledAt,
+  }) {
+    return LearnerSubjectsCompanion(
+      id: id ?? this.id,
+      studentId: studentId ?? this.studentId,
+      subjectId: subjectId ?? this.subjectId,
+      enrolledAt: enrolledAt ?? this.enrolledAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (studentId.present) {
+      map['student_id'] = Variable<int>(studentId.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (enrolledAt.present) {
+      map['enrolled_at'] = Variable<String>(enrolledAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearnerSubjectsCompanion(')
+          ..write('id: $id, ')
+          ..write('studentId: $studentId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('enrolledAt: $enrolledAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -10233,6 +10659,9 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $SyncIdentityTable syncIdentity = $SyncIdentityTable(this);
   late final $ServedChannelsTable servedChannels = $ServedChannelsTable(this);
   late final $MemberReportsTable memberReports = $MemberReportsTable(this);
+  late final $LearnerSubjectsTable learnerSubjects = $LearnerSubjectsTable(
+    this,
+  );
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -10272,6 +10701,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final Index idxMemberReportsMember = Index(
     'idx_member_reports_member',
     'CREATE UNIQUE INDEX idx_member_reports_member ON member_reports (class_group_uuid, member_key)',
+  );
+  late final Index idxLearnerSubjectsUnique = Index(
+    'idx_learner_subjects_unique',
+    'CREATE UNIQUE INDEX idx_learner_subjects_unique ON learner_subjects (student_id, subject_id)',
   );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
@@ -10322,6 +10755,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     syncIdentity,
     servedChannels,
     memberReports,
+    learnerSubjects,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -10332,6 +10766,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxResourceSharesUnique,
     idxServedChannelsChannel,
     idxMemberReportsMember,
+    idxLearnerSubjectsUnique,
   ];
 }
 
@@ -13017,6 +13452,7 @@ typedef $$CustomSubjectsTableCreateCompanionBuilder =
       Value<String> icon,
       Value<String> color,
       required String createdAt,
+      Value<String?> classGroupUuid,
     });
 typedef $$CustomSubjectsTableUpdateCompanionBuilder =
     CustomSubjectsCompanion Function({
@@ -13026,6 +13462,7 @@ typedef $$CustomSubjectsTableUpdateCompanionBuilder =
       Value<String> icon,
       Value<String> color,
       Value<String> createdAt,
+      Value<String?> classGroupUuid,
     });
 
 class $$CustomSubjectsTableFilterComposer
@@ -13064,6 +13501,11 @@ class $$CustomSubjectsTableFilterComposer
 
   ColumnFilters<String> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -13106,6 +13548,11 @@ class $$CustomSubjectsTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CustomSubjectsTableAnnotationComposer
@@ -13134,6 +13581,11 @@ class $$CustomSubjectsTableAnnotationComposer
 
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
 }
 
 class $$CustomSubjectsTableTableManager
@@ -13175,6 +13627,7 @@ class $$CustomSubjectsTableTableManager
                 Value<String> icon = const Value.absent(),
                 Value<String> color = const Value.absent(),
                 Value<String> createdAt = const Value.absent(),
+                Value<String?> classGroupUuid = const Value.absent(),
               }) => CustomSubjectsCompanion(
                 id: id,
                 subjectId: subjectId,
@@ -13182,6 +13635,7 @@ class $$CustomSubjectsTableTableManager
                 icon: icon,
                 color: color,
                 createdAt: createdAt,
+                classGroupUuid: classGroupUuid,
               ),
           createCompanionCallback:
               ({
@@ -13191,6 +13645,7 @@ class $$CustomSubjectsTableTableManager
                 Value<String> icon = const Value.absent(),
                 Value<String> color = const Value.absent(),
                 required String createdAt,
+                Value<String?> classGroupUuid = const Value.absent(),
               }) => CustomSubjectsCompanion.insert(
                 id: id,
                 subjectId: subjectId,
@@ -13198,6 +13653,7 @@ class $$CustomSubjectsTableTableManager
                 icon: icon,
                 color: color,
                 createdAt: createdAt,
+                classGroupUuid: classGroupUuid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -14833,6 +15289,7 @@ typedef $$SyncIdentityTableCreateCompanionBuilder =
       Value<String?> schoolId,
       Value<String?> schoolName,
       required String signingSeed,
+      Value<String?> deviceRole,
     });
 typedef $$SyncIdentityTableUpdateCompanionBuilder =
     SyncIdentityCompanion Function({
@@ -14840,6 +15297,7 @@ typedef $$SyncIdentityTableUpdateCompanionBuilder =
       Value<String?> schoolId,
       Value<String?> schoolName,
       Value<String> signingSeed,
+      Value<String?> deviceRole,
     });
 
 class $$SyncIdentityTableFilterComposer
@@ -14868,6 +15326,11 @@ class $$SyncIdentityTableFilterComposer
 
   ColumnFilters<String> get signingSeed => $composableBuilder(
     column: $table.signingSeed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceRole => $composableBuilder(
+    column: $table.deviceRole,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14900,6 +15363,11 @@ class $$SyncIdentityTableOrderingComposer
     column: $table.signingSeed,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get deviceRole => $composableBuilder(
+    column: $table.deviceRole,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncIdentityTableAnnotationComposer
@@ -14924,6 +15392,11 @@ class $$SyncIdentityTableAnnotationComposer
 
   GeneratedColumn<String> get signingSeed => $composableBuilder(
     column: $table.signingSeed,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deviceRole => $composableBuilder(
+    column: $table.deviceRole,
     builder: (column) => column,
   );
 }
@@ -14967,11 +15440,13 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolId = const Value.absent(),
                 Value<String?> schoolName = const Value.absent(),
                 Value<String> signingSeed = const Value.absent(),
+                Value<String?> deviceRole = const Value.absent(),
               }) => SyncIdentityCompanion(
                 id: id,
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
+                deviceRole: deviceRole,
               ),
           createCompanionCallback:
               ({
@@ -14979,11 +15454,13 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolId = const Value.absent(),
                 Value<String?> schoolName = const Value.absent(),
                 required String signingSeed,
+                Value<String?> deviceRole = const Value.absent(),
               }) => SyncIdentityCompanion.insert(
                 id: id,
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
+                deviceRole: deviceRole,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -15427,6 +15904,189 @@ typedef $$MemberReportsTableProcessedTableManager =
       MemberReport,
       PrefetchHooks Function()
     >;
+typedef $$LearnerSubjectsTableCreateCompanionBuilder =
+    LearnerSubjectsCompanion Function({
+      Value<int> id,
+      required int studentId,
+      required String subjectId,
+      required String enrolledAt,
+    });
+typedef $$LearnerSubjectsTableUpdateCompanionBuilder =
+    LearnerSubjectsCompanion Function({
+      Value<int> id,
+      Value<int> studentId,
+      Value<String> subjectId,
+      Value<String> enrolledAt,
+    });
+
+class $$LearnerSubjectsTableFilterComposer
+    extends Composer<_$OticDatabase, $LearnerSubjectsTable> {
+  $$LearnerSubjectsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get studentId => $composableBuilder(
+    column: $table.studentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get enrolledAt => $composableBuilder(
+    column: $table.enrolledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LearnerSubjectsTableOrderingComposer
+    extends Composer<_$OticDatabase, $LearnerSubjectsTable> {
+  $$LearnerSubjectsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get studentId => $composableBuilder(
+    column: $table.studentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get enrolledAt => $composableBuilder(
+    column: $table.enrolledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LearnerSubjectsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $LearnerSubjectsTable> {
+  $$LearnerSubjectsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get studentId =>
+      $composableBuilder(column: $table.studentId, builder: (column) => column);
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get enrolledAt => $composableBuilder(
+    column: $table.enrolledAt,
+    builder: (column) => column,
+  );
+}
+
+class $$LearnerSubjectsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $LearnerSubjectsTable,
+          LearnerSubject,
+          $$LearnerSubjectsTableFilterComposer,
+          $$LearnerSubjectsTableOrderingComposer,
+          $$LearnerSubjectsTableAnnotationComposer,
+          $$LearnerSubjectsTableCreateCompanionBuilder,
+          $$LearnerSubjectsTableUpdateCompanionBuilder,
+          (
+            LearnerSubject,
+            BaseReferences<
+              _$OticDatabase,
+              $LearnerSubjectsTable,
+              LearnerSubject
+            >,
+          ),
+          LearnerSubject,
+          PrefetchHooks Function()
+        > {
+  $$LearnerSubjectsTableTableManager(
+    _$OticDatabase db,
+    $LearnerSubjectsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LearnerSubjectsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LearnerSubjectsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LearnerSubjectsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<int> studentId = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> enrolledAt = const Value.absent(),
+              }) => LearnerSubjectsCompanion(
+                id: id,
+                studentId: studentId,
+                subjectId: subjectId,
+                enrolledAt: enrolledAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required int studentId,
+                required String subjectId,
+                required String enrolledAt,
+              }) => LearnerSubjectsCompanion.insert(
+                id: id,
+                studentId: studentId,
+                subjectId: subjectId,
+                enrolledAt: enrolledAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LearnerSubjectsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $LearnerSubjectsTable,
+      LearnerSubject,
+      $$LearnerSubjectsTableFilterComposer,
+      $$LearnerSubjectsTableOrderingComposer,
+      $$LearnerSubjectsTableAnnotationComposer,
+      $$LearnerSubjectsTableCreateCompanionBuilder,
+      $$LearnerSubjectsTableUpdateCompanionBuilder,
+      (
+        LearnerSubject,
+        BaseReferences<_$OticDatabase, $LearnerSubjectsTable, LearnerSubject>,
+      ),
+      LearnerSubject,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -15472,4 +16132,6 @@ class $OticDatabaseManager {
       $$ServedChannelsTableTableManager(_db, _db.servedChannels);
   $$MemberReportsTableTableManager get memberReports =>
       $$MemberReportsTableTableManager(_db, _db.memberReports);
+  $$LearnerSubjectsTableTableManager get learnerSubjects =>
+      $$LearnerSubjectsTableTableManager(_db, _db.learnerSubjects);
 }
