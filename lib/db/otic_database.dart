@@ -30,6 +30,7 @@ import 'tables/co_teachers_table.dart';
 import 'tables/co_teaching_classes_table.dart';
 import 'tables/custom_subjects_table.dart';
 import 'tables/earned_badges_table.dart';
+import 'tables/failover_tables.dart';
 import 'tables/learner_subjects_table.dart';
 import 'tables/learning_paths_table.dart';
 import 'tables/member_reports_table.dart';
@@ -70,6 +71,8 @@ part 'otic_database.g.dart';
     LearnerSubjects,
     ClassCoTeachers,
     CoTeachingClasses,
+    FailoverStandbys,
+    HostLedgers,
   ],
   daos: [
     StudentDao,
@@ -102,7 +105,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 19;
+  int get schemaVersion => 20;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -446,6 +449,49 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _indexExists('idx_co_teaching_classes_uuid')) {
           await m.create(idxCoTeachingClassesUuid);
+        }
+      }
+      if (from < 20) {
+        // Host failover: a standby device can take over the root teacher's
+        // identity. Additive — generation 0 and a null epoch behave exactly
+        // as before.
+        for (final (table, col, add) in [
+          (
+            'sync_identity',
+            'host_generation',
+            () => m.addColumn(syncIdentity, syncIdentity.hostGeneration),
+          ),
+          (
+            'sync_identity',
+            'failover_seal_key',
+            () => m.addColumn(syncIdentity, syncIdentity.failoverSealKey),
+          ),
+          (
+            'sync_identity',
+            'failover_kdf_salt',
+            () => m.addColumn(syncIdentity, syncIdentity.failoverKdfSalt),
+          ),
+          (
+            'sync_identity',
+            'failover_kdf_rounds',
+            () => m.addColumn(syncIdentity, syncIdentity.failoverKdfRounds),
+          ),
+          (
+            'class_groups',
+            'host_epoch',
+            () => m.addColumn(classGroups, classGroups.hostEpoch),
+          ),
+        ]) {
+          if (!await _columnExists(table, col)) await add();
+        }
+        if (!await _tableExists('failover_standbys')) {
+          await m.createTable(failoverStandbys);
+        }
+        if (!await _indexExists('idx_failover_standbys_key')) {
+          await m.create(idxFailoverStandbysKey);
+        }
+        if (!await _tableExists('host_ledgers')) {
+          await m.createTable(hostLedgers);
         }
       }
     },

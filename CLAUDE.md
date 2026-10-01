@@ -270,6 +270,30 @@ loosen any of these rules:
     receive progress reports.
   - A delegated class lives in `co_teaching_classes`, never in
     `class_groups`.
+- **Host failover (schema 20).** A standby can take over as the root
+  teacher device (`P2PFailoverService`, `lib/collaboration/sync/p2p_failover_service.dart`).
+  - The teacher sets a failover passphrase (≥12 chars). A standby pairs
+    with a code + Accept (`api/v4/failover/pair`), then pulls the host
+    ledger (`api/v4/failover/ledger`, requests signed by the standby's
+    pinned key, replies signed by the root key).
+  - The ledger holds the root **signing seed**, classes + keys, served
+    versions, roster/co-teachers, subjects, shares and the shared notes,
+    AES-GCM sealed under a PBKDF2 (600k) passphrase key — never a class key.
+    The root private key therefore leaves the teacher's device, protected
+    only by the passphrase.
+  - `promoteToHostNode` opens it offline and becomes root under the same
+    key at `hostGeneration + 1`. Served/roster versions are lifted to
+    `generationFloor(gen)` so they outrank the old device. Students change
+    nothing; root handshakes carry `host_epoch`, and a student refuses a
+    lower one (`class_groups.host_epoch`), so a returning old device can't
+    drop notes.
+  - Refused on student devices and on devices serving their own classes.
+    Not carried: `member_reports` (re-sent next sync) and the standby list.
+- **Android keeps sharing in the background.** While any `ClassShareServer`
+  runs, `ShareKeepAlive` (ref-counted) starts `ClassShareService.kt`: a
+  `connectedDevice` foreground service with an ongoing notification, a
+  Wi-Fi lock and a partial wake lock (capped at 3 h). It stops with the
+  last server. If Android refuses it, sharing still works on screen.
 - **Protocol v4 only.** Devices on older builds can't sync with upgraded
   ones.
 

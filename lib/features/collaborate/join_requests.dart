@@ -54,9 +54,12 @@ class JoinRequestsCard extends StatelessWidget {
                   child: Row(
                     children: [
                       Icon(
-                        p.kind == PendingJoinKind.coTeacher
-                            ? Icons.school_rounded
-                            : Icons.person_outline_rounded,
+                        switch (p.kind) {
+                          PendingJoinKind.coTeacher => Icons.school_rounded,
+                          PendingJoinKind.standby => Icons.backup_rounded,
+                          PendingJoinKind.student =>
+                            Icons.person_outline_rounded,
+                        },
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -70,6 +73,15 @@ class JoinRequestsCard extends StatelessWidget {
                                   : '${p.name} · ${p.address}',
                               style: TextStyle(color: ac.textPrimary),
                             ),
+                            if (p.kind == PendingJoinKind.standby)
+                              Text(
+                                'Standby device: can take over as this '
+                                'school’s teacher device with your passphrase',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: ac.textSecondary,
+                                ),
+                              ),
                             if (p.kind == PendingJoinKind.coTeacher)
                               Text(
                                 'Co-teacher for: ${p.subjectIds.map(subjectName ?? (s) => s).join(', ')}',

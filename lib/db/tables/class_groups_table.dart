@@ -67,4 +67,12 @@ class ClassGroups extends Table {
   /// The cached roster itself (JSON), re-verified against [teacherPublicKey]
   /// whenever it's used, never trusted on its own.
   TextColumn get rosterJson => text().nullable()();
+
+  // ── Host failover ──────────────────────────────────────────────────────
+
+  /// On a joined class: the highest `host_epoch` a root-signed handshake
+  /// has carried. A handshake with a lower one comes from a teacher device
+  /// a standby has since replaced, and is refused before it can drop or
+  /// replace anything. Null means 0 (no takeover seen yet).
+  IntColumn get hostEpoch => integer().nullable()();
 }

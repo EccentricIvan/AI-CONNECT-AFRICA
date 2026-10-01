@@ -676,6 +676,21 @@ class SelectiveSyncManager {
     final List<ChannelManifest> manifests;
     try {
       final hello = await call(kHandshakePath, {'school_id': schoolId});
+      // Host failover: a root-signed reply from a device a standby has
+      // since taken over from carries an older epoch. Refuse it before it
+      // can drop or replace anything (it holds the same key, so its
+      // signature alone proves nothing). A co-teacher's reply carries none.
+      if (signer == rootKey) {
+        final epoch = hello['host_epoch'] is int ? hello['host_epoch'] as int : 0;
+        if (epoch < (group.hostEpoch ?? 0)) {
+          throw const SyncTrustError(
+            'it was replaced by a newer teacher device for this class',
+          );
+        }
+        if (epoch > (group.hostEpoch ?? 0)) {
+          await _db.classSyncDao.raiseHostEpoch(uuid, epoch);
+        }
+      }
       manifests = await _manifests(hello, schoolId: schoolId, classUuid: uuid);
       roster = await _refreshRosterIfNewer(
         hello['roster'],

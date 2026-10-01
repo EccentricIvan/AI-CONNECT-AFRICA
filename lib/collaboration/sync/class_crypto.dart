@@ -672,6 +672,17 @@ String? schoolTag(String? schoolId) => schoolId == null
           .toString()
           .substring(0, 12);
 
+// ── Host generation ────────────────────────────────────────────────────────
+
+/// Versions a host signs (channels and rosters) start at
+/// `hostGeneration * kHostGenerationStride`. A standby that takes over bumps
+/// the generation, so everything it signs outranks anything the replaced
+/// device could still sign — no counter on one phone reaches 2^32 bumps.
+const kHostGenerationStride = 1 << 32;
+
+/// The lowest version a host of [generation] signs with.
+int generationFloor(int generation) => generation * kHostGenerationStride;
+
 // ── Channel version ────────────────────────────────────────────────────────
 
 /// A class+subject channel's version: a digest over its chunk hashes, in a
