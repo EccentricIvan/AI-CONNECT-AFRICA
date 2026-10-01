@@ -24,6 +24,8 @@ import '../../memory/session_recall.dart';
 import '../../voice/voice_locales.dart';
 import '../../voice/voice_provider.dart';
 import '../../voice/voice_service.dart';
+import '../../services/pdf/diagram_detector.dart';
+import '../notes/note_pdf_screen.dart';
 import 'home_greeting.dart';
 
 class _ChatEntry {
@@ -38,9 +40,11 @@ class _ChatEntry {
     this.mathCoach = false,
     this.translationFailure,
     this.recap,
+    this.diagrams = const [],
   });
   final String text;
   final bool isUser;
+  final List<DiagramMarker> diagrams;
 
   /// Set on the single entry that opens a reopened chat.
   final SessionRecall? recap;
@@ -310,6 +314,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                       mathCoach: msg.mathCoach,
                       translationFailure: msg.translationFailure,
                       recap: msg.recap,
+                      diagrams: msg.diagrams,
                     ));
                     if (msg.isUser && msg.lesson != null) {
                       allItems.add(_ChatEntry(text: '', isUser: false, lesson: msg.lesson));
@@ -385,6 +390,7 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
                         codingCoach: widget.programmingSubject ||
                             entry.text.contains('```'),
                         translationFailure: entry.translationFailure,
+                        diagrams: entry.diagrams,
                         onChip: _onCoachChip,
                         onReadAloud: _speakable(entry).isNotEmpty
                             ? () => _readAloud(_speakable(entry))
@@ -631,10 +637,12 @@ class _TutorBubble extends StatelessWidget {
     this.isSpeaking = false,
     this.translationFailure,
     this.isStreaming = false,
+    this.diagrams = const [],
   });
 
   final String text;
   final TutorStage? stage;
+  final List<DiagramMarker> diagrams;
   final SchoolMathSolution? math;
   final bool mathCoach;
   final bool codingCoach;
@@ -771,6 +779,7 @@ class _TutorBubble extends StatelessWidget {
               ],
             ),
           ),
+          if (diagrams.isNotEmpty) DiagramPageButtons(diagrams: diagrams),
           if (onChip != null && mathCoach)
             Padding(
               padding: const EdgeInsets.only(bottom: 4, left: 2),

@@ -100,13 +100,34 @@ Future<SecretKey> _replyKey(String classKey) => _hkdf.deriveKey(
 List<int> _signedBytes(String requestNonce, String n, String c, String m) =>
     utf8.encode('otic-sync-reply-v1\n$requestNonce\n$n\n$c\n$m');
 
-/// Encrypts [json] for the class and signs it for [requestNonce].
+/// Ciphertext (base64) above which a reply is opened off the UI isolate.
+/// AES-GCM and Ed25519 here are pure Dart: a note's PDF (megabytes) would
+/// otherwise freeze the screen and stall every other device's sync.
+const kHeavyReplyChars = 256 * 1024;
+
+/// Encrypts [json] for the class and signs it for [requestNonce]. [heavy]
+/// (a PDF reply) does the work on a background isolate.
 Future<Map<String, Object?>> sealReply({
   required String classKey,
   required String signingSeed,
   required String requestNonce,
   required Object? json,
-}) async {
+  bool heavy = false,
+}) {
+  if (heavy) {
+    return Isolate.run(
+      () => _sealReply(classKey, signingSeed, requestNonce, json),
+    );
+  }
+  return _sealReply(classKey, signingSeed, requestNonce, json);
+}
+
+Future<Map<String, Object?>> _sealReply(
+  String classKey,
+  String signingSeed,
+  String requestNonce,
+  Object? json,
+) async {
   final nonce = randomBytes(12);
   final box = await _aes.encrypt(
     utf8.encode(jsonEncode(json)),
@@ -139,7 +160,22 @@ Future<Object?> openReply({
   required String teacherPublicKey,
   required String requestNonce,
   required Object? sealed,
-}) async {
+}) {
+  if (sealed is Map && '${sealed['c']}'.length > kHeavyReplyChars) {
+    final copy = Map<String, Object?>.from(sealed);
+    return Isolate.run(
+      () => _openReply(classKey, teacherPublicKey, requestNonce, copy),
+    );
+  }
+  return _openReply(classKey, teacherPublicKey, requestNonce, sealed);
+}
+
+Future<Object?> _openReply(
+  String classKey,
+  String teacherPublicKey,
+  String requestNonce,
+  Object? sealed,
+) async {
   if (sealed is! Map || sealed['v'] != 1) {
     throw const SyncTrustError('not a sealed reply');
   }
@@ -184,7 +220,19 @@ Future<Map<String, Object?>> sealRelayReply({
   required String classKey,
   required String requestNonce,
   required Object? json,
-}) async {
+  bool heavy = false,
+}) {
+  if (heavy) {
+    return Isolate.run(() => _sealRelayReply(classKey, requestNonce, json));
+  }
+  return _sealRelayReply(classKey, requestNonce, json);
+}
+
+Future<Map<String, Object?>> _sealRelayReply(
+  String classKey,
+  String requestNonce,
+  Object? json,
+) async {
   final box = await _aes.encrypt(
     utf8.encode(jsonEncode(json)),
     secretKey: await _relayKey(classKey),
@@ -203,7 +251,19 @@ Future<Object?> openRelayReply({
   required String classKey,
   required String requestNonce,
   required Object? sealed,
-}) async {
+}) {
+  if (sealed is Map && '${sealed['c']}'.length > kHeavyReplyChars) {
+    final copy = Map<String, Object?>.from(sealed);
+    return Isolate.run(() => _openRelayReply(classKey, requestNonce, copy));
+  }
+  return _openRelayReply(classKey, requestNonce, sealed);
+}
+
+Future<Object?> _openRelayReply(
+  String classKey,
+  String requestNonce,
+  Object? sealed,
+) async {
   if (sealed is! Map || sealed['v'] != 2) {
     throw const SyncTrustError('not a classmate reply');
   }

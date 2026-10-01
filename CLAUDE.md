@@ -105,7 +105,14 @@ own prompt. Don't confuse it with the Teacher *role*/dashboard, which stays.
 - Guests: no saved state, no certificates, demonstration only
 - Students: full learning features, memory, certificates
 - Teachers: read student data, create groups/quizzes, cannot modify platform
-- Admins: device/user/update management, no learning features
+- Admins: device/user/update management, no learning features. There is no
+  separate Admin screen any more: it became **Teachers** (`/teachers`,
+  `lib/features/teachers/teachers_screen.dart`), which lists the school's
+  teacher devices (this one, its co-teachers, the classes it co-teaches, its
+  standbys), links the teacher tools, and keeps the old admin parts (school,
+  learner delete, reset, packages, updates). `/admin` redirects there.
+  It is PIN-gated but not role-gated, so student devices can still manage
+  their learners.
 
 ### Shared devices, classes and the teacher PIN
 
@@ -126,14 +133,15 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
   `students.class_group_id`. A learner is in at most one; a stream is a
   separate row, e.g. "S2 East". Progress rollups are computed on read from
   `topic_progress` and never stored. Subjects stay device-wide.
-- **Teacher PIN** (`teacher_pin.dart`) gates `/teacher*` and `/admin*`. It
+- **Teacher PIN** (`teacher_pin.dart`) gates `/teacher*`, `/teachers` and `/admin*`. It
   stores only a salted hash, and with no PIN set nothing is gated. It keeps
   learners out; it is not real security.
 
 ### Teacher notes → tutor (offline knowledge base)
 
 Uploaded files become plain text, which is split into sections and then into
-~500-char rows in `topic_resources`. The original file is not kept. That
+~500-char rows in `topic_resources`. Only a PDF's original is kept (see
+**Original PDFs** below); other files are not. That
 split is for the tutor's search only. People see, share and delete **one
 note per uploaded file** (`topic_resources.document_title`). Never list the
 per-heading sections or chunks in the UI.
@@ -167,8 +175,44 @@ the fallback for files PDFium can't open.
     or look in the printed copy".
   - That line is shown once per topic, is added after `_remember` so it
     never enters memory, and is added before translation.
-  - Page numbers are PDF page numbers, so the caption comes first. The
-    original PDF is still not kept or synced.
+  - Page numbers are PDF page numbers, so the caption comes first.
+  - The markers also go to the chat as data (`TutorResponse.diagrams` →
+    `ChatMessage.diagrams`). The bubble shows "Open page N"
+    (`DiagramPageButtons`) only for PDFs this learner may open, so a
+    translated reply still opens the right page.
+
+**Original PDFs (kept, viewable, synced).** Reversed 2026-10-01 at the user's
+request: the tutor uses the notes as a source of truth, so people must be
+able to read them as uploaded.
+- At the end of a successful import (never on cancel or failure),
+  `NotePdfStore` (`lib/services/notes/note_pdf_store.dart`) stores the file
+  as `<app support>/otic_note_pdfs/<sha256>.pdf`, up to 40 MB.
+- It also writes one **marker row** in the note: `topic_key = '~pdf-original'`,
+  content `[PDF: sha256=… | pages=… | bytes=…]`.
+  - Because the marker is part of the note, the teacher's signed channel
+    digest covers it. It is shared and unshared, relayed verbatim by
+    classmates, deleted, and carried in a failover ledger exactly like the
+    note.
+  - The `~` keeps it out of `MIN(topic_key)`. FTS search and
+    `chunksForSubject` exclude it.
+- **Bytes** come from `api/v4/sync/file` (`ClassShareServer._noteFile`).
+  - It serves a file only if its marker is in a channel the requester may
+    pull.
+  - The client (`SelectiveSyncManager._fetchMissingPdfs`) downloads only
+    files it doesn't have, and stores them only if they hash to the signed
+    SHA-256.
+  - It is best-effort: a build without the endpoint answers 404, and the
+    note still syncs as text.
+- `collectGarbage` deletes files no marker refers to. It skips files younger
+  than 10 minutes, because an import may not have recorded them yet.
+- **Viewer:** `/note-pdf` (`NotePdfScreen`, pdfrx `PdfViewer`). It is opened
+  from Lesson materials (teacher), Class sync → Notes as PDFs (student) and
+  the tutor's page buttons.
+- **Known gaps:**
+  - PDFs uploaded before this change have no original. Re-upload them to
+    view.
+  - A promoted standby has the markers but not the bytes, so it can't serve
+    files until they are re-uploaded. Students keep theirs.
 
 `TutorPipeline` searches it on every turn using the matched curriculum
 lesson's title and key terms plus the student's words. The notes share the
@@ -190,7 +234,7 @@ loosen any of these rules:
   its learner's name and taps Accept/Decline (`JoinRequestsCard`). Decline
   or no answer hands over nothing.
 
-- **School.** It's set in Admin → School on the teacher's device. A student
+- **School.** It's set in Teachers → School on the teacher's device. A student
   device adopts it at its first join and refuses classes from any other
   school.
 - **Joining.** The teacher's Class sync screen (Teacher → Class sync,
@@ -289,11 +333,26 @@ loosen any of these rules:
     drop notes.
   - Refused on student devices and on devices serving their own classes.
     Not carried: `member_reports` (re-sent next sync) and the standby list.
+  - Screens: the host side is the "Standby teacher device" card on Teacher →
+    Class sync (passphrase, pair code, standby list, save backup to a file);
+    the standby side is `/teacher/standby` (`standby_screen.dart`: pair,
+    back up while open, take over from the held backup or a file).
 - **Android keeps sharing in the background.** While any `ClassShareServer`
   runs, `ShareKeepAlive` (ref-counted) starts `ClassShareService.kt`: a
   `connectedDevice` foreground service with an ongoing notification, a
   Wi-Fi lock and a partial wake lock (capped at 3 h). It stops with the
   last server. If Android refuses it, sharing still works on screen.
+- **Speed (no protocol change).**
+  - The server caches each class+subject's envelopes and digest
+    (`ClassShareServer._cachedChannel`). The cache is cleared by drift
+    table updates on `topic_resources`, `resource_shares` and
+    `class_groups`. Raw-SQL writes to those tables don't notify drift, so
+    follow them with a drift write.
+  - Every sync, join and standby call first drops addresses that don't
+    accept a TCP connection within 2 s (`SelectiveSyncManager.reachable`).
+  - Changed subjects are fetched 4 at a time, but each one is still
+    verified and replaced on its own, in order.
+  - Unchanged subjects were already skipped by digest.
 - **Protocol v4 only.** Devices on older builds can't sync with upgraded
   ones.
 
@@ -354,8 +413,8 @@ Note: nothing in this app issues `PRAGMA foreign_keys = ON`, so the
 `onDelete: cascade` declared on child tables is never enforced. Deleting a
 student must clear dependent rows explicitly — `LearnerDataWiper`
 (`lib/services/learner_data_wiper.dart`) is the one place that does this for
-every table actually scoped to a student; route both the Admin per-learner
-delete and the Admin "Reset all student data" action through it rather than
+every table actually scoped to a student; route both the Teachers per-learner
+delete and the Teachers "Reset all student data" action through it rather than
 deleting a student row directly. Its `wipedTableNames` set is checked against
 the database's own table list in `test/learner_data_wiper_test.dart`, so a
 newly added student-scoped table fails that test until it's classified as

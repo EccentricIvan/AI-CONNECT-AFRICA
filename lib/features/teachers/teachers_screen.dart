@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -14,12 +15,22 @@ import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../teacher/class_providers.dart';
+import '../teacher/co_teacher_widgets.dart';
+import '../teacher/failover_widgets.dart';
 import '../teacher/teacher_pin.dart';
+import '../teacher/teacher_pin_screen.dart';
 
-/// Admin dashboard — device, user, and update management.
-/// Admins manage the platform; they have no learning features here.
-class AdminScreen extends ConsumerWidget {
-  const AdminScreen({super.key});
+/// Teachers — the school's teacher devices and everything that manages this
+/// one: the teacher tools, the school, learner profiles, learning packages
+/// and updates. Replaced the separate Admin dashboard: a school has several
+/// teachers (co-teachers, a standby), and they are the ones who manage the
+/// devices.
+///
+/// PIN-gated like the rest of the teacher area, but not role-gated: a
+/// student's device has learners to manage too, so the teacher-device
+/// sections only appear where they apply.
+class TeachersScreen extends ConsumerWidget {
+  const TeachersScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,16 +42,26 @@ class AdminScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
-        title: tr(context, 'Admin dashboard'),
-        subtitle: tr(context, 'Device & learner management'),
-        icon: Icons.admin_panel_settings_rounded,
-        iconColor: AppColors.accentSlate,
+        title: tr(context, 'Teachers'),
+        subtitle: tr(context, 'Devices, learners and school'),
+        icon: Icons.groups_rounded,
+        iconColor: AppColors.accentBlue,
       ),
       body: MaxWidth(
         maxWidth: 900,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // ── Teachers ─────────────────────────────────────────────────
+            const _SectionTitle('Teachers'),
+            const _TeacherDevicesCard(),
+            const SizedBox(height: 20),
+
+            // ── School ───────────────────────────────────────────────────
+            const _SectionTitle('School'),
+            const _SchoolCard(),
+            const SizedBox(height: 20),
+
             // ── Device ───────────────────────────────────────────────────
             const _SectionTitle('Device'),
             _InfoCard(
@@ -64,15 +85,10 @@ class AdminScreen extends ConsumerWidget {
                 const _InfoRow(
                   icon: Icons.wifi_off,
                   label: 'Network',
-                  value: 'Fully offline — no internet used',
+                  value: 'Offline',
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-
-            // ── School ───────────────────────────────────────────────────
-            const _SectionTitle('School'),
-            const _SchoolCard(),
             const SizedBox(height: 20),
 
             // ── AI Model ─────────────────────────────────────────────────
@@ -107,7 +123,7 @@ class AdminScreen extends ConsumerWidget {
             const SizedBox(height: 20),
 
             // ── Users ────────────────────────────────────────────────────
-            const _SectionTitle('Student Profiles'),
+            const _SectionTitle('Learners on this device'),
             studentsAsync.when(
               loading: () => const _InfoCard(
                 children: [ListTile(title: Text('Loading students…'))],
@@ -122,9 +138,7 @@ class AdminScreen extends ConsumerWidget {
                             Icons.person_off,
                             color: Theme.of(context).hintColor,
                           ),
-                          title: const Text(
-                            'No student profiles on this device',
-                          ),
+                          title: const Text('No learners'),
                         ),
                       ],
                     )
@@ -143,24 +157,7 @@ class AdminScreen extends ConsumerWidget {
                 const _InfoRow(
                   icon: Icons.usb,
                   label: 'Update method',
-                  value: 'USB drive or local school server — never internet',
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.info_outline,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                  title: const Text(
-                    'How to update',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                  subtitle: const Text(
-                    '1. Receive the update package on a USB drive\n'
-                    '2. Copy the new app installer to this device\n'
-                    '3. Run the installer — student data is preserved\n'
-                    '4. New learning packages go in the packages folder',
-                    style: TextStyle(fontSize: 12, height: 1.6),
-                  ),
+                  value: 'USB or school server',
                 ),
               ],
             ),
@@ -186,16 +183,7 @@ class AdminScreen extends ConsumerWidget {
                             : Theme.of(context).hintColor,
                       ),
                     ),
-                    subtitle: Text(
-                      pinSet
-                          ? 'Deletes every learner profile, their progress, '
-                                'badges, projects and chat sessions on this '
-                                'device. Curriculum, teacher notes/subjects, '
-                                'classes and installed learning packages are untouched.'
-                          : 'Set a Teacher PIN first (Teacher → Teacher '
-                                'PIN) — this stays locked until this device '
-                                'requires one to reach Teacher/Admin at all.',
-                    ),
+                    subtitle: pinSet ? null : const Text('Requires a PIN'),
                     enabled: pinSet,
                     onTap: pinSet ? () => _confirmResetAll(context, ref) : null,
                   ),
@@ -220,9 +208,7 @@ class AdminScreen extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Reset all student data?'),
         content: const Text(
-          'This permanently deletes every learner profile on this device — '
-          'progress, badges, projects, and chat sessions. Curriculum, '
-          'teacher notes/subjects, classes and installed learning packages stay. This '
+          'All learner profiles and their progress will be deleted. This '
           'cannot be undone.',
         ),
         actions: [
@@ -240,9 +226,9 @@ class AdminScreen extends ConsumerWidget {
     ).then((confirmed) async {
       if (confirmed != true) return;
       // router was captured before the dialog opened. Navigating off
-      // /admin before the teacher-area lock changes below is defensive:
+      // /teachers before the teacher-area lock changes below is defensive:
       // the router's redirect reads teacherUnlockedProvider on every
-      // navigation and /admin is a gated route, so ordering it this way
+      // navigation and /teachers is a gated route, so ordering it this way
       // means a lock-then-navigate race can't strand this screen on
       // /unlock even if something later makes that state trigger a
       // refresh — it doesn't appear to today.
@@ -262,18 +248,18 @@ class AdminScreen extends ConsumerWidget {
   }
 }
 
-/// All students on the device (admin view — not just the active one).
+/// All students on the device (not just the active one).
 final _allStudentsProvider = FutureProvider<List<Student>>((ref) {
   final db = ref.watch(dbProvider);
   return db.studentDao.getAllStudents();
 });
 
 /// Whether a Teacher PIN exists — the reset tile stays locked without one,
-/// since with no PIN set nothing gates `/admin` at all (see teacher_pin.dart)
+/// since with no PIN set nothing gates `/teachers` at all (see teacher_pin.dart)
 /// and "teachers/admins only" would otherwise be nominal.
 ///
 /// autoDispose, not a plain FutureProvider: a PIN set moments ago in
-/// Settings must unlock this tile the next time Admin is opened, not only
+/// Settings must unlock this tile the next time Teachers is opened, not only
 /// after the app restarts and the cached `false` is gone.
 final _pinSetProvider = FutureProvider.autoDispose<bool>((ref) {
   return ref.watch(teacherPinProvider).isSet();
@@ -286,8 +272,8 @@ class _StudentRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Same lock as "Reset all student data" below, and for the same
-    // reason: with no PIN set nothing gates /admin at all (teacher_pin.dart),
-    // so without this check any learner who opens Admin could delete
+    // reason: with no PIN set nothing gates /teachers at all (teacher_pin.dart),
+    // so without this check any learner who opens Teachers could delete
     // another learner's profile — exactly what "teachers/admins only" is
     // supposed to prevent.
     final pinSet = ref.watch(_pinSetProvider).valueOrNull ?? false;
@@ -303,7 +289,7 @@ class _StudentRow extends ConsumerWidget {
           color: pinSet ? Colors.red : Theme.of(context).hintColor,
           size: 20,
         ),
-        tooltip: pinSet ? 'Delete profile' : 'Set a Teacher PIN first',
+        tooltip: pinSet ? 'Delete' : 'Requires a PIN',
         onPressed: pinSet ? () => _confirmDelete(context, ref) : null,
       ),
     );
@@ -312,7 +298,7 @@ class _StudentRow extends ConsumerWidget {
   void _confirmDelete(BuildContext context, WidgetRef ref) {
     // Captured before the dialog opens, both so it's safe to use afterward
     // (the .then callback below runs past that async gap) and, for the
-    // wipeAll-equivalent branch inside it, so navigating off /admin can
+    // wipeAll-equivalent branch inside it, so navigating off /teachers can
     // happen before the teacher-area lock changes — see the matching note
     // in _confirmResetAll on why that order avoids a router redirect race.
     final router = GoRouter.of(context);
@@ -320,10 +306,7 @@ class _StudentRow extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Delete ${student.name}?'),
-        content: const Text(
-          'This permanently removes the profile and all learning data '
-          '(paths, badges, projects, sessions). This cannot be undone.',
-        ),
+        content: const Text('This cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -376,7 +359,7 @@ class _StudentRow extends ConsumerWidget {
         // resolveActiveStudent's fallback (most-recently-active) would
         // otherwise silently turn the device into some other learner
         // without going through LearnerSwitcher — no language change, no
-        // explicit choice. Send the admin to pick, the same as any other
+        // explicit choice. Send the teacher to pick, the same as any other
         // handoff.
         router.go('/learners');
       }
@@ -401,12 +384,6 @@ class _SchoolCard extends ConsumerWidget {
         ListTile(
           leading: const Icon(Icons.school_outlined),
           title: Text(hasSchool ? name! : 'No school set'),
-          subtitle: Text(
-            hasSchool
-                ? 'Class notes are only shared with devices of this school.'
-                : 'Set the school before teachers share class notes. A student '
-                      'device gets it automatically when it joins a class.',
-          ),
           trailing: TextButton(
             onPressed: () => _edit(context, ref, name),
             child: Text(hasSchool ? 'Rename' : 'Set school'),
@@ -520,6 +497,180 @@ class _InfoRow extends StatelessWidget {
           color: valueColor ?? Theme.of(context).hintColor,
         ),
       ),
+    );
+  }
+}
+
+/// Every co-teacher of this device's own classes.
+final _allCoTeachersProvider = StreamProvider.autoDispose<List<ClassCoTeacher>>(
+  (ref) {
+    final db = ref.watch(dbProvider);
+    return db.select(db.classCoTeachers).watch();
+  },
+);
+
+/// Standby devices paired with this teacher device (host failover).
+final _standbysProvider = StreamProvider.autoDispose<List<FailoverStandby>>((
+  ref,
+) {
+  final db = ref.watch(dbProvider);
+  return db.select(db.failoverStandbys).watch();
+});
+
+/// The school's teacher devices as this device knows them — itself, the
+/// co-teachers of its classes, the classes it co-teaches, its standbys —
+/// and the teacher tools.
+class _TeacherDevicesCard extends ConsumerWidget {
+  const _TeacherDevicesCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final role = ref.watch(deviceRoleProvider).valueOrNull;
+    final hint = Theme.of(context).hintColor;
+    final chevron = Icon(Icons.chevron_right, color: hint);
+
+    final classSync = ListTile(
+      leading: const Icon(Icons.sync_rounded),
+      title: const Text('Class sync'),
+      trailing: chevron,
+      onTap: () => context.push('/class-sync'),
+    );
+    if (role == 'student') {
+      return _InfoCard(
+        children: [
+          const ListTile(
+            leading: Icon(Icons.person_rounded),
+            title: Text('Student device'),
+          ),
+          classSync,
+        ],
+      );
+    }
+    if (role != 'teacher') {
+      return _InfoCard(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.school_outlined),
+            title: const Text('Set up as a teacher device'),
+            trailing: chevron,
+            onTap: () => context.go('/teacher'),
+          ),
+          classSync,
+        ],
+      );
+    }
+
+    final owned =
+        ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[];
+    final delegated =
+        ref.watch(delegatedClassesProvider).valueOrNull ??
+        const <CoTeachingClass>[];
+    final coTeachers =
+        ref.watch(_allCoTeachersProvider).valueOrNull ??
+        const <ClassCoTeacher>[];
+    final standbys =
+        ref.watch(_standbysProvider).valueOrNull ?? const <FailoverStandby>[];
+    final names = subjectNames(ref);
+    final classByUuid = {
+      for (final c in owned)
+        if (c.groupUuid != null) c.groupUuid!: c,
+    };
+    List<String> subjectsOf(String json) {
+      try {
+        return [
+          for (final s in jsonDecode(json) as List)
+            if (s is String) names(s),
+        ];
+      } catch (_) {
+        return const [];
+      }
+    }
+
+    final mine = [
+      if (owned.isNotEmpty)
+        'teaches ${owned.length} ${owned.length == 1 ? 'class' : 'classes'}',
+      if (delegated.isNotEmpty)
+        'co-teaches ${delegated.length} '
+            '${delegated.length == 1 ? 'class' : 'classes'}',
+    ];
+
+    return Column(
+      children: [
+        _InfoCard(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.verified_user_rounded),
+              title: const Text('This device'),
+              subtitle: Text(
+                mine.isEmpty
+                    ? 'No classes'
+                    : mine.join(' · '),
+              ),
+              trailing: chevron,
+              onTap: () => context.push('/teacher'),
+            ),
+            for (final t in coTeachers)
+              ListTile(
+                leading: const Icon(Icons.school_rounded),
+                title: Text(t.name.isEmpty ? 'Co-teacher' : t.name),
+                subtitle: Text(
+                  'Co-teacher · '
+                  '${classByUuid[t.classGroupUuid] == null ? 'a class' : classLabel(classByUuid[t.classGroupUuid]!)}'
+                  '${subjectsOf(t.subjectIdsJson).isEmpty ? '' : ': ${subjectsOf(t.subjectIdsJson).join(', ')}'}',
+                ),
+              ),
+            for (final d in delegated)
+              ListTile(
+                leading: const Icon(Icons.group_add_rounded),
+                title: Text('${delegatedClassLabel(d)}’s teacher'),
+                subtitle: Text(
+                  subjectsOf(d.subjectIdsJson).isEmpty
+                      ? 'Revoked'
+                      : 'You co-teach: ${subjectsOf(d.subjectIdsJson).join(', ')}',
+                ),
+              ),
+            for (final s in standbys)
+              ListTile(
+                leading: const Icon(Icons.backup_rounded),
+                title: Text(s.name),
+                subtitle: Text(
+                  s.lastMirroredAt == null
+                      ? 'Standby · no backup yet'
+                      : 'Standby · backed up '
+                            '${failoverTime(s.lastMirroredAt!)}',
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _InfoCard(
+          children: [
+            for (final (icon, title, path) in const [
+              (Icons.groups_outlined, 'Classes & learners', '/teacher'),
+              (
+                Icons.folder_copy_outlined,
+                'Lesson materials',
+                '/teacher/materials',
+              ),
+              (Icons.sync_rounded, 'Class sync', '/teacher/sync'),
+              (Icons.group_add_outlined, 'Co-teaching', '/teacher/co-teach'),
+              (Icons.restore_rounded, 'Standby device', '/teacher/standby'),
+            ])
+              ListTile(
+                leading: Icon(icon),
+                title: Text(title),
+                trailing: chevron,
+                onTap: () => context.push(path),
+              ),
+            ListTile(
+              leading: const Icon(Icons.lock_outline_rounded),
+              title: const Text('PIN'),
+              trailing: chevron,
+              onTap: () => showTeacherPinSettings(context, ref),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

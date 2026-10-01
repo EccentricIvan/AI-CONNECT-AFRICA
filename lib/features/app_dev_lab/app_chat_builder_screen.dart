@@ -28,6 +28,7 @@ import 'app_build_coder.dart';
 import 'app_type_catalog.dart';
 import 'app_type_classifier.dart';
 import 'app_type_picker.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class _QField {
   const _QField(this.key, this.question, this.hint);
@@ -764,6 +765,7 @@ class _AppChatBuilderScreenState extends ConsumerState<AppChatBuilderScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: const AppBarBackButton(),
         title: Row(
           children: [
             const Icon(Icons.phone_android, size: 20, color: AppColors.primary),

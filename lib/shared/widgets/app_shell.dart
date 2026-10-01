@@ -69,7 +69,7 @@ class AppShell extends ConsumerWidget {
       'Learn',
       Icons.menu_book_outlined,
       Icons.menu_book_rounded,
-      '/practice',
+      '/learn',
     ),
     _NavDest(
       'Create',
@@ -107,10 +107,10 @@ class AppShell extends ConsumerWidget {
       '/achievements',
     ),
     _NavDest(
-      'Class sync',
-      Icons.sync_outlined,
-      Icons.sync_rounded,
-      '/class-sync',
+      'Teachers',
+      Icons.groups_outlined,
+      Icons.groups_rounded,
+      '/teachers',
     ),
   ];
 
@@ -121,6 +121,8 @@ class AppShell extends ConsumerWidget {
 
   int _primaryIndex(String path) {
     if (path == '/' || path == '/chat') return 0;
+    // Practice & Apply open from Learn.
+    if (path == '/practice' || path.startsWith('/practice/')) return 1;
     for (var i = 1; i < _primary.length; i++) {
       final p = _primary[i].path;
       if (path == p || path.startsWith('$p/')) return i;

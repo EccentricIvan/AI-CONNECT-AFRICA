@@ -850,7 +850,7 @@ class _DetailHeader extends StatelessWidget {
 }
 
 /// Teacher PIN, kept with the rest of the teacher tools (it used to live in
-/// Settings → Administration).
+/// Settings → Teachers).
 class _TeacherPinCard extends ConsumerWidget {
   const _TeacherPinCard();
 
@@ -870,9 +870,6 @@ class _TeacherPinCard extends ConsumerWidget {
           color: AppColors.accentBlue,
         ),
         title: const Text('Teacher PIN'),
-        subtitle: const Text(
-          'Keep learners out of the Teacher and Admin areas',
-        ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => showTeacherPinSettings(context, ref),
       ),

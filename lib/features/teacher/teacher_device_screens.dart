@@ -45,8 +45,8 @@ class _TeacherDeviceSetupScreenState
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
-        title: 'Teacher’s device',
-        subtitle: 'Where classes are created and shared',
+        title: 'Teacher device',
+        subtitle: 'Device setup',
         icon: Icons.school_rounded,
         iconColor: AppColors.accentBlue,
         showBack: true,
@@ -59,30 +59,24 @@ class _TeacherDeviceSetupScreenState
             StudioCard(
               accent: AppColors.accentBlue,
               child: Text(
-                'Is this the teacher’s device?\n\n'
-                'The teacher’s device is where you create classes, streams and '
-                'subjects, share lesson notes, and see how every student is '
-                'doing. Students’ phones and PCs join your classes from their '
-                'own Class sync screen.\n\n'
-                'If another teacher already runs your class, choose this too, '
-                'then join their class as a co-teacher for your subject '
-                '(Class sync → Co-teach another teacher’s class).\n\n'
-                'A student’s device can never become a teacher’s. Set a '
-                'teacher PIN afterwards (Settings → Teacher PIN) so learners '
-                'can’t open this section.',
-                style: TextStyle(color: ac.textPrimary, height: 1.5),
+                'Is this a teacher device?',
+                style: TextStyle(
+                  color: ac.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
               ),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: _busy ? null : _claim,
               icon: const Icon(Icons.check_rounded),
-              label: const Text('Yes, this is the teacher’s device'),
+              label: const Text('Yes, teacher device'),
             ),
             const SizedBox(height: 8),
             OutlinedButton(
               onPressed: _busy ? null : () => context.go('/class-sync'),
-              child: const Text('No — this is a student’s device'),
+              child: const Text('No, student device'),
             ),
           ],
         ),
@@ -102,7 +96,7 @@ class StudentDeviceScreen extends StatelessWidget {
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
         title: 'Student device',
-        subtitle: 'The teacher’s section is on the teacher’s device',
+        subtitle: 'Teacher tools are on the teacher device',
         icon: Icons.person_rounded,
         iconColor: AppColors.accentTeal,
         showBack: true,
@@ -115,13 +109,7 @@ class StudentDeviceScreen extends StatelessWidget {
             StudioCard(
               accent: AppColors.accentTeal,
               child: Text(
-                'This device joined a class through a teacher, so it is a '
-                'student’s device. Classes, streams and subjects are created on '
-                'the teacher’s device, and that is where the class’s progress '
-                'is kept.\n\n'
-                'On this device you can join classes, get your teacher’s notes, '
-                'choose the subjects you take, and share notes with classmates '
-                '— all from Class sync.',
+                'This device is registered to a class as a student device.',
                 style: TextStyle(color: ac.textPrimary, height: 1.5),
               ),
             ),

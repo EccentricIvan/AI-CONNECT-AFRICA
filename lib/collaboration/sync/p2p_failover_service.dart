@@ -17,7 +17,7 @@ import 'class_share_server.dart'
         kStandbyPairPath;
 import 'failover_crypto.dart';
 import 'routing_envelope.dart';
-import 'selective_sync_manager.dart' show TeacherEndpoint;
+import 'selective_sync_manager.dart' show SelectiveSyncManager, TeacherEndpoint;
 
 /// Outcome of a failover step that can fail with a message for the screen.
 class FailoverResult {
@@ -109,15 +109,13 @@ class P2PFailoverService {
   Future<FailoverResult> enableFailover(String passphrase) async {
     if (passphrase.trim().length < kMinPassphraseLength) {
       return const FailoverResult.failed(
-        'Use a passphrase of at least $kMinPassphraseLength characters — a '
-        'short sentence works well. It is all that protects the backup.',
+        'Passphrase must be at least $kMinPassphraseLength characters',
       );
     }
     final me = await _db.classSyncDao.identity();
     if (me.deviceRole == kRoleStudent || me.schoolId == null) {
       return const FailoverResult.failed(
-        'Only the school’s teacher device, with its school set, can have a '
-        'standby.',
+        'Set the school on this teacher device first',
       );
     }
     final salt = newNonce();
@@ -161,22 +159,20 @@ class P2PFailoverService {
     final code = normalizeJoinCode(typedCode);
     if (code == null) {
       return const FailoverResult.failed(
-        'That isn’t a pairing code — it has 8 letters and numbers, like '
-        'K7M4-P9QX.',
+        'Invalid pairing code',
       );
     }
     final me = await _db.classSyncDao.identity();
     if (me.deviceRole == kRoleStudent) {
       return const FailoverResult.failed(
-        'This device joined a class as a student, so it can’t stand in for '
-        'the teacher device.',
+        'A student device can’t be a standby',
       );
     }
     final myKey = await signingPublicKey(me.signingSeed);
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
     final proof = await standbyPairProof(secret, salt, myKey);
-    for (final h in hosts) {
+    for (final h in await SelectiveSyncManager.reachable(hosts)) {
       final Map<String, Object?> b;
       try {
         final response = await _client
@@ -206,13 +202,12 @@ class P2PFailoverService {
       final schoolName = b['school_name'];
       if (schoolId is! String || rootKey is! String) {
         return const FailoverResult.failed(
-          'The teacher device sent incomplete details.',
+          'Pairing failed',
         );
       }
       if (me.schoolId != null && me.schoolId != schoolId) {
         return FailoverResult.failed(
-          'This device belongs to ${me.schoolName ?? 'another school'}, so it '
-          'can’t stand in for another school’s teacher device.',
+          'This device belongs to ${me.schoolName ?? 'another school'}',
         );
       }
       await _db
@@ -229,8 +224,7 @@ class P2PFailoverService {
       return pullLedger(hosts);
     }
     return const FailoverResult.failed(
-      'You weren’t paired. Check the code, that it hasn’t expired, and that '
-      'the teacher tapped Accept.',
+      'Pairing failed. Check the code and try again.',
     );
   }
 
@@ -244,7 +238,7 @@ class P2PFailoverService {
     }
     final me = await _db.classSyncDao.identity();
     final myKey = await signingPublicKey(me.signingSeed);
-    for (final h in hosts) {
+    for (final h in await SelectiveSyncManager.reachable(hosts)) {
       try {
         final nonce = newNonce();
         const raw = '{}';
@@ -301,7 +295,7 @@ class P2PFailoverService {
       }
     }
     return const FailoverResult.failed(
-      'Couldn’t reach the teacher device to back it up.',
+      'Teacher device not reachable',
     );
   }
 
@@ -364,7 +358,7 @@ class P2PFailoverService {
     final ledger = Map<String, Object?>.from(backupLedger);
     final header = ledgerHeader(ledger);
     if (header == null) {
-      return const PromotionResult.failed('That isn’t a teacher-device backup.');
+      return const PromotionResult.failed('Not a valid backup');
     }
 
     // Credentials first: nothing about this device is touched, or even
@@ -380,7 +374,7 @@ class P2PFailoverService {
       inner = await openLedger(ledger, ledgerKey);
     } on SyncTrustError {
       return const PromotionResult.failed(
-        'That passphrase doesn’t open this backup.',
+        'Incorrect passphrase',
       );
     }
     final seed = inner['signing_seed'];
@@ -389,7 +383,7 @@ class P2PFailoverService {
         inner['generation'] != header.generation ||
         await signingPublicKey(seed) != header.rootPublicKey) {
       return const PromotionResult.failed(
-        'This backup doesn’t check out — it may have been damaged.',
+        'Backup is damaged',
       );
     }
     final classes = _maps(inner['classes']);
@@ -401,8 +395,7 @@ class P2PFailoverService {
     final me = await _db.classSyncDao.identity();
     if (me.deviceRole == kRoleStudent) {
       return const PromotionResult.failed(
-        'This device joined a class as a student, so it can’t become the '
-        'teacher device.',
+        'A student device can’t take over',
       );
     }
     if (me.schoolId != null && me.schoolId != header.schoolId) {
@@ -423,8 +416,7 @@ class P2PFailoverService {
       ];
       if (ownElsewhere.isNotEmpty || coTeachElsewhere.isNotEmpty) {
         return const PromotionResult.failed(
-          'This device already serves its own classes, which would lose '
-          'their teacher if it took over. Use another device as the standby.',
+          'This device already teaches other classes',
         );
       }
     }

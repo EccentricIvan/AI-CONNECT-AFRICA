@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' show ModelType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/pdf/diagram_detector.dart';
 import '../inference/cpu_support.dart';
 import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
@@ -752,10 +753,14 @@ class ChatMessage {
     this.mathCoach = false,
     this.lesson,
     this.recap,
+    this.diagrams = const [],
   });
 
   final String text;
   final bool isUser;
+
+  /// Teacher-PDF pages this reply points to — see [TutorResponse.diagrams].
+  final List<DiagramMarker> diagrams;
 
   /// Set only on the single placeholder message that opens a reopened chat.
   ///
@@ -804,6 +809,7 @@ class ChatMessage {
       math: math,
       mathCoach: mathCoach,
       lesson: lesson ?? this.lesson,
+      diagrams: diagrams,
     );
   }
 }
@@ -1016,6 +1022,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
         translationFailure: translationFailure,
         math: math,
         mathCoach: turn.response.mathCoach,
+        diagrams: turn.response.diagrams,
       ));
 
       await tokenCtrl.close();

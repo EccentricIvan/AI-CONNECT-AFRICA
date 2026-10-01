@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../../curriculum/curriculum_models.dart';
+import '../../db/otic_database.dart';
 import '../../services/custom_subject_service.dart';
+import '../learn/subject_notes.dart';
 import '../../shared/widgets/localized_text.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
@@ -36,7 +39,25 @@ class SubjectsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final subjectsAsync = ref.watch(mergedSubjectsProvider);
-    final width = MediaQuery.sizeOf(context).width.clamp(0.0, 1000.0).toDouble();
+    final custom =
+        ref.watch(customSubjectsProvider).valueOrNull ??
+        const <CustomSubject>[];
+    final classUuid = ref.watch(learnerClassUuidProvider).valueOrNull;
+    // The learner's class subjects, as the teacher shared them. Without a
+    // class (e.g. on the teacher's own device) the device's own subjects.
+    final classIds = {
+      for (final c in custom)
+        if (c.classGroupUuid == classUuid) c.subjectId,
+    };
+    // Another class's subjects on a shared device are never shown.
+    final hidden = {
+      for (final c in custom)
+        if (c.classGroupUuid != null && c.classGroupUuid != classUuid)
+          c.subjectId,
+    };
+    final width = MediaQuery.sizeOf(
+      context,
+    ).width.clamp(0.0, 1000.0).toDouble();
     final cols = adaptiveColumns(width, min: 2, max: 5, itemWidth: 200);
 
     return Scaffold(
@@ -46,6 +67,13 @@ class SubjectsScreen extends ConsumerWidget {
         subtitle: tr(context, 'Explore your courses'),
         icon: Icons.auto_stories_rounded,
         iconColor: AppColors.accentBlue,
+        actions: [
+          StudioHeaderIconButton(
+            tooltip: tr(context, 'Practice'),
+            icon: Icons.quiz_outlined,
+            onTap: () => context.push('/practice'),
+          ),
+        ],
       ),
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -63,38 +91,51 @@ class SubjectsScreen extends ConsumerWidget {
                   'Browse courses and keep building skills one lesson at a time.',
                 ),
               ),
+              if (subjects.any((x) => classIds.contains(x.id))) ...[
+                const SizedBox(height: 20),
+                StudioSectionHeader(title: tr(context, 'My class')),
+                const SizedBox(height: 14),
+                _grid(context, [
+                  for (final x in subjects)
+                    if (classIds.contains(x.id)) x,
+                ], cols),
+              ],
               const SizedBox(height: 20),
               StudioSectionHeader(title: tr(context, 'All subjects')),
               const SizedBox(height: 14),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cols,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.32,
-                ),
-                itemCount: subjects.length,
-                itemBuilder: (context, i) {
-                  final s = subjects[i];
-                  final color = _parseColor(s.color);
-                  final icon = _icons[s.icon] ?? Icons.menu_book;
-                  return _SubjectCard(
-                    name: s.name,
-                    icon: icon,
-                    color: color,
-                    lessonCount: s.totalLessons,
-                    onTap: () => context.push('/learn/subject/${s.id}'),
-                  );
-                },
-              ),
+              _grid(context, [
+                for (final x in subjects)
+                  if (!classIds.contains(x.id) && !hidden.contains(x.id)) x,
+              ], cols),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _grid(BuildContext context, List<Subject> subjects, int cols) =>
+      GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.32,
+        ),
+        itemCount: subjects.length,
+        itemBuilder: (context, i) {
+          final s = subjects[i];
+          return _SubjectCard(
+            name: s.name,
+            icon: _icons[s.icon] ?? Icons.menu_book,
+            color: _parseColor(s.color),
+            lessonCount: s.totalLessons,
+            onTap: () => context.push('/learn/subject/${s.id}'),
+          );
+        },
+      );
 }
 
 class _SubjectCard extends StatelessWidget {
@@ -184,11 +225,9 @@ class _SubjectCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              trFill(
-                                context,
-                                '{count} lessons',
-                                {'count': '$lessonCount'},
-                              ),
+                              trFill(context, '{count} lessons', {
+                                'count': '$lessonCount',
+                              }),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

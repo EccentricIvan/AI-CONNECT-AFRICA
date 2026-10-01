@@ -233,8 +233,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
       setState(() {
         _result = null;
         _syncError =
-            'No teacher device found. Ask your teacher to start sharing the '
-            'class, or type the teacher’s address below.';
+            'No teacher device found';
       });
       return;
     }
@@ -251,7 +250,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
       );
       if (!mounted) return;
       unawaited(_rememberAddress());
-      // The teacher's subject list may have changed.
+      // The teacher's subject list may have changed, and PDFs may have come.
       ref.invalidate(customSubjectsProvider);
       setState(() {
         if (last.ok) {
@@ -283,7 +282,10 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     final reported = r.learnersReported == 0
         ? ''
         : ' Your progress was sent to your teacher.';
-    return _notesSummary(r) + reported;
+    final pdfs = r.pdfsFetched == 0
+        ? ''
+        : ' ${r.pdfsFetched} PDF${r.pdfsFetched == 1 ? '' : 's'} downloaded.';
+    return _notesSummary(r) + pdfs + reported;
   }
 
   static String _notesSummary(SyncResult r) {
@@ -336,9 +338,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
               StudioCard(
                 accent: AppColors.accentBlue,
                 child: Text(
-                  'This is the teacher’s device, so it shares classes rather '
-                  'than joining them. Open Teacher → Class sync to let '
-                  'students’ devices join and to see their progress.',
+                  'This is a teacher device.',
                   style: TextStyle(color: ac.textPrimary, height: 1.5),
                 ),
               ),
@@ -358,7 +358,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
         title: tr(context, 'Class sync'),
-        subtitle: tr(context, 'Get your teacher’s notes on this device'),
+        subtitle: tr(context, 'Class notes'),
         icon: Icons.sync_rounded,
         iconColor: AppColors.accentTeal,
       ),
@@ -383,7 +383,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                     const SizedBox(height: 4),
                     Text(
                       endpoints.isEmpty
-                          ? 'Waiting for your teacher to start sharing…'
+                          ? 'Waiting for teacher…'
                           : '${endpoints.length} teacher device'
                                 '${endpoints.length == 1 ? '' : 's'} nearby.',
                       style: TextStyle(fontSize: 12, color: ac.textSecondary),
@@ -421,6 +421,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                 const SizedBox(height: 16),
                 _MySubjectsCard(studentId: me.id, learnerName: me.name),
               ],
+
               const SizedBox(height: 16),
               GetFromClassmateCard(
                 group: group,
@@ -441,16 +442,6 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: ac.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Type the join code your teacher is showing '
-                    '(Teacher → Class sync). You only do this once per class.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: ac.textSecondary,
-                      height: 1.4,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -482,7 +473,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                         : const Icon(Icons.vpn_key_outlined, size: 18),
                     label: Text(
                       _joining
-                          ? 'Waiting for your teacher to tap Accept…'
+                          ? 'Waiting for approval…'
                           : 'Join class',
                     ),
                   ),
@@ -499,37 +490,22 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                   childrenPadding: EdgeInsets.zero,
                   initiallyExpanded: _address.text.trim().isNotEmpty,
                   title: Text(
-                    'Can’t find your teacher’s device?',
+                    'Enter address manually',
                     style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: ac.textPrimary,
                     ),
                   ),
                   children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'Some phone hotspots and Wi-Fi networks stop devices '
-                        'discovering each other. Ask your teacher for the '
-                        'address shown on their Class sync screen and type it '
-                        'here.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: ac.textSecondary,
-                          height: 1.4,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
                     TextField(
                       controller: _address,
                       keyboardType: TextInputType.url,
                       decoration: InputDecoration(
-                        labelText: 'Teacher’s address',
+                        labelText: 'Teacher device address',
                         hintText: '192.168.43.1',
                         border: const OutlineInputBorder(),
                         errorText: _addressInvalid
-                            ? 'That doesn’t look like an address'
+                            ? 'Invalid address'
                             : null,
                       ),
                       onChanged: (_) => setState(() {}),
@@ -546,19 +522,13 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
                 style: TextStyle(fontSize: 12, color: ac.textSecondary),
               ),
             ],
-            const SizedBox(height: 16),
-            Text(
-              'Both devices must be on the same Wi-Fi or hotspot. No internet '
-              'is needed. You only ever receive the notes your teacher shared '
-              'with your class.'
-              '${!kIsWeb && Platform.isWindows ? '\n\nOn Windows, if asked whether '
-                        'to allow the app on networks, choose Allow.' : ''}',
-              style: TextStyle(
-                fontSize: 12,
-                color: ac.textSecondary,
-                height: 1.5,
+            if (!kIsWeb && Platform.isWindows) ...[
+              const SizedBox(height: 16),
+              Text(
+                'If Windows asks, allow network access.',
+                style: TextStyle(fontSize: 12, color: ac.textSecondary),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -591,15 +561,6 @@ class _MySubjectsCard extends ConsumerWidget {
           Text(
             'My subjects',
             style: TextStyle(fontWeight: FontWeight.w700, color: ac.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            enrolled.isEmpty
-                ? 'Tick the subjects $learnerName takes. Your teacher sees them '
-                      'next time you sync.'
-                : '${enrolled.length} ticked. Your teacher sees them next time '
-                      'you sync.',
-            style: TextStyle(fontSize: 12, color: ac.textSecondary),
           ),
           const SizedBox(height: 10),
           Wrap(

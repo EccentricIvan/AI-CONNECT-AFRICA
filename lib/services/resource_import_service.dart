@@ -8,6 +8,7 @@ import '../db/tables/topic_resources_table.dart';
 import 'ocr/ocr_engine.dart';
 import 'offline_storage_service.dart';
 import 'pdf/diagram_detector.dart';
+import 'notes/note_pdf_store.dart';
 import 'pdf/pdf_page_extractor.dart';
 import 'resource_text_extractor.dart';
 
@@ -37,10 +38,15 @@ class ResourceImportService {
     this._storage, {
     OcrLookup? ocr,
     PdfOpener openPdf = _openWithPdfium,
+    this.pdfStore,
   }) : _ocr = ocr,
        _openPdf = openPdf;
 
   final OfflineStorageService _storage;
+
+  /// Keeps an imported PDF's original so it can be opened as it is, and
+  /// synced with the note. Null keeps text only.
+  final NotePdfStore? pdfStore;
   final OcrLookup? _ocr;
   final PdfOpener _openPdf;
 
@@ -153,6 +159,29 @@ class ResourceImportService {
       );
     }
 
+    // Last, so a cancelled or failed import stores nothing. Best-effort: a
+    // PDF that can't be kept is still a note.
+    var keptOriginal = false;
+    final store = pdfStore;
+    if (format == 'pdf' && store != null && bytes.length <= kMaxNotePdfBytes) {
+      try {
+        final sha = await store.put(bytes);
+        if (sha != null) {
+          await store.recordOwn(
+            subjectId: normalizeSubjectId(subjectId),
+            documentTitle: docTitle,
+            sha: sha,
+            pages: pdf?.pages ?? 0,
+            bytes: bytes.length,
+            termMarker: termMarker,
+          );
+          keptOriginal = true;
+        }
+      } catch (e) {
+        debugPrint('Keeping the original PDF failed: $e');
+      }
+    }
+
     return ImportReport(
       fileName: fileName,
       documentTitle: docTitle,
@@ -164,6 +193,7 @@ class ResourceImportService {
       ocrPages: pdf?.ocrPages ?? 0,
       unreadablePages: pdf?.unreadablePages ?? 0,
       diagramCount: pdf?.diagrams ?? 0,
+      keptOriginal: keptOriginal,
     );
   }
 
@@ -286,6 +316,7 @@ class ImportReport {
     this.ocrPages = 0,
     this.unreadablePages = 0,
     this.diagramCount = 0,
+    this.keptOriginal = false,
   }) : failure = null,
        cancelled = false;
 
@@ -298,7 +329,8 @@ class ImportReport {
       pageCount = 0,
       ocrPages = 0,
       unreadablePages = 0,
-      diagramCount = 0;
+      diagramCount = 0,
+      keptOriginal = false;
 
   /// PDFs only: pages in the file, pages read by OCR, pages with nothing
   /// readable, and diagram markers added.
@@ -306,6 +338,9 @@ class ImportReport {
   final int ocrPages;
   final int unreadablePages;
   final int diagramCount;
+
+  /// PDFs only: the original was kept, so it can be opened as it is.
+  final bool keptOriginal;
   final bool cancelled;
 
   final String fileName;
@@ -444,6 +479,7 @@ final resourceImportServiceProvider = Provider<ResourceImportService>((ref) {
   return ResourceImportService(
     ref.watch(offlineStorageServiceProvider),
     ocr: () => ref.read(ocrEngineProvider.future),
+    pdfStore: ref.watch(notePdfStoreProvider),
   );
 });
 

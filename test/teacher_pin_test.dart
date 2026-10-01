@@ -70,6 +70,11 @@ void main() {
     test('the teacher device goes through; other routes are untouched', () {
       expect(gate('/teacher', 'teacher'), isNull);
       expect(gate('/admin', 'student'), isNull);
+      expect(
+        gate('/teachers', 'student'),
+        isNull,
+        reason: 'a student device has learners to manage too',
+      );
       expect(gate('/class-sync', 'student'), isNull);
       expect(gate('/teacher-setup', null), isNull, reason: 'no loop');
     });
@@ -85,6 +90,7 @@ void main() {
       expect(gate('/teacher/materials'), '/unlock?to=%2Fteacher%2Fmaterials');
       expect(gate('/teacher/7'), isNotNull);
       expect(gate('/admin'), isNotNull);
+      expect(gate('/teachers'), '/unlock?to=%2Fteachers');
     });
 
     test('lets everything through when unlocked or no PIN is set', () {

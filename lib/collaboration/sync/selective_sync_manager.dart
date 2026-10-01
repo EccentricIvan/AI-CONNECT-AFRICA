@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Socket;
+import 'dart:isolate';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
@@ -17,8 +19,10 @@ import 'class_share_server.dart'
         kJoinApprovalTimeout,
         kJoinPath,
         kMacHeader,
+        kFilePath,
         kNonceHeader,
         kReportPath;
+import '../../services/notes/note_pdf_store.dart';
 import 'progress_report.dart';
 import 'routing_envelope.dart';
 
@@ -56,11 +60,16 @@ class SyncResult {
     required this.rejected,
     this.subjectsRemoved = 0,
     this.learnersReported = 0,
+    this.pdfsFetched = 0,
     this.error,
   });
 
   /// Learners on this device whose progress the teacher received.
   final int learnersReported;
+
+  /// Notes' original PDFs downloaded this run (only ones this device
+  /// didn't have).
+  final int pdfsFetched;
 
   final int subjectsChecked;
   final int subjectsUpdated;
@@ -178,10 +187,18 @@ class SelectiveSyncManager {
     http.Client? client,
     this.joinRounds = kJoinKdfRounds,
     this.approvalTimeout = kJoinApprovalTimeout,
-  }) : _client = client ?? http.Client();
+    NotePdfStore? pdfStore,
+  }) : _client = client ?? http.Client(),
+       pdfStore = pdfStore ?? NotePdfStore(_db);
 
   final OticDatabase _db;
   final http.Client _client;
+
+  /// Where received notes' original PDFs are kept.
+  final NotePdfStore pdfStore;
+
+  /// A note's PDF can be tens of MB over a phone hotspot.
+  static const _fileTimeout = Duration(minutes: 3);
 
   /// PBKDF2 rounds for join codes — lowered only in tests.
   final int joinRounds;
@@ -190,6 +207,38 @@ class SelectiveSyncManager {
   final Duration approvalTimeout;
 
   static const _timeout = Duration(seconds: 20);
+
+  /// How long a sync waits for an address to accept a connection before
+  /// skipping it. A device on the same Wi-Fi/hotspot answers in
+  /// milliseconds; without this, every stale address (a remembered typed
+  /// one, a device that stopped sharing) cost the full [_timeout] — twice,
+  /// with the retry pass.
+  static const kReachTimeout = Duration(seconds: 2);
+
+  /// Subjects fetched at once. Each reply is still verified and written one
+  /// subject at a time, in order.
+  static const _parallelFetches = 4;
+
+  /// [candidates] that accept a TCP connection, tried all at once.
+  static Future<List<TeacherEndpoint>> reachable(
+    List<TeacherEndpoint> candidates, {
+    Duration timeout = kReachTimeout,
+  }) async {
+    final up = await Future.wait([
+      for (final e in candidates)
+        Socket.connect(e.address, e.port, timeout: timeout).then(
+          (s) {
+            s.destroy();
+            return true;
+          },
+          onError: (_) => false,
+        ),
+    ]);
+    return [
+      for (var i = 0; i < candidates.length; i++)
+        if (up[i]) candidates[i],
+    ];
+  }
 
   // ── Join ────────────────────────────────────────────────────────────────
 
@@ -204,7 +253,7 @@ class SelectiveSyncManager {
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
     final proof = await joinProof(secret, salt);
-    for (final t in endpoints) {
+    for (final t in await reachable(endpoints)) {
       try {
         final response = await _client
             .post(
@@ -323,7 +372,7 @@ class SelectiveSyncManager {
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
     final proof = await joinProof(secret, salt);
-    for (final c in classmates) {
+    for (final c in await reachable(classmates)) {
       final Map<String, Object?> b;
       try {
         final response = await _client
@@ -403,7 +452,7 @@ class SelectiveSyncManager {
     final secret = await joinSecret(code, salt, rounds: joinRounds);
     final proof = await coTeacherJoinProof(secret, salt, myPublicKey);
 
-    for (final t in roots) {
+    for (final t in await reachable(roots)) {
       final Map<String, Object?> b;
       try {
         final response = await _client
@@ -510,7 +559,7 @@ class SelectiveSyncManager {
   }) async {
     final me = await _db.classSyncDao.identity();
     final myKey = await signingPublicKey(me.signingSeed);
-    for (final root in roots) {
+    for (final root in await reachable(roots)) {
       try {
         final hello = await _signedCall(
           root,
@@ -565,9 +614,17 @@ class SelectiveSyncManager {
         'No teacher is sharing on this Wi-Fi right now.',
       );
     }
+    final live = await reachable(candidates);
+    if (live.isEmpty) {
+      // Same wording a failed sync already shows students.
+      return SyncResult.failed(
+        'Could not sync with ${candidates.first.address}. Make sure it is still sharing '
+        '${group.className}${group.streamName == null ? '' : ' ${group.streamName}'}.',
+      );
+    }
     var current = group;
     final results = <TeacherEndpoint, SyncResult>{};
-    for (final endpoint in candidates) {
+    for (final endpoint in live) {
       results[endpoint] = await syncClass(teacher: endpoint, group: current);
       current = await _refreshedGroup(current);
     }
@@ -575,7 +632,7 @@ class SelectiveSyncManager {
     // device had no cached roster to verify against yet — may succeed now,
     // if another endpoint's reply this same round supplied a fresher one
     // (see the bootstrap note on [syncClass]).
-    for (final endpoint in candidates) {
+    for (final endpoint in live) {
       if (results[endpoint]!.ok) continue;
       results[endpoint] = await syncClass(teacher: endpoint, group: current);
       current = await _refreshedGroup(current);
@@ -595,6 +652,7 @@ class SelectiveSyncManager {
       chunksInserted: ok.fold(0, (a, r) => a + r.chunksInserted),
       subjectsRemoved: ok.fold(0, (a, r) => a + r.subjectsRemoved),
       learnersReported: ok.fold(0, (a, r) => a + r.learnersReported),
+      pdfsFetched: ok.fold(0, (a, r) => a + r.pdfsFetched),
       rejected: [
         for (final r in results)
           if (r.ok)
@@ -645,6 +703,7 @@ class SelectiveSyncManager {
       String path,
       Map<String, Object?> body, {
       Future<Map<String, Object?>> Function(String nonce)? extra,
+      Duration? timeout,
     }) => _signedCall(
       teacher,
       path,
@@ -652,6 +711,7 @@ class SelectiveSyncManager {
       uuid: uuid,
       macKey: classKey,
       extra: extra,
+      timeout: timeout,
       open: (nonce, sealed) async {
         SyncTrustError? lastError;
         for (final key in candidateKeys) {
@@ -777,6 +837,14 @@ class SelectiveSyncManager {
       } catch (_) {}
     }
 
+    // Last: a long download must never hold up the progress report.
+    final pdfs = await _fetchMissingPdfs(
+      uuid,
+      schoolId,
+      subjects: {for (final m in trusted) m.subjectId},
+      call: (path, body) => call(path, body, timeout: _fileTimeout),
+    );
+
     return SyncResult(
       subjectsChecked: trusted.length,
       subjectsUpdated: run.updated,
@@ -784,6 +852,7 @@ class SelectiveSyncManager {
       subjectsRemoved: removed,
       rejected: run.rejected,
       learnersReported: reported,
+      pdfsFetched: pdfs,
     );
   }
 
@@ -842,13 +911,17 @@ class SelectiveSyncManager {
     final group = session.group;
     final uuid = group.groupUuid!, classKey = group.classKey!;
     final schoolId = group.schoolId!, rootKey = group.teacherPublicKey!;
-    Future<Map<String, Object?>> call(String path, Map<String, Object?> body) =>
-        _signedCall(
+    Future<Map<String, Object?>> call(
+      String path,
+      Map<String, Object?> body, {
+      Duration? timeout,
+    }) => _signedCall(
           session.endpoint,
           path,
           body,
           uuid: uuid,
           macKey: session.token,
+          timeout: timeout,
           open: (nonce, sealed) => openRelayReply(
             classKey: classKey,
             requestNonce: nonce,
@@ -882,14 +955,21 @@ class SelectiveSyncManager {
       manifests,
       group: group,
       signerFor: (m) => resolvedRoster?.signerFor(m.subjectId, rootKey) ?? rootKey,
-      call: call,
+      call: (path, body) => call(path, body),
       fromTeacher: false,
+    );
+    final pdfs = await _fetchMissingPdfs(
+      uuid,
+      schoolId,
+      subjects: {for (final m in manifests) m.subjectId},
+      call: (path, body) => call(path, body, timeout: _fileTimeout),
     );
     return SyncResult(
       subjectsChecked: manifests.length,
       subjectsUpdated: run.updated,
       chunksInserted: run.inserted,
       rejected: run.rejected,
+      pdfsFetched: pdfs,
     );
   }
 
@@ -935,6 +1015,9 @@ class SelectiveSyncManager {
     var inserted = 0;
     final rejected = <RejectedChunk>[];
 
+    // 1. Which subjects need pulling — signature and version checks only,
+    //    no network.
+    final todo = <({ChannelManifest m, String signer, Map<String, int> floors})>[];
     for (final m in manifests) {
       final routingKey = '$uuid/${m.subjectId}';
       final signer = signerFor(m);
@@ -973,53 +1056,7 @@ class SelectiveSyncManager {
         // teacher removed is a tombstone at some floor value; a classmate
         // relaying an older copy of it can't bring it back.
         if (floor != null && m.version <= floor) continue;
-
-        final reply = await call(kChannelPath, {
-          'school_id': group.schoolId,
-          'subject_id': m.subjectId,
-        });
-        final rows = <TopicResourcesCompanion>[];
-        final ids = <String>[];
-        final bad = <RejectedChunk>[];
-        for (final raw in (reply['chunks'] as List? ?? const [])) {
-          try {
-            final envelope = ResourceChunkEnvelope.fromJson(raw);
-            rows.add(_ingest(envelope, routingKey, uuid, m.subjectId));
-            ids.add(envelope.chunkId);
-          } on FormatException catch (e) {
-            bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
-          } on StateError catch (e) {
-            bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
-          }
-        }
-        final digest = await channelDigest(ids);
-        if (bad.isEmpty && digest != m.digest) {
-          bad.add(
-            RejectedChunk(
-              reason: fromTeacher
-                  ? 'the notes changed while syncing — sync again'
-                  : 'the notes don’t match what your teacher signed',
-              routingKey: routingKey,
-            ),
-          );
-        }
-        if (bad.isNotEmpty) {
-          // All or nothing: keep the copy this device already has.
-          rejected.addAll(bad);
-          continue;
-        }
-        await dao.replaceChannel(
-          classUuid: uuid,
-          subjectId: m.subjectId,
-          rows: rows,
-          digest: digest,
-          version: m.version,
-          manifestSig: m.signature,
-          signer: signer,
-          signerVersionsJson: jsonEncode({...floors, signer: m.version}),
-        );
-        updated++;
-        inserted += rows.length;
+        todo.add((m: m, signer: signer, floors: floors));
       } catch (e) {
         rejected.add(
           RejectedChunk(
@@ -1029,7 +1066,125 @@ class SelectiveSyncManager {
         );
       }
     }
+
+    // 2. Fetch a few subjects at once (round trips dominate on a hotspot),
+    //    then check and write each one by itself, in order.
+    for (var i = 0; i < todo.length; i += _parallelFetches) {
+      final window = todo.sublist(
+        i,
+        (i + _parallelFetches).clamp(0, todo.length),
+      );
+      final replies = await Future.wait([
+        for (final t in window)
+          call(kChannelPath, {
+            'school_id': group.schoolId,
+            'subject_id': t.m.subjectId,
+          }).then<Object>((r) => r, onError: (Object e) => e),
+      ]);
+      for (var k = 0; k < window.length; k++) {
+        final (:m, :signer, :floors) = window[k];
+        final routingKey = '$uuid/${m.subjectId}';
+        try {
+          final reply = replies[k];
+          if (reply is! Map<String, Object?>) throw reply;
+          final rows = <TopicResourcesCompanion>[];
+          final ids = <String>[];
+          final bad = <RejectedChunk>[];
+          for (final raw in (reply['chunks'] as List? ?? const [])) {
+            try {
+              final envelope = ResourceChunkEnvelope.fromJson(raw);
+              rows.add(_ingest(envelope, routingKey, uuid, m.subjectId));
+              ids.add(envelope.chunkId);
+            } on FormatException catch (e) {
+              bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
+            } on StateError catch (e) {
+              bad.add(RejectedChunk(reason: e.message, routingKey: routingKey));
+            }
+          }
+          final digest = await channelDigest(ids);
+          if (bad.isEmpty && digest != m.digest) {
+            bad.add(
+              RejectedChunk(
+                reason: fromTeacher
+                    ? 'the notes changed while syncing — sync again'
+                    : 'the notes don’t match what your teacher signed',
+                routingKey: routingKey,
+              ),
+            );
+          }
+          if (bad.isNotEmpty) {
+            // All or nothing: keep the copy this device already has.
+            rejected.addAll(bad);
+            continue;
+          }
+          await dao.replaceChannel(
+            classUuid: uuid,
+            subjectId: m.subjectId,
+            rows: rows,
+            digest: digest,
+            version: m.version,
+            manifestSig: m.signature,
+            signer: signer,
+            signerVersionsJson: jsonEncode({...floors, signer: m.version}),
+          );
+          updated++;
+          inserted += rows.length;
+        } catch (e) {
+          rejected.add(
+            RejectedChunk(
+              reason: e is SyncTrustError ? e.message : 'subject failed: $e',
+              routingKey: routingKey,
+            ),
+          );
+        }
+      }
+    }
     return (updated: updated, inserted: inserted, rejected: rejected);
+  }
+
+  /// Downloads the original PDF of every received note in [subjects] of
+  /// [classUuid] that this device doesn't have yet. Each one must hash to
+  /// the SHA-256 in its marker row — which came in the signed, verified
+  /// channel — so whoever serves it can't swap it. Best-effort: a missing
+  /// PDF never fails the sync, and the note still works as text.
+  Future<int> _fetchMissingPdfs(
+    String classUuid,
+    String schoolId, {
+    required Set<String> subjects,
+    required Future<Map<String, Object?>> Function(
+      String path,
+      Map<String, Object?> body,
+    )
+    call,
+  }) async {
+    var fetched = 0;
+    try {
+      for (final p in await pdfStore.recorded(classUuid: classUuid)) {
+        if (!subjects.contains(p.subjectId)) continue;
+        if (p.bytes > kMaxNotePdfBytes || await pdfStore.has(p.sha256)) {
+          continue;
+        }
+        try {
+          final reply = await call(kFilePath, {
+            'school_id': schoolId,
+            'subject_id': p.subjectId,
+            'sha256': p.sha256,
+          });
+          final data = reply['data'];
+          if (data is! String) continue;
+          final kept = await pdfStore.put(
+            await Isolate.run(() => base64Decode(data)),
+            expectedSha: p.sha256,
+          );
+          if (kept != null) fetched++;
+        } catch (_) {
+          // Not on that device (an older build, or a co-teacher's subject).
+        }
+      }
+      // Replaced or unshared notes leave files nothing refers to.
+      await pdfStore.collectGarbage();
+    } catch (_) {}
+    return fetched;
   }
 
   Future<Map<String, Object?>> _signedCall(
@@ -1040,6 +1195,7 @@ class SelectiveSyncManager {
     required String macKey,
     required Future<Object?> Function(String nonce, Object? sealed) open,
     Future<Map<String, Object?>> Function(String nonce)? extra,
+    Duration? timeout,
   }) async {
     final nonce = newNonce();
     final raw = jsonEncode({...body, if (extra != null) ...await extra(nonce)});
@@ -1059,7 +1215,7 @@ class SelectiveSyncManager {
           },
           body: raw,
         )
-        .timeout(_timeout);
+        .timeout(timeout ?? _timeout);
     if (response.statusCode != 200) {
       throw StateError(
         'the sharing device refused this request (${response.statusCode})',

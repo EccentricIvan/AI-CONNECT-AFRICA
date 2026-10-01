@@ -1,4 +1,5 @@
 import '../../curriculum/curriculum_models.dart';
+import '../../services/pdf/diagram_detector.dart';
 import 'school_math.dart';
 
 /// A single stage in the tutor pipeline.
@@ -22,7 +23,13 @@ class TutorResponse {
     this.math,
     this.mathCoach = false,
     this.lesson,
+    this.diagrams = const [],
   });
+
+  /// Diagrams in the teacher's PDFs this reply points to ("see page 14") —
+  /// kept as data, apart from [text], so a translated reply can still open
+  /// the right page.
+  final List<DiagramMarker> diagrams;
 
   /// Which pipeline stage this response belongs to.
   final TutorStage stage;
@@ -58,6 +65,7 @@ class TutorResponse {
       math: math ?? this.math,
       mathCoach: mathCoach,
       lesson: lesson,
+      diagrams: diagrams,
     );
   }
 

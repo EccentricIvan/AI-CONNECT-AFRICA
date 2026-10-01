@@ -99,19 +99,6 @@ appBar: StudioAppBar(
                       : const Icon(Icons.warning_amber, color: Colors.orange),
                 ),
               ),
-              ListTile(
-                leading: Icon(
-                  Icons.info_outline,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                title: Text(tr(context, 'How AI works here')),
-                subtitle: const Text(
-                  'Answers are generated on this device. Chat uses the '
-                  'language you chose. If setup is incomplete, you still get '
-                  'sample replies so you can explore the app.',
-                ),
-                isThreeLine: true,
-              ),
             ]),
 
             // ── Learning language ────────────────────────────────────────────
@@ -154,16 +141,6 @@ appBar: StudioAppBar(
                 );
               }),
               const _TranslateModelTile(),
-              ListTile(
-                leading: const Icon(Icons.info_outline, color: Colors.grey),
-                title: Text(tr(context, 'How chat language works')),
-                subtitle: const Text(
-                  'Ask in your learning language. Replies come back in the '
-                  'same language. Chat works this way on Home and in Learn, '
-                  'Create, and Apply.',
-                ),
-                isThreeLine: true,
-              ),
             ]),
 
             // ── Student ───────────────────────────────────────────────────────
@@ -194,9 +171,6 @@ appBar: StudioAppBar(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 title: Text(tr(context, 'Edit profile')),
-                subtitle: const Text(
-                  'Update your interests and learning style',
-                ),
                 onTap: () => context.go('/onboarding'),
                 trailing: Icon(
                   Icons.chevron_right,
@@ -230,16 +204,10 @@ appBar: StudioAppBar(
                           color: Colors.orange,
                         ),
                         title: Text('${student.streakDays} day streak'),
-                        subtitle: const Text(
-                          'Keep learning daily to grow your streak',
-                        ),
                       ),
                       ListTile(
                         leading: const Icon(Icons.stars, color: Colors.amber),
                         title: Text('${student.totalPoints} points earned'),
-                        subtitle: const Text(
-                          'Points grow as you complete lessons and earn badges',
-                        ),
                       ),
                     ])
                   : const SizedBox.shrink(),
@@ -304,7 +272,7 @@ appBar: StudioAppBar(
               ListTile(
                 leading: const Icon(Icons.wifi_off, color: AppColors.primary),
                 title: Text(tr(context, 'Offline mode')),
-                subtitle: Text(tr(context, '100% offline — no internet required')),
+                subtitle: Text(tr(context, 'Offline')),
                 trailing: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -326,33 +294,15 @@ appBar: StudioAppBar(
               ),
             ]),
 
-            // ── Admin ────────────────────────────────────────────────────────
-            _Section('Administration', [
+            // ── Teachers ─────────────────────────────────────────────────────
+            _Section('Teachers', [
               ListTile(
                 leading: Icon(
                   Icons.groups_outlined,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
-                title: const Text('Teacher dashboard'),
-                subtitle: const Text(
-                  'See learners on this device, topic progress, and sessions',
-                ),
-                onTap: () => context.go('/teacher'),
-                trailing: Icon(
-                  Icons.chevron_right,
-                  color: Theme.of(context).hintColor,
-                ),
-              ),
-              ListTile(
-                leading: Icon(
-                  Icons.admin_panel_settings,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                title: const Text('Admin dashboard'),
-                subtitle: const Text(
-                  'Device info, learning packages, profiles, reset student data',
-                ),
-                onTap: () => context.go('/admin'),
+                title: const Text('Teachers'),
+                onTap: () => context.go('/teachers'),
                 trailing: Icon(
                   Icons.chevron_right,
                   color: Theme.of(context).hintColor,

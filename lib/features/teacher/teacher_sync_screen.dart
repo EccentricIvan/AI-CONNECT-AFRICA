@@ -21,6 +21,7 @@ import '../collaborate/join_requests.dart';
 import 'class_progress_panel.dart';
 import 'class_providers.dart';
 import 'co_teacher_widgets.dart';
+import 'failover_widgets.dart';
 
 /// Shares one class/stream's notes with its students' devices on the same
 /// Wi-Fi/hotspot.
@@ -189,9 +190,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    'Sharing on ${_addresses.map((a) => '$a:$_coPort').join(', ')}. '
-                    'Students get your notes when they sync, alongside the '
-                    'class teacher’s.',
+                    'Sharing on ${_addresses.map((a) => '$a:$_coPort').join(', ')}',
                     style: TextStyle(fontSize: 12, color: ac.textSecondary),
                   ),
                 )
@@ -199,8 +198,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
-                    'Sharing. Students get your notes when they sync, '
-                    'alongside the class teacher’s.',
+                    'Sharing',
                     style: TextStyle(fontSize: 12, color: ac.textSecondary),
                   ),
                 ),
@@ -211,7 +209,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
       OutlinedButton.icon(
         onPressed: () => context.push('/teacher/co-teach'),
         icon: const Icon(Icons.group_add_rounded, size: 18),
-        label: const Text('Co-teach another teacher’s class'),
+        label: const Text('Co-teaching'),
       ),
     ];
   }
@@ -344,7 +342,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
         title: 'Class sync',
-        subtitle: 'Share this class’s notes with its students’ devices',
+        subtitle: 'Share notes with students',
         icon: Icons.sync_rounded,
         iconColor: AppColors.accentTeal,
         showBack: true,
@@ -357,13 +355,11 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
             return ListView(
               padding: const EdgeInsets.all(24),
               children: [
-                const Text(
-                  'Create a class/stream first (Teacher → Add class), '
-                  'then come back here to share its notes — or co-teach '
-                  'another teacher’s class below.',
-                  textAlign: TextAlign.center,
-                ),
+                const Text('No classes yet', textAlign: TextAlign.center),
                 ..._coTeachingSection(delegated, identity),
+                const SizedBox(height: 8),
+                // A replacement for a lost teacher device lands here.
+                const StandbyScreenLink(),
               ],
             );
           }
@@ -387,11 +383,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: Text(
-                          'Set your school first. Notes are only ever shared with '
-                          'devices of the same school.',
-                          style: TextStyle(height: 1.4),
-                        ),
+                        child: Text('School not set'),
                       ),
                       TextButton(
                         onPressed: _setSchool,
@@ -482,16 +474,6 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                               fontFamily: 'monospace',
                             ),
                           ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Only needed if a student’s device can’t find this '
-                          'one: they type it under Class sync → Can’t find '
-                          'your teacher’s device?',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: ac.textSecondary,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -503,11 +485,8 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                       : AppColors.accentGreen,
                   child: Text(
                     _subjects.isEmpty
-                        ? 'No notes are shared with ${classLabel(selected)} yet. Share '
-                              'notes in Lesson materials → Share with classes, then stop '
-                              'and start sharing again.'
-                        : '${classLabel(selected)} receives notes in: '
-                              '${_subjectNames(_subjects).join(', ')}.',
+                        ? 'No shared notes'
+                        : 'Shared: ${_subjectNames(_subjects).join(', ')}',
                     style: TextStyle(color: ac.textPrimary, height: 1.4),
                   ),
                 ),
@@ -516,26 +495,21 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
               CoTeachersCard(group: selected, server: _server),
               ..._coTeachingSection(delegated, identity),
               const SizedBox(height: 20),
-              ClassProgressPanel(group: selected),
-              const SizedBox(height: 20),
-              Text(
-                'Students type the join code once on their device (Class sync in '
-                'the menu, on any phone or PC), and you tap Accept when their '
-                'name appears. Each time they sync, their progress comes back '
-                'to you here. After that, only their devices can pull '
-                '${classLabel(selected)}’s notes — and only the notes you shared '
-                'with it. Other classes, other schools and anyone else on the Wi-Fi '
-                'get nothing, and cannot read what is sent. Works over the same '
-                'Wi-Fi/hotspot, with no internet.'
-                '${Platform.isWindows ? '\n\nOn Windows: the first time you start '
-                          'sharing, Windows may ask whether to allow the app on networks — '
-                          'choose Allow, or students’ devices won’t find this computer.' : ''}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: ac.textSecondary,
-                  height: 1.5,
-                ),
+              StandbyHostCard(
+                identity: identity,
+                server: _running ? _server : null,
               ),
+              const SizedBox(height: 8),
+              const StandbyScreenLink(),
+              const SizedBox(height: 20),
+              ClassProgressPanel(group: selected),
+              if (Platform.isWindows) ...[
+                const SizedBox(height: 20),
+                Text(
+                  'If Windows asks, allow network access.',
+                  style: TextStyle(fontSize: 12, color: ac.textSecondary),
+                ),
+              ],
             ],
           );
         },
@@ -581,8 +555,7 @@ class _JoinCodeCard extends StatelessWidget {
             const Padding(
               padding: EdgeInsets.only(bottom: 6),
               child: Text(
-                'A device tried too many wrong codes and is shut out. Make a '
-                'new code if that was a real student.',
+                'Code locked after too many wrong attempts',
                 style: TextStyle(color: Colors.red),
               ),
             ),
@@ -608,7 +581,7 @@ class _JoinCodeCard extends StatelessWidget {
             ),
           const SizedBox(height: 4),
           Text(
-            'Show this to the class. Valid$until.',
+            'Valid$until',
             style: TextStyle(fontSize: 12, color: ac.textSecondary),
           ),
           const SizedBox(height: 8),

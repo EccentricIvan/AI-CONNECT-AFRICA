@@ -55,8 +55,7 @@ class ClassProgressPanel extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(
             rows.isEmpty
-                ? 'Nothing yet. Each student’s progress arrives here when their '
-                      'device syncs with you.'
+                ? 'No reports yet'
                 : '${rows.length} learner${rows.length == 1 ? '' : 's'} reported'
                       '${classMean == null ? '' : ' · class mastery $classMean%'}',
             style: TextStyle(fontSize: 12, color: ac.textSecondary),

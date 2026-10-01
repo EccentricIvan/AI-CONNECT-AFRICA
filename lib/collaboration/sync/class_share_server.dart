@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
-import 'package:drift/drift.dart' show InsertMode, Value;
+import 'package:drift/drift.dart'
+    show InsertMode, TableUpdate, TableUpdateQuery, Value;
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
 import '../../db/tables/sync_identity_table.dart' show kRoleStudent;
+import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
 import 'failover_crypto.dart';
 import 'p2p_failover_service.dart' show buildSealedLedger;
@@ -36,6 +39,13 @@ const kCoTeacherJoinPath = 'api/v4/coteacher/join';
 
 /// A student device reporting its learners' progress to the teacher.
 const kReportPath = 'api/v4/report';
+
+/// The original PDF behind a note, by the SHA-256 its marker row records
+/// (see `NotePdfStore`). Served only when that marker is in a channel the
+/// requester may pull, so it reaches exactly who gets the note. Added
+/// without a version bump: a build without it answers 404, and the note
+/// still syncs as text.
+const kFilePath = 'api/v4/sync/file';
 
 /// Host failover: a device pairing as this host's standby (code + Accept,
 /// binding the standby's own key), then pulling the encrypted host ledger
@@ -189,10 +199,14 @@ class ClassShareServer {
     this.role = ShareRole.teacher,
     this.joinRounds = kJoinKdfRounds,
     this.approvalTimeout = kJoinApprovalTimeout,
-  });
+    NotePdfStore? pdfStore,
+  }) : pdfStore = pdfStore ?? NotePdfStore(_db);
 
   final OticDatabase _db;
   final ShareRole role;
+
+  /// Where the notes' original PDFs are read from.
+  final NotePdfStore pdfStore;
 
   /// PBKDF2 rounds for join codes — lowered only in tests.
   final int joinRounds;
@@ -216,6 +230,16 @@ class ClassShareServer {
 
   /// Classmate role: tokens of devices the sharer accepted.
   final Set<String> _sessions = {};
+
+  /// One class+subject's envelopes and digest, keyed `uuid/subject`. Every
+  /// handshake used to rebuild and re-hash every shared note, once per
+  /// student per sync; now that happens once per change. Cleared on any
+  /// write to the notes, their shares or the classes, and [_cacheGen]
+  /// stops a build that raced a write from being stored.
+  final Map<String, ({List<ResourceChunkEnvelope> chunks, String digest})>
+  _channelCache = {};
+  int _cacheGen = 0;
+  StreamSubscription<Set<TableUpdate>>? _cacheInvalidator;
 
   bool get isRunning => _server != null;
   int? get port => _server?.port;
@@ -265,6 +289,18 @@ class ClassShareServer {
       server = await shelf_io.serve(_route, InternetAddress.anyIPv4, 0);
     }
     _server = server;
+    _cacheInvalidator ??= _db
+        .tableUpdates(
+          TableUpdateQuery.onAllTables([
+            _db.topicResources,
+            _db.resourceShares,
+            _db.classGroups,
+          ]),
+        )
+        .listen((_) {
+          _cacheGen++;
+          _channelCache.clear();
+        });
     // Android: keep serving with the screen off or the app in the background.
     unawaited(ShareKeepAlive.acquire());
     return server.port;
@@ -274,6 +310,10 @@ class ClassShareServer {
     if (_server != null) unawaited(ShareKeepAlive.release());
     await _server?.close(force: true);
     _server = null;
+    unawaited(_cacheInvalidator?.cancel());
+    _cacheInvalidator = null;
+    _channelCache.clear();
+    _cacheGen++;
     _codes.clear();
     _coTeacherCodes.clear();
     _standbyCodes.clear();
@@ -450,7 +490,7 @@ class ClassShareServer {
         kJoinPath => await _join(request),
         kCoTeacherJoinPath when role == ShareRole.teacher =>
           await _coTeacherJoin(request),
-        kHandshakePath || kChannelPath => await _sync(request),
+        kHandshakePath || kChannelPath || kFilePath => await _sync(request),
         kReportPath when role == ShareRole.teacher => await _sync(request),
         kStandbyPairPath when role == ShareRole.teacher =>
           await _standbyPair(request),
@@ -761,6 +801,7 @@ class ClassShareServer {
       kReportPath when !served.isDelegate =>
         await _report(served, classKey, nonce, body['report']),
       kReportPath => null,
+      kFilePath => await _noteFile(served, body['subject_id'], body['sha256']),
       _ => await _channel(served, body['subject_id']),
     };
     if (reply == null) return _notFound();
@@ -771,6 +812,7 @@ class ClassShareServer {
           classKey: classKey,
           requestNonce: nonce,
           json: reply,
+          heavy: path == kFilePath,
         ),
       );
     }
@@ -781,6 +823,7 @@ class ClassShareServer {
         signingSeed: me.signingSeed,
         requestNonce: nonce,
         json: reply,
+        heavy: path == kFilePath,
       ),
     );
   }
@@ -828,11 +871,7 @@ class ClassShareServer {
       }
       await dao.retireUnshared(uuid, subjects.toSet());
       for (final subject in subjects) {
-        final chunks = await _envelopes(
-          uuid,
-          await dao.sharedChunks(uuid, subject),
-        );
-        final digest = await channelDigest(chunks.map((e) => e.chunkId));
+        final digest = (await _cachedChannel(uuid, subject)).digest;
         final version = await dao.servedVersion(uuid, subject, digest);
         manifests.add(
           ChannelManifest(
@@ -919,16 +958,79 @@ class ClassShareServer {
       // serve a subject outside its allocation even if that changed.
       return null;
     }
-    final uuid = served.groupUuid;
-    final rows = role == ShareRole.teacher
-        ? await _db.classSyncDao.sharedChunks(uuid, subject)
-        : await _db.classSyncDao.receivedChunks(uuid, subject);
-    final chunks = await _envelopes(uuid, rows);
+    final channel = await _cachedChannel(served.groupUuid, subject);
     return {
       'subject_id': subject,
-      'digest': await channelDigest(chunks.map((e) => e.chunkId)),
-      'chunks': [for (final e in chunks) e.toJson()],
+      'digest': channel.digest,
+      'chunks': [for (final e in channel.chunks) e.toJson()],
     };
+  }
+
+  /// The PDF [sha] of [subject], if a note in that channel records it and
+  /// this device has the file.
+  Future<Map<String, Object?>?> _noteFile(
+    _ServedClass served,
+    Object? subject,
+    Object? sha,
+  ) async {
+    if (subject is! String || sha is! String || sha.length != 64) return null;
+    if (served.allocatedSubjects != null &&
+        !served.allocatedSubjects!.contains(subject)) {
+      return null;
+    }
+    final channel = await _cachedChannel(served.groupUuid, subject);
+    final listed = channel.chunks.any(
+      (e) =>
+          e.payload['topic_key'] == kPdfMarkerTopic &&
+          '${e.payload['content_chunk']}'.contains('sha256=$sha '),
+    );
+    if (!listed) return null;
+    // One file at a time: thirty students' first sync must not hold thirty
+    // PDFs in a 4 GB phone's memory at once.
+    final previous = _fileTurn;
+    final done = Completer<void>();
+    _fileTurn = done.future;
+    await previous;
+    try {
+      final file = await pdfStore.fileFor(sha);
+      if (file == null) return null;
+      final path = file.path;
+      final data = await Isolate.run(() {
+        final bytes = File(path).readAsBytesSync();
+        return bytes.length > kMaxNotePdfBytes ? null : base64Encode(bytes);
+      });
+      if (data == null) return null;
+      return {'sha256': sha, 'data': data};
+    } catch (_) {
+      return null;
+    } finally {
+      done.complete();
+    }
+  }
+
+  /// Completes when the PDF being served before this one is out.
+  Future<void> _fileTurn = Future.value();
+
+  /// [subject]'s channel of [classUuid] as this device serves it in its
+  /// role: its own shared notes (teacher), or the received copy (classmate).
+  Future<({List<ResourceChunkEnvelope> chunks, String digest})> _cachedChannel(
+    String classUuid,
+    String subject,
+  ) async {
+    final key = '$classUuid/$subject';
+    final hit = _channelCache[key];
+    if (hit != null) return hit;
+    final gen = _cacheGen;
+    final rows = role == ShareRole.teacher
+        ? await _db.classSyncDao.sharedChunks(classUuid, subject)
+        : await _db.classSyncDao.receivedChunks(classUuid, subject);
+    final chunks = await _envelopes(classUuid, rows);
+    final built = (
+      chunks: chunks,
+      digest: await channelDigest(chunks.map((e) => e.chunkId)),
+    );
+    if (gen == _cacheGen) _channelCache[key] = built;
+    return built;
   }
 
   /// Envelopes for [rows]. A received row stores exactly the payload the

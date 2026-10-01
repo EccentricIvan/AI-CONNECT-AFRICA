@@ -39,16 +39,13 @@ class CoTeachersCard extends ConsumerWidget {
             'Teachers on this class',
             style: TextStyle(fontWeight: FontWeight.w700, color: ac.textPrimary),
           ),
-          const SizedBox(height: 4),
-          Text(
-            coTeachers.isEmpty
-                ? 'Only you. Invite another teacher to share their own '
-                      'subject’s notes into ${classLabel(group)} from their '
-                      'own device.'
-                : 'Each teacher shares only their own subjects, from their '
-                      'own device. Everything else is yours.',
-            style: TextStyle(fontSize: 12, color: ac.textSecondary),
-          ),
+          if (coTeachers.isEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Only you',
+              style: TextStyle(fontSize: 12, color: ac.textSecondary),
+            ),
+          ],
           for (final t in coTeachers)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -88,7 +85,7 @@ class CoTeachersCard extends ConsumerWidget {
           ),
           if (server?.isRunning != true)
             Text(
-              'Start sharing this class to invite a co-teacher.',
+              'Available while sharing',
               style: TextStyle(fontSize: 12, color: ac.textSecondary),
             ),
         ],
@@ -110,12 +107,7 @@ class CoTeachersCard extends ConsumerWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Revoke ${t.name}?'),
-        content: const Text(
-          'Their subjects come back to you. Students stop accepting their '
-          'notes the next time they sync with you — their device can’t be '
-          'switched off from here, and anything it already sent stays on '
-          'students’ devices until then.',
-        ),
+        content: const Text('Their subjects return to you.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -209,8 +201,7 @@ class CoTeachersCard extends ConsumerWidget {
         title: const Text('Co-teacher invite code'),
         content: code == null
             ? const Text(
-                'Couldn’t make a code — one of those subjects was just given '
-                'to someone else. Try again.',
+                'One of those subjects is already assigned. Try again.',
               )
             : Column(
                 mainAxisSize: MainAxisSize.min,
@@ -237,10 +228,7 @@ class CoTeachersCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'For: ${picked.map(names).join(', ')}. The other teacher '
-                    'types it on their device (Teacher → Class sync → '
-                    'Co-teach a class), then you tap Accept here. Valid for '
-                    '15 minutes.',
+                    '${picked.map(names).join(', ')} · valid for 15 minutes',
                   ),
                 ],
               ),

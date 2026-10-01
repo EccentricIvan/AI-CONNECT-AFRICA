@@ -11,7 +11,8 @@ import '../../db/providers/db_provider.dart';
 import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import '../../features/teacher/teacher_device_screens.dart';
 import '../../features/achievements/achievements_screen.dart';
-import '../../features/admin/admin_screen.dart';
+import '../../features/notes/note_pdf_screen.dart';
+import '../../features/teachers/teachers_screen.dart';
 import '../../features/certificates/certificates_screen.dart';
 import '../../features/collaborate/class_sync_screen.dart';
 import '../../features/create/create_screen.dart';
@@ -30,6 +31,7 @@ import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
 import '../../features/teacher/join_as_co_teacher_screen.dart';
+import '../../features/teacher/standby_screen.dart';
 import '../../features/teacher/teacher_sync_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/teacher/teacher_pin.dart';
@@ -134,6 +136,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (_, __) => const JoinAsCoTeacherScreen(),
           ),
           GoRoute(
+            path: '/teacher/standby',
+            builder: (_, __) => const StandbyScreen(),
+          ),
+          GoRoute(
             path: '/learn/subject/:id',
             builder: (_, state) =>
                 UnitsScreen(subjectId: state.pathParameters['id'] ?? ''),
@@ -216,7 +222,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               studentId: int.tryParse(state.pathParameters['id'] ?? '') ?? 0,
             ),
           ),
-          GoRoute(path: '/admin', builder: (_, __) => const AdminScreen()),
+          GoRoute(
+            path: '/note-pdf',
+            builder: (_, state) => NotePdfScreen(
+              sha256: state.uri.queryParameters['sha'] ?? '',
+              title: state.uri.queryParameters['title'] ?? '',
+              initialPage:
+                  int.tryParse(state.uri.queryParameters['page'] ?? '') ?? 1,
+            ),
+          ),
+          GoRoute(
+            path: '/teachers',
+            builder: (_, __) => const TeachersScreen(),
+          ),
+          // The Admin dashboard became Teachers.
+          GoRoute(path: '/admin', redirect: (_, __) => '/teachers'),
           GoRoute(
             path: '/settings',
             builder: (_, __) => const SettingsScreen(),

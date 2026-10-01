@@ -24,6 +24,7 @@ import 'site_build_coder.dart';
 import 'site_template_catalog.dart';
 import 'site_template_classifier.dart';
 import 'site_template_picker.dart';
+import '../../shared/widgets/studio_page.dart';
 
 /// Longest description passed into the coder brief — leaves room in
 /// `kCoderMaxPromptChars` for the system prompt and the rest of the brief.
@@ -732,6 +733,7 @@ class _SiteChatBuilderScreenState extends ConsumerState<SiteChatBuilderScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: const AppBarBackButton(),
         title: Row(
           children: [
             const Icon(Icons.language, size: 20, color: AppColors.primary),
