@@ -495,6 +495,10 @@ void main() {
       // record of classes it serves — device/class data, not a learner's.
       'class_co_teachers',
       'co_teaching_classes',
+      // Host failover: paired standbys (host) and the sealed host ledger
+      // (standby) — the school's teacher identity, not a learner's.
+      'failover_standbys',
+      'host_ledgers',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

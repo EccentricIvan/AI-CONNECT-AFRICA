@@ -21,6 +21,14 @@ class AchievementsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
+      // Back only: the hero card below already carries the title.
+      appBar: AppBar(
+        leading: const AppBarBackButton(),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: 48,
+      ),
       body: SafeArea(
         child: studentAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),

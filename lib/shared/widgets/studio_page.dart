@@ -158,6 +158,46 @@ class StudioHeaderIconButton extends StatelessWidget {
   }
 }
 
+/// Back to the previous screen, or home when this one was opened directly
+/// (a sidebar tap or `context.go` leaves nothing to pop).
+void goBack(BuildContext context) {
+  if (GoRouter.maybeOf(context) == null) {
+    Navigator.maybeOf(context)?.maybePop();
+    return;
+  }
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go('/');
+  }
+}
+
+/// Whether [context] is on a screen that should offer Back: every one but
+/// home. Off a go_router route (a dialog, a test), only when there's
+/// something to pop.
+bool offersBack(BuildContext context) {
+  if (GoRouter.maybeOf(context) == null) {
+    return Navigator.maybeOf(context)?.canPop() ?? false;
+  }
+  try {
+    return GoRouterState.of(context).uri.path != '/';
+  } catch (_) {
+    return context.canPop();
+  }
+}
+
+/// [goBack] as an AppBar `leading` — for the screens on a plain [AppBar].
+class AppBarBackButton extends StatelessWidget {
+  const AppBarBackButton({super.key});
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    icon: const Icon(Icons.arrow_back_rounded),
+    tooltip: 'Back',
+    onPressed: () => goBack(context),
+  );
+}
+
 /// Shared page header: optional gradient icon mark, title, subtitle, actions.
 class StudioPageHeader extends StatelessWidget {
   const StudioPageHeader({
@@ -199,13 +239,7 @@ class StudioPageHeader extends StatelessWidget {
             StudioHeaderIconButton(
               icon: Icons.arrow_back_rounded,
               tooltip: 'Back',
-              onTap: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go('/');
-                }
-              },
+              onTap: () => goBack(context),
             ),
             const SizedBox(width: 12),
           ] else if (leading != null) ...[
@@ -277,7 +311,7 @@ class StudioAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     @Deprecated('Hamburger menu removed from all screens') bool showMenu = false,
     this.showNotifications = false,
-    this.showBack = false,
+    this.showBack,
     this.bottom,
   });
 
@@ -287,7 +321,10 @@ class StudioAppBar extends StatelessWidget implements PreferredSizeWidget {
   final Color iconColor;
   final List<Widget> actions;
   final bool showNotifications;
-  final bool showBack;
+
+  /// Null (the default) shows Back on every screen but home — see
+  /// [offersBack].
+  final bool? showBack;
   final PreferredSizeWidget? bottom;
 
   double get _toolbarHeight => subtitle != null ? 74 : 66;
@@ -313,7 +350,7 @@ class StudioAppBar extends StatelessWidget implements PreferredSizeWidget {
         iconColor: iconColor,
         actions: actions,
         showNotifications: showNotifications,
-        showBack: showBack,
+        showBack: showBack ?? offersBack(context),
         padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
       ),
       bottom: bottom,

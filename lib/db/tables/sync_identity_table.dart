@@ -21,6 +21,24 @@ class SyncIdentity extends Table {
   /// create classes or subjects or claim the teacher role.
   TextColumn get deviceRole => text().nullable()();
 
+  // ── Host failover (lib/collaboration/sync/p2p_failover_service.dart) ──
+
+  /// How many times this school's host identity has been taken over by a
+  /// standby. Every served channel and roster version this device signs
+  /// sits at or above `hostGeneration << 32`, so anything a replaced host
+  /// signs afterwards is older than what students already hold. Handshakes
+  /// carry it as `host_epoch`, so students refuse a superseded host.
+  IntColumn get hostGeneration => integer().withDefault(const Constant(0))();
+
+  /// Host device with a standby: the AES key stretched from the teacher's
+  /// failover passphrase, with its salt and PBKDF2 rounds. Kept so the
+  /// ledger can be re-sealed on every pull without asking again. It
+  /// exposes nothing [signingSeed] doesn't already: both sit in this
+  /// database in the clear.
+  TextColumn get failoverSealKey => text().nullable()();
+  TextColumn get failoverKdfSalt => text().nullable()();
+  IntColumn get failoverKdfRounds => integer().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

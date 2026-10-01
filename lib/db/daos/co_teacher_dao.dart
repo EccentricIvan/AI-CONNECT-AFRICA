@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' show max;
 
 import 'package:drift/drift.dart';
 
@@ -73,7 +74,7 @@ class CoTeacherDao extends DatabaseAccessor<OticDatabase>
       ),
       mode: InsertMode.insertOrReplace,
     );
-    await _republishRoster(group);
+    await republishRoster(group);
     return true;
   }
 
@@ -90,10 +91,13 @@ class CoTeacherDao extends DatabaseAccessor<OticDatabase>
               t.publicKey.equals(publicKey),
         ))
         .go();
-    await _republishRoster(group);
+    await republishRoster(group);
   }
 
-  Future<void> _republishRoster(ClassGroup group) async {
+  /// Re-signs [group]'s roster from `class_co_teachers` at a new version.
+  /// Also called by host failover after a takeover, to re-sign the roster
+  /// above the new generation's floor.
+  Future<void> republishRoster(ClassGroup group) async {
     final classUuid = group.groupUuid!;
     final fresh = await (select(
       classGroups,
@@ -107,10 +111,14 @@ class CoTeacherDao extends DatabaseAccessor<OticDatabase>
           subjectIds: _decodeSubjects(r.subjectIdsJson),
         ),
     ];
-    final version = (fresh.rosterVersion ?? 0) + 1;
     final me = await (select(
       syncIdentity,
     )..where((t) => t.id.equals(1))).getSingle();
+    // Above anything a replaced host signed (see generationFloor).
+    final version = max(
+      (fresh.rosterVersion ?? 0) + 1,
+      generationFloor(me.hostGeneration) + 1,
+    );
     final signature = await signRoster(
       signingSeed: me.signingSeed,
       schoolId: fresh.schoolId!,

@@ -71,6 +71,8 @@ final teacherUnlockedProvider = StateProvider<bool>((ref) => false);
 bool isTeacherRoute(String location) =>
     location == '/teacher' ||
     location.startsWith('/teacher/') ||
+    location == '/teachers' ||
+    location.startsWith('/teachers/') ||
     location == '/admin' ||
     location.startsWith('/admin/');
 
@@ -83,7 +85,8 @@ bool isTeacherRoute(String location) =>
 ///   the teacher device (carrying the destination on);
 /// * the teacher device → through.
 ///
-/// Admin routes aren't role-gated: every device has learners to manage.
+/// `/teachers` (and the old `/admin`) isn't role-gated: every device has
+/// learners to manage.
 String? teacherRoleRedirect(Uri uri, {required String? role}) {
   final path = uri.path;
   if (path != '/teacher' && !path.startsWith('/teacher/')) return null;

@@ -1,5 +1,8 @@
 package com.aiconnectafrica.ai_connect_africa
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -21,6 +24,28 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Class sync: keep sharing alive in the background (ClassShareService).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "ai_connect_africa/class_share")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "start" -> {
+                            askForNotifications()
+                            ClassShareService.start(this, call.argument<String>("text"))
+                            result.success(true)
+                        }
+                        "stop" -> {
+                            ClassShareService.stop(this)
+                            result.success(true)
+                        }
+                        else -> result.notImplemented()
+                    }
+                } catch (e: Exception) {
+                    // e.g. Android refusing a foreground start: sharing still
+                    // works while the app stays on screen.
+                    result.error("class_share_failed", e.message ?: e.toString(), null)
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -79,6 +104,20 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * Android 13+: the sharing notification is hidden until the user allows
+     * notifications. The service runs either way; this only asks once per
+     * start, and Android stops asking after the user declines twice.
+     */
+    private fun askForNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 4107)
+        }
     }
 
     /** First APK asset key that actually opens, or null. */

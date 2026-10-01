@@ -6667,6 +6667,17 @@ class $ClassGroupsTable extends ClassGroups
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _hostEpochMeta = const VerificationMeta(
+    'hostEpoch',
+  );
+  @override
+  late final GeneratedColumn<int> hostEpoch = GeneratedColumn<int>(
+    'host_epoch',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6680,6 +6691,7 @@ class $ClassGroupsTable extends ClassGroups
     joined,
     rosterVersion,
     rosterJson,
+    hostEpoch,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -6764,6 +6776,12 @@ class $ClassGroupsTable extends ClassGroups
         rosterJson.isAcceptableOrUnknown(data['roster_json']!, _rosterJsonMeta),
       );
     }
+    if (data.containsKey('host_epoch')) {
+      context.handle(
+        _hostEpochMeta,
+        hostEpoch.isAcceptableOrUnknown(data['host_epoch']!, _hostEpochMeta),
+      );
+    }
     return context;
   }
 
@@ -6816,6 +6834,10 @@ class $ClassGroupsTable extends ClassGroups
       rosterJson: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}roster_json'],
+      ),
+      hostEpoch: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}host_epoch'],
       ),
     );
   }
@@ -6870,6 +6892,12 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
   /// The cached roster itself (JSON), re-verified against [teacherPublicKey]
   /// whenever it's used, never trusted on its own.
   final String? rosterJson;
+
+  /// On a joined class: the highest `host_epoch` a root-signed handshake
+  /// has carried. A handshake with a lower one comes from a teacher device
+  /// a standby has since replaced, and is refused before it can drop or
+  /// replace anything. Null means 0 (no takeover seen yet).
+  final int? hostEpoch;
   const ClassGroup({
     required this.id,
     required this.className,
@@ -6882,6 +6910,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     required this.joined,
     this.rosterVersion,
     this.rosterJson,
+    this.hostEpoch,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6910,6 +6939,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     }
     if (!nullToAbsent || rosterJson != null) {
       map['roster_json'] = Variable<String>(rosterJson);
+    }
+    if (!nullToAbsent || hostEpoch != null) {
+      map['host_epoch'] = Variable<int>(hostEpoch);
     }
     return map;
   }
@@ -6941,6 +6973,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       rosterJson: rosterJson == null && nullToAbsent
           ? const Value.absent()
           : Value(rosterJson),
+      hostEpoch: hostEpoch == null && nullToAbsent
+          ? const Value.absent()
+          : Value(hostEpoch),
     );
   }
 
@@ -6961,6 +6996,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       joined: serializer.fromJson<bool>(json['joined']),
       rosterVersion: serializer.fromJson<int?>(json['rosterVersion']),
       rosterJson: serializer.fromJson<String?>(json['rosterJson']),
+      hostEpoch: serializer.fromJson<int?>(json['hostEpoch']),
     );
   }
   @override
@@ -6978,6 +7014,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       'joined': serializer.toJson<bool>(joined),
       'rosterVersion': serializer.toJson<int?>(rosterVersion),
       'rosterJson': serializer.toJson<String?>(rosterJson),
+      'hostEpoch': serializer.toJson<int?>(hostEpoch),
     };
   }
 
@@ -6993,6 +7030,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     bool? joined,
     Value<int?> rosterVersion = const Value.absent(),
     Value<String?> rosterJson = const Value.absent(),
+    Value<int?> hostEpoch = const Value.absent(),
   }) => ClassGroup(
     id: id ?? this.id,
     className: className ?? this.className,
@@ -7009,6 +7047,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
         ? rosterVersion.value
         : this.rosterVersion,
     rosterJson: rosterJson.present ? rosterJson.value : this.rosterJson,
+    hostEpoch: hostEpoch.present ? hostEpoch.value : this.hostEpoch,
   );
   ClassGroup copyWithCompanion(ClassGroupsCompanion data) {
     return ClassGroup(
@@ -7031,6 +7070,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       rosterJson: data.rosterJson.present
           ? data.rosterJson.value
           : this.rosterJson,
+      hostEpoch: data.hostEpoch.present ? data.hostEpoch.value : this.hostEpoch,
     );
   }
 
@@ -7047,7 +7087,8 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           ..write('teacherPublicKey: $teacherPublicKey, ')
           ..write('joined: $joined, ')
           ..write('rosterVersion: $rosterVersion, ')
-          ..write('rosterJson: $rosterJson')
+          ..write('rosterJson: $rosterJson, ')
+          ..write('hostEpoch: $hostEpoch')
           ..write(')'))
         .toString();
   }
@@ -7065,6 +7106,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     joined,
     rosterVersion,
     rosterJson,
+    hostEpoch,
   );
   @override
   bool operator ==(Object other) =>
@@ -7080,7 +7122,8 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           other.teacherPublicKey == this.teacherPublicKey &&
           other.joined == this.joined &&
           other.rosterVersion == this.rosterVersion &&
-          other.rosterJson == this.rosterJson);
+          other.rosterJson == this.rosterJson &&
+          other.hostEpoch == this.hostEpoch);
 }
 
 class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
@@ -7095,6 +7138,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
   final Value<bool> joined;
   final Value<int?> rosterVersion;
   final Value<String?> rosterJson;
+  final Value<int?> hostEpoch;
   const ClassGroupsCompanion({
     this.id = const Value.absent(),
     this.className = const Value.absent(),
@@ -7107,6 +7151,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     this.joined = const Value.absent(),
     this.rosterVersion = const Value.absent(),
     this.rosterJson = const Value.absent(),
+    this.hostEpoch = const Value.absent(),
   });
   ClassGroupsCompanion.insert({
     this.id = const Value.absent(),
@@ -7120,6 +7165,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     this.joined = const Value.absent(),
     this.rosterVersion = const Value.absent(),
     this.rosterJson = const Value.absent(),
+    this.hostEpoch = const Value.absent(),
   }) : className = Value(className);
   static Insertable<ClassGroup> custom({
     Expression<int>? id,
@@ -7133,6 +7179,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Expression<bool>? joined,
     Expression<int>? rosterVersion,
     Expression<String>? rosterJson,
+    Expression<int>? hostEpoch,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -7146,6 +7193,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       if (joined != null) 'joined': joined,
       if (rosterVersion != null) 'roster_version': rosterVersion,
       if (rosterJson != null) 'roster_json': rosterJson,
+      if (hostEpoch != null) 'host_epoch': hostEpoch,
     });
   }
 
@@ -7161,6 +7209,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Value<bool>? joined,
     Value<int?>? rosterVersion,
     Value<String?>? rosterJson,
+    Value<int?>? hostEpoch,
   }) {
     return ClassGroupsCompanion(
       id: id ?? this.id,
@@ -7174,6 +7223,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       joined: joined ?? this.joined,
       rosterVersion: rosterVersion ?? this.rosterVersion,
       rosterJson: rosterJson ?? this.rosterJson,
+      hostEpoch: hostEpoch ?? this.hostEpoch,
     );
   }
 
@@ -7213,6 +7263,9 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     if (rosterJson.present) {
       map['roster_json'] = Variable<String>(rosterJson.value);
     }
+    if (hostEpoch.present) {
+      map['host_epoch'] = Variable<int>(hostEpoch.value);
+    }
     return map;
   }
 
@@ -7229,7 +7282,8 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
           ..write('teacherPublicKey: $teacherPublicKey, ')
           ..write('joined: $joined, ')
           ..write('rosterVersion: $rosterVersion, ')
-          ..write('rosterJson: $rosterJson')
+          ..write('rosterJson: $rosterJson, ')
+          ..write('hostEpoch: $hostEpoch')
           ..write(')'))
         .toString();
   }
@@ -9483,6 +9537,51 @@ class $SyncIdentityTable extends SyncIdentity
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _hostGenerationMeta = const VerificationMeta(
+    'hostGeneration',
+  );
+  @override
+  late final GeneratedColumn<int> hostGeneration = GeneratedColumn<int>(
+    'host_generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _failoverSealKeyMeta = const VerificationMeta(
+    'failoverSealKey',
+  );
+  @override
+  late final GeneratedColumn<String> failoverSealKey = GeneratedColumn<String>(
+    'failover_seal_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _failoverKdfSaltMeta = const VerificationMeta(
+    'failoverKdfSalt',
+  );
+  @override
+  late final GeneratedColumn<String> failoverKdfSalt = GeneratedColumn<String>(
+    'failover_kdf_salt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _failoverKdfRoundsMeta = const VerificationMeta(
+    'failoverKdfRounds',
+  );
+  @override
+  late final GeneratedColumn<int> failoverKdfRounds = GeneratedColumn<int>(
+    'failover_kdf_rounds',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -9490,6 +9589,10 @@ class $SyncIdentityTable extends SyncIdentity
     schoolName,
     signingSeed,
     deviceRole,
+    hostGeneration,
+    failoverSealKey,
+    failoverKdfSalt,
+    failoverKdfRounds,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9535,6 +9638,42 @@ class $SyncIdentityTable extends SyncIdentity
         deviceRole.isAcceptableOrUnknown(data['device_role']!, _deviceRoleMeta),
       );
     }
+    if (data.containsKey('host_generation')) {
+      context.handle(
+        _hostGenerationMeta,
+        hostGeneration.isAcceptableOrUnknown(
+          data['host_generation']!,
+          _hostGenerationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('failover_seal_key')) {
+      context.handle(
+        _failoverSealKeyMeta,
+        failoverSealKey.isAcceptableOrUnknown(
+          data['failover_seal_key']!,
+          _failoverSealKeyMeta,
+        ),
+      );
+    }
+    if (data.containsKey('failover_kdf_salt')) {
+      context.handle(
+        _failoverKdfSaltMeta,
+        failoverKdfSalt.isAcceptableOrUnknown(
+          data['failover_kdf_salt']!,
+          _failoverKdfSaltMeta,
+        ),
+      );
+    }
+    if (data.containsKey('failover_kdf_rounds')) {
+      context.handle(
+        _failoverKdfRoundsMeta,
+        failoverKdfRounds.isAcceptableOrUnknown(
+          data['failover_kdf_rounds']!,
+          _failoverKdfRoundsMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -9564,6 +9703,22 @@ class $SyncIdentityTable extends SyncIdentity
         DriftSqlType.string,
         data['${effectivePrefix}device_role'],
       ),
+      hostGeneration: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}host_generation'],
+      )!,
+      failoverSealKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}failover_seal_key'],
+      ),
+      failoverKdfSalt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}failover_kdf_salt'],
+      ),
+      failoverKdfRounds: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}failover_kdf_rounds'],
+      ),
     );
   }
 
@@ -9586,12 +9741,32 @@ class SyncIdentityData extends DataClass
   /// student device when it joins a class through a teacher, and then can't
   /// create classes or subjects or claim the teacher role.
   final String? deviceRole;
+
+  /// How many times this school's host identity has been taken over by a
+  /// standby. Every served channel and roster version this device signs
+  /// sits at or above `hostGeneration << 32`, so anything a replaced host
+  /// signs afterwards is older than what students already hold. Handshakes
+  /// carry it as `host_epoch`, so students refuse a superseded host.
+  final int hostGeneration;
+
+  /// Host device with a standby: the AES key stretched from the teacher's
+  /// failover passphrase, with its salt and PBKDF2 rounds. Kept so the
+  /// ledger can be re-sealed on every pull without asking again. It
+  /// exposes nothing [signingSeed] doesn't already: both sit in this
+  /// database in the clear.
+  final String? failoverSealKey;
+  final String? failoverKdfSalt;
+  final int? failoverKdfRounds;
   const SyncIdentityData({
     required this.id,
     this.schoolId,
     this.schoolName,
     required this.signingSeed,
     this.deviceRole,
+    required this.hostGeneration,
+    this.failoverSealKey,
+    this.failoverKdfSalt,
+    this.failoverKdfRounds,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -9606,6 +9781,16 @@ class SyncIdentityData extends DataClass
     map['signing_seed'] = Variable<String>(signingSeed);
     if (!nullToAbsent || deviceRole != null) {
       map['device_role'] = Variable<String>(deviceRole);
+    }
+    map['host_generation'] = Variable<int>(hostGeneration);
+    if (!nullToAbsent || failoverSealKey != null) {
+      map['failover_seal_key'] = Variable<String>(failoverSealKey);
+    }
+    if (!nullToAbsent || failoverKdfSalt != null) {
+      map['failover_kdf_salt'] = Variable<String>(failoverKdfSalt);
+    }
+    if (!nullToAbsent || failoverKdfRounds != null) {
+      map['failover_kdf_rounds'] = Variable<int>(failoverKdfRounds);
     }
     return map;
   }
@@ -9623,6 +9808,16 @@ class SyncIdentityData extends DataClass
       deviceRole: deviceRole == null && nullToAbsent
           ? const Value.absent()
           : Value(deviceRole),
+      hostGeneration: Value(hostGeneration),
+      failoverSealKey: failoverSealKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(failoverSealKey),
+      failoverKdfSalt: failoverKdfSalt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(failoverKdfSalt),
+      failoverKdfRounds: failoverKdfRounds == null && nullToAbsent
+          ? const Value.absent()
+          : Value(failoverKdfRounds),
     );
   }
 
@@ -9637,6 +9832,10 @@ class SyncIdentityData extends DataClass
       schoolName: serializer.fromJson<String?>(json['schoolName']),
       signingSeed: serializer.fromJson<String>(json['signingSeed']),
       deviceRole: serializer.fromJson<String?>(json['deviceRole']),
+      hostGeneration: serializer.fromJson<int>(json['hostGeneration']),
+      failoverSealKey: serializer.fromJson<String?>(json['failoverSealKey']),
+      failoverKdfSalt: serializer.fromJson<String?>(json['failoverKdfSalt']),
+      failoverKdfRounds: serializer.fromJson<int?>(json['failoverKdfRounds']),
     );
   }
   @override
@@ -9648,6 +9847,10 @@ class SyncIdentityData extends DataClass
       'schoolName': serializer.toJson<String?>(schoolName),
       'signingSeed': serializer.toJson<String>(signingSeed),
       'deviceRole': serializer.toJson<String?>(deviceRole),
+      'hostGeneration': serializer.toJson<int>(hostGeneration),
+      'failoverSealKey': serializer.toJson<String?>(failoverSealKey),
+      'failoverKdfSalt': serializer.toJson<String?>(failoverKdfSalt),
+      'failoverKdfRounds': serializer.toJson<int?>(failoverKdfRounds),
     };
   }
 
@@ -9657,12 +9860,26 @@ class SyncIdentityData extends DataClass
     Value<String?> schoolName = const Value.absent(),
     String? signingSeed,
     Value<String?> deviceRole = const Value.absent(),
+    int? hostGeneration,
+    Value<String?> failoverSealKey = const Value.absent(),
+    Value<String?> failoverKdfSalt = const Value.absent(),
+    Value<int?> failoverKdfRounds = const Value.absent(),
   }) => SyncIdentityData(
     id: id ?? this.id,
     schoolId: schoolId.present ? schoolId.value : this.schoolId,
     schoolName: schoolName.present ? schoolName.value : this.schoolName,
     signingSeed: signingSeed ?? this.signingSeed,
     deviceRole: deviceRole.present ? deviceRole.value : this.deviceRole,
+    hostGeneration: hostGeneration ?? this.hostGeneration,
+    failoverSealKey: failoverSealKey.present
+        ? failoverSealKey.value
+        : this.failoverSealKey,
+    failoverKdfSalt: failoverKdfSalt.present
+        ? failoverKdfSalt.value
+        : this.failoverKdfSalt,
+    failoverKdfRounds: failoverKdfRounds.present
+        ? failoverKdfRounds.value
+        : this.failoverKdfRounds,
   );
   SyncIdentityData copyWithCompanion(SyncIdentityCompanion data) {
     return SyncIdentityData(
@@ -9677,6 +9894,18 @@ class SyncIdentityData extends DataClass
       deviceRole: data.deviceRole.present
           ? data.deviceRole.value
           : this.deviceRole,
+      hostGeneration: data.hostGeneration.present
+          ? data.hostGeneration.value
+          : this.hostGeneration,
+      failoverSealKey: data.failoverSealKey.present
+          ? data.failoverSealKey.value
+          : this.failoverSealKey,
+      failoverKdfSalt: data.failoverKdfSalt.present
+          ? data.failoverKdfSalt.value
+          : this.failoverKdfSalt,
+      failoverKdfRounds: data.failoverKdfRounds.present
+          ? data.failoverKdfRounds.value
+          : this.failoverKdfRounds,
     );
   }
 
@@ -9687,14 +9916,27 @@ class SyncIdentityData extends DataClass
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
           ..write('signingSeed: $signingSeed, ')
-          ..write('deviceRole: $deviceRole')
+          ..write('deviceRole: $deviceRole, ')
+          ..write('hostGeneration: $hostGeneration, ')
+          ..write('failoverSealKey: $failoverSealKey, ')
+          ..write('failoverKdfSalt: $failoverKdfSalt, ')
+          ..write('failoverKdfRounds: $failoverKdfRounds')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, schoolId, schoolName, signingSeed, deviceRole);
+  int get hashCode => Object.hash(
+    id,
+    schoolId,
+    schoolName,
+    signingSeed,
+    deviceRole,
+    hostGeneration,
+    failoverSealKey,
+    failoverKdfSalt,
+    failoverKdfRounds,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -9703,7 +9945,11 @@ class SyncIdentityData extends DataClass
           other.schoolId == this.schoolId &&
           other.schoolName == this.schoolName &&
           other.signingSeed == this.signingSeed &&
-          other.deviceRole == this.deviceRole);
+          other.deviceRole == this.deviceRole &&
+          other.hostGeneration == this.hostGeneration &&
+          other.failoverSealKey == this.failoverSealKey &&
+          other.failoverKdfSalt == this.failoverKdfSalt &&
+          other.failoverKdfRounds == this.failoverKdfRounds);
 }
 
 class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
@@ -9712,12 +9958,20 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
   final Value<String?> schoolName;
   final Value<String> signingSeed;
   final Value<String?> deviceRole;
+  final Value<int> hostGeneration;
+  final Value<String?> failoverSealKey;
+  final Value<String?> failoverKdfSalt;
+  final Value<int?> failoverKdfRounds;
   const SyncIdentityCompanion({
     this.id = const Value.absent(),
     this.schoolId = const Value.absent(),
     this.schoolName = const Value.absent(),
     this.signingSeed = const Value.absent(),
     this.deviceRole = const Value.absent(),
+    this.hostGeneration = const Value.absent(),
+    this.failoverSealKey = const Value.absent(),
+    this.failoverKdfSalt = const Value.absent(),
+    this.failoverKdfRounds = const Value.absent(),
   });
   SyncIdentityCompanion.insert({
     this.id = const Value.absent(),
@@ -9725,6 +9979,10 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     this.schoolName = const Value.absent(),
     required String signingSeed,
     this.deviceRole = const Value.absent(),
+    this.hostGeneration = const Value.absent(),
+    this.failoverSealKey = const Value.absent(),
+    this.failoverKdfSalt = const Value.absent(),
+    this.failoverKdfRounds = const Value.absent(),
   }) : signingSeed = Value(signingSeed);
   static Insertable<SyncIdentityData> custom({
     Expression<int>? id,
@@ -9732,6 +9990,10 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     Expression<String>? schoolName,
     Expression<String>? signingSeed,
     Expression<String>? deviceRole,
+    Expression<int>? hostGeneration,
+    Expression<String>? failoverSealKey,
+    Expression<String>? failoverKdfSalt,
+    Expression<int>? failoverKdfRounds,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -9739,6 +10001,10 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
       if (schoolName != null) 'school_name': schoolName,
       if (signingSeed != null) 'signing_seed': signingSeed,
       if (deviceRole != null) 'device_role': deviceRole,
+      if (hostGeneration != null) 'host_generation': hostGeneration,
+      if (failoverSealKey != null) 'failover_seal_key': failoverSealKey,
+      if (failoverKdfSalt != null) 'failover_kdf_salt': failoverKdfSalt,
+      if (failoverKdfRounds != null) 'failover_kdf_rounds': failoverKdfRounds,
     });
   }
 
@@ -9748,6 +10014,10 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     Value<String?>? schoolName,
     Value<String>? signingSeed,
     Value<String?>? deviceRole,
+    Value<int>? hostGeneration,
+    Value<String?>? failoverSealKey,
+    Value<String?>? failoverKdfSalt,
+    Value<int?>? failoverKdfRounds,
   }) {
     return SyncIdentityCompanion(
       id: id ?? this.id,
@@ -9755,6 +10025,10 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
       schoolName: schoolName ?? this.schoolName,
       signingSeed: signingSeed ?? this.signingSeed,
       deviceRole: deviceRole ?? this.deviceRole,
+      hostGeneration: hostGeneration ?? this.hostGeneration,
+      failoverSealKey: failoverSealKey ?? this.failoverSealKey,
+      failoverKdfSalt: failoverKdfSalt ?? this.failoverKdfSalt,
+      failoverKdfRounds: failoverKdfRounds ?? this.failoverKdfRounds,
     );
   }
 
@@ -9776,6 +10050,18 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     if (deviceRole.present) {
       map['device_role'] = Variable<String>(deviceRole.value);
     }
+    if (hostGeneration.present) {
+      map['host_generation'] = Variable<int>(hostGeneration.value);
+    }
+    if (failoverSealKey.present) {
+      map['failover_seal_key'] = Variable<String>(failoverSealKey.value);
+    }
+    if (failoverKdfSalt.present) {
+      map['failover_kdf_salt'] = Variable<String>(failoverKdfSalt.value);
+    }
+    if (failoverKdfRounds.present) {
+      map['failover_kdf_rounds'] = Variable<int>(failoverKdfRounds.value);
+    }
     return map;
   }
 
@@ -9786,7 +10072,11 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
           ..write('signingSeed: $signingSeed, ')
-          ..write('deviceRole: $deviceRole')
+          ..write('deviceRole: $deviceRole, ')
+          ..write('hostGeneration: $hostGeneration, ')
+          ..write('failoverSealKey: $failoverSealKey, ')
+          ..write('failoverKdfSalt: $failoverKdfSalt, ')
+          ..write('failoverKdfRounds: $failoverKdfRounds')
           ..write(')'))
         .toString();
   }
@@ -11975,6 +12265,838 @@ class CoTeachingClassesCompanion extends UpdateCompanion<CoTeachingClass> {
   }
 }
 
+class $FailoverStandbysTable extends FailoverStandbys
+    with TableInfo<$FailoverStandbysTable, FailoverStandby> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $FailoverStandbysTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _publicKeyMeta = const VerificationMeta(
+    'publicKey',
+  );
+  @override
+  late final GeneratedColumn<String> publicKey = GeneratedColumn<String>(
+    'public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _pairedAtMeta = const VerificationMeta(
+    'pairedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> pairedAt = GeneratedColumn<DateTime>(
+    'paired_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  static const VerificationMeta _lastMirroredAtMeta = const VerificationMeta(
+    'lastMirroredAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastMirroredAt =
+      GeneratedColumn<DateTime>(
+        'last_mirrored_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    publicKey,
+    name,
+    pairedAt,
+    lastMirroredAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'failover_standbys';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<FailoverStandby> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('public_key')) {
+      context.handle(
+        _publicKeyMeta,
+        publicKey.isAcceptableOrUnknown(data['public_key']!, _publicKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_publicKeyMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('paired_at')) {
+      context.handle(
+        _pairedAtMeta,
+        pairedAt.isAcceptableOrUnknown(data['paired_at']!, _pairedAtMeta),
+      );
+    }
+    if (data.containsKey('last_mirrored_at')) {
+      context.handle(
+        _lastMirroredAtMeta,
+        lastMirroredAt.isAcceptableOrUnknown(
+          data['last_mirrored_at']!,
+          _lastMirroredAtMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  FailoverStandby map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return FailoverStandby(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      publicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}public_key'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      pairedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}paired_at'],
+      )!,
+      lastMirroredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_mirrored_at'],
+      ),
+    );
+  }
+
+  @override
+  $FailoverStandbysTable createAlias(String alias) {
+    return $FailoverStandbysTable(attachedDatabase, alias);
+  }
+}
+
+class FailoverStandby extends DataClass implements Insertable<FailoverStandby> {
+  final int id;
+  final String publicKey;
+
+  /// Name the standby typed when pairing — shown on the teacher's screen.
+  final String name;
+  final DateTime pairedAt;
+
+  /// When the standby last pulled a ledger. Null until its first pull.
+  final DateTime? lastMirroredAt;
+  const FailoverStandby({
+    required this.id,
+    required this.publicKey,
+    required this.name,
+    required this.pairedAt,
+    this.lastMirroredAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['public_key'] = Variable<String>(publicKey);
+    map['name'] = Variable<String>(name);
+    map['paired_at'] = Variable<DateTime>(pairedAt);
+    if (!nullToAbsent || lastMirroredAt != null) {
+      map['last_mirrored_at'] = Variable<DateTime>(lastMirroredAt);
+    }
+    return map;
+  }
+
+  FailoverStandbysCompanion toCompanion(bool nullToAbsent) {
+    return FailoverStandbysCompanion(
+      id: Value(id),
+      publicKey: Value(publicKey),
+      name: Value(name),
+      pairedAt: Value(pairedAt),
+      lastMirroredAt: lastMirroredAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastMirroredAt),
+    );
+  }
+
+  factory FailoverStandby.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return FailoverStandby(
+      id: serializer.fromJson<int>(json['id']),
+      publicKey: serializer.fromJson<String>(json['publicKey']),
+      name: serializer.fromJson<String>(json['name']),
+      pairedAt: serializer.fromJson<DateTime>(json['pairedAt']),
+      lastMirroredAt: serializer.fromJson<DateTime?>(json['lastMirroredAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'publicKey': serializer.toJson<String>(publicKey),
+      'name': serializer.toJson<String>(name),
+      'pairedAt': serializer.toJson<DateTime>(pairedAt),
+      'lastMirroredAt': serializer.toJson<DateTime?>(lastMirroredAt),
+    };
+  }
+
+  FailoverStandby copyWith({
+    int? id,
+    String? publicKey,
+    String? name,
+    DateTime? pairedAt,
+    Value<DateTime?> lastMirroredAt = const Value.absent(),
+  }) => FailoverStandby(
+    id: id ?? this.id,
+    publicKey: publicKey ?? this.publicKey,
+    name: name ?? this.name,
+    pairedAt: pairedAt ?? this.pairedAt,
+    lastMirroredAt: lastMirroredAt.present
+        ? lastMirroredAt.value
+        : this.lastMirroredAt,
+  );
+  FailoverStandby copyWithCompanion(FailoverStandbysCompanion data) {
+    return FailoverStandby(
+      id: data.id.present ? data.id.value : this.id,
+      publicKey: data.publicKey.present ? data.publicKey.value : this.publicKey,
+      name: data.name.present ? data.name.value : this.name,
+      pairedAt: data.pairedAt.present ? data.pairedAt.value : this.pairedAt,
+      lastMirroredAt: data.lastMirroredAt.present
+          ? data.lastMirroredAt.value
+          : this.lastMirroredAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverStandby(')
+          ..write('id: $id, ')
+          ..write('publicKey: $publicKey, ')
+          ..write('name: $name, ')
+          ..write('pairedAt: $pairedAt, ')
+          ..write('lastMirroredAt: $lastMirroredAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, publicKey, name, pairedAt, lastMirroredAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is FailoverStandby &&
+          other.id == this.id &&
+          other.publicKey == this.publicKey &&
+          other.name == this.name &&
+          other.pairedAt == this.pairedAt &&
+          other.lastMirroredAt == this.lastMirroredAt);
+}
+
+class FailoverStandbysCompanion extends UpdateCompanion<FailoverStandby> {
+  final Value<int> id;
+  final Value<String> publicKey;
+  final Value<String> name;
+  final Value<DateTime> pairedAt;
+  final Value<DateTime?> lastMirroredAt;
+  const FailoverStandbysCompanion({
+    this.id = const Value.absent(),
+    this.publicKey = const Value.absent(),
+    this.name = const Value.absent(),
+    this.pairedAt = const Value.absent(),
+    this.lastMirroredAt = const Value.absent(),
+  });
+  FailoverStandbysCompanion.insert({
+    this.id = const Value.absent(),
+    required String publicKey,
+    required String name,
+    this.pairedAt = const Value.absent(),
+    this.lastMirroredAt = const Value.absent(),
+  }) : publicKey = Value(publicKey),
+       name = Value(name);
+  static Insertable<FailoverStandby> custom({
+    Expression<int>? id,
+    Expression<String>? publicKey,
+    Expression<String>? name,
+    Expression<DateTime>? pairedAt,
+    Expression<DateTime>? lastMirroredAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (publicKey != null) 'public_key': publicKey,
+      if (name != null) 'name': name,
+      if (pairedAt != null) 'paired_at': pairedAt,
+      if (lastMirroredAt != null) 'last_mirrored_at': lastMirroredAt,
+    });
+  }
+
+  FailoverStandbysCompanion copyWith({
+    Value<int>? id,
+    Value<String>? publicKey,
+    Value<String>? name,
+    Value<DateTime>? pairedAt,
+    Value<DateTime?>? lastMirroredAt,
+  }) {
+    return FailoverStandbysCompanion(
+      id: id ?? this.id,
+      publicKey: publicKey ?? this.publicKey,
+      name: name ?? this.name,
+      pairedAt: pairedAt ?? this.pairedAt,
+      lastMirroredAt: lastMirroredAt ?? this.lastMirroredAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (publicKey.present) {
+      map['public_key'] = Variable<String>(publicKey.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (pairedAt.present) {
+      map['paired_at'] = Variable<DateTime>(pairedAt.value);
+    }
+    if (lastMirroredAt.present) {
+      map['last_mirrored_at'] = Variable<DateTime>(lastMirroredAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('FailoverStandbysCompanion(')
+          ..write('id: $id, ')
+          ..write('publicKey: $publicKey, ')
+          ..write('name: $name, ')
+          ..write('pairedAt: $pairedAt, ')
+          ..write('lastMirroredAt: $lastMirroredAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $HostLedgersTable extends HostLedgers
+    with TableInfo<$HostLedgersTable, HostLedger> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $HostLedgersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rootPublicKeyMeta = const VerificationMeta(
+    'rootPublicKey',
+  );
+  @override
+  late final GeneratedColumn<String> rootPublicKey = GeneratedColumn<String>(
+    'root_public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _schoolIdMeta = const VerificationMeta(
+    'schoolId',
+  );
+  @override
+  late final GeneratedColumn<String> schoolId = GeneratedColumn<String>(
+    'school_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _schoolNameMeta = const VerificationMeta(
+    'schoolName',
+  );
+  @override
+  late final GeneratedColumn<String> schoolName = GeneratedColumn<String>(
+    'school_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sealedJsonMeta = const VerificationMeta(
+    'sealedJson',
+  );
+  @override
+  late final GeneratedColumn<String> sealedJson = GeneratedColumn<String>(
+    'sealed_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _generationMeta = const VerificationMeta(
+    'generation',
+  );
+  @override
+  late final GeneratedColumn<int> generation = GeneratedColumn<int>(
+    'generation',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> receivedAt = GeneratedColumn<DateTime>(
+    'received_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    rootPublicKey,
+    schoolId,
+    schoolName,
+    sealedJson,
+    generation,
+    receivedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'host_ledgers';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<HostLedger> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('root_public_key')) {
+      context.handle(
+        _rootPublicKeyMeta,
+        rootPublicKey.isAcceptableOrUnknown(
+          data['root_public_key']!,
+          _rootPublicKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_rootPublicKeyMeta);
+    }
+    if (data.containsKey('school_id')) {
+      context.handle(
+        _schoolIdMeta,
+        schoolId.isAcceptableOrUnknown(data['school_id']!, _schoolIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_schoolIdMeta);
+    }
+    if (data.containsKey('school_name')) {
+      context.handle(
+        _schoolNameMeta,
+        schoolName.isAcceptableOrUnknown(data['school_name']!, _schoolNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_schoolNameMeta);
+    }
+    if (data.containsKey('sealed_json')) {
+      context.handle(
+        _sealedJsonMeta,
+        sealedJson.isAcceptableOrUnknown(data['sealed_json']!, _sealedJsonMeta),
+      );
+    }
+    if (data.containsKey('generation')) {
+      context.handle(
+        _generationMeta,
+        generation.isAcceptableOrUnknown(data['generation']!, _generationMeta),
+      );
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  HostLedger map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return HostLedger(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      rootPublicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}root_public_key'],
+      )!,
+      schoolId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_id'],
+      )!,
+      schoolName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_name'],
+      )!,
+      sealedJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sealed_json'],
+      ),
+      generation: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}generation'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}received_at'],
+      ),
+    );
+  }
+
+  @override
+  $HostLedgersTable createAlias(String alias) {
+    return $HostLedgersTable(attachedDatabase, alias);
+  }
+}
+
+class HostLedger extends DataClass implements Insertable<HostLedger> {
+  final int id;
+
+  /// The host's Ed25519 public key, pinned at pairing. A ledger reply not
+  /// signed by it is never stored.
+  final String rootPublicKey;
+  final String schoolId;
+  final String schoolName;
+
+  /// Null between pairing and the first successful pull.
+  final String? sealedJson;
+
+  /// The ledger's host generation (see `SyncIdentity.hostGeneration`).
+  final int generation;
+  final DateTime? receivedAt;
+  const HostLedger({
+    required this.id,
+    required this.rootPublicKey,
+    required this.schoolId,
+    required this.schoolName,
+    this.sealedJson,
+    required this.generation,
+    this.receivedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['root_public_key'] = Variable<String>(rootPublicKey);
+    map['school_id'] = Variable<String>(schoolId);
+    map['school_name'] = Variable<String>(schoolName);
+    if (!nullToAbsent || sealedJson != null) {
+      map['sealed_json'] = Variable<String>(sealedJson);
+    }
+    map['generation'] = Variable<int>(generation);
+    if (!nullToAbsent || receivedAt != null) {
+      map['received_at'] = Variable<DateTime>(receivedAt);
+    }
+    return map;
+  }
+
+  HostLedgersCompanion toCompanion(bool nullToAbsent) {
+    return HostLedgersCompanion(
+      id: Value(id),
+      rootPublicKey: Value(rootPublicKey),
+      schoolId: Value(schoolId),
+      schoolName: Value(schoolName),
+      sealedJson: sealedJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(sealedJson),
+      generation: Value(generation),
+      receivedAt: receivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receivedAt),
+    );
+  }
+
+  factory HostLedger.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return HostLedger(
+      id: serializer.fromJson<int>(json['id']),
+      rootPublicKey: serializer.fromJson<String>(json['rootPublicKey']),
+      schoolId: serializer.fromJson<String>(json['schoolId']),
+      schoolName: serializer.fromJson<String>(json['schoolName']),
+      sealedJson: serializer.fromJson<String?>(json['sealedJson']),
+      generation: serializer.fromJson<int>(json['generation']),
+      receivedAt: serializer.fromJson<DateTime?>(json['receivedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'rootPublicKey': serializer.toJson<String>(rootPublicKey),
+      'schoolId': serializer.toJson<String>(schoolId),
+      'schoolName': serializer.toJson<String>(schoolName),
+      'sealedJson': serializer.toJson<String?>(sealedJson),
+      'generation': serializer.toJson<int>(generation),
+      'receivedAt': serializer.toJson<DateTime?>(receivedAt),
+    };
+  }
+
+  HostLedger copyWith({
+    int? id,
+    String? rootPublicKey,
+    String? schoolId,
+    String? schoolName,
+    Value<String?> sealedJson = const Value.absent(),
+    int? generation,
+    Value<DateTime?> receivedAt = const Value.absent(),
+  }) => HostLedger(
+    id: id ?? this.id,
+    rootPublicKey: rootPublicKey ?? this.rootPublicKey,
+    schoolId: schoolId ?? this.schoolId,
+    schoolName: schoolName ?? this.schoolName,
+    sealedJson: sealedJson.present ? sealedJson.value : this.sealedJson,
+    generation: generation ?? this.generation,
+    receivedAt: receivedAt.present ? receivedAt.value : this.receivedAt,
+  );
+  HostLedger copyWithCompanion(HostLedgersCompanion data) {
+    return HostLedger(
+      id: data.id.present ? data.id.value : this.id,
+      rootPublicKey: data.rootPublicKey.present
+          ? data.rootPublicKey.value
+          : this.rootPublicKey,
+      schoolId: data.schoolId.present ? data.schoolId.value : this.schoolId,
+      schoolName: data.schoolName.present
+          ? data.schoolName.value
+          : this.schoolName,
+      sealedJson: data.sealedJson.present
+          ? data.sealedJson.value
+          : this.sealedJson,
+      generation: data.generation.present
+          ? data.generation.value
+          : this.generation,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HostLedger(')
+          ..write('id: $id, ')
+          ..write('rootPublicKey: $rootPublicKey, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('sealedJson: $sealedJson, ')
+          ..write('generation: $generation, ')
+          ..write('receivedAt: $receivedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    rootPublicKey,
+    schoolId,
+    schoolName,
+    sealedJson,
+    generation,
+    receivedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is HostLedger &&
+          other.id == this.id &&
+          other.rootPublicKey == this.rootPublicKey &&
+          other.schoolId == this.schoolId &&
+          other.schoolName == this.schoolName &&
+          other.sealedJson == this.sealedJson &&
+          other.generation == this.generation &&
+          other.receivedAt == this.receivedAt);
+}
+
+class HostLedgersCompanion extends UpdateCompanion<HostLedger> {
+  final Value<int> id;
+  final Value<String> rootPublicKey;
+  final Value<String> schoolId;
+  final Value<String> schoolName;
+  final Value<String?> sealedJson;
+  final Value<int> generation;
+  final Value<DateTime?> receivedAt;
+  const HostLedgersCompanion({
+    this.id = const Value.absent(),
+    this.rootPublicKey = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.schoolName = const Value.absent(),
+    this.sealedJson = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+  });
+  HostLedgersCompanion.insert({
+    this.id = const Value.absent(),
+    required String rootPublicKey,
+    required String schoolId,
+    required String schoolName,
+    this.sealedJson = const Value.absent(),
+    this.generation = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+  }) : rootPublicKey = Value(rootPublicKey),
+       schoolId = Value(schoolId),
+       schoolName = Value(schoolName);
+  static Insertable<HostLedger> custom({
+    Expression<int>? id,
+    Expression<String>? rootPublicKey,
+    Expression<String>? schoolId,
+    Expression<String>? schoolName,
+    Expression<String>? sealedJson,
+    Expression<int>? generation,
+    Expression<DateTime>? receivedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (rootPublicKey != null) 'root_public_key': rootPublicKey,
+      if (schoolId != null) 'school_id': schoolId,
+      if (schoolName != null) 'school_name': schoolName,
+      if (sealedJson != null) 'sealed_json': sealedJson,
+      if (generation != null) 'generation': generation,
+      if (receivedAt != null) 'received_at': receivedAt,
+    });
+  }
+
+  HostLedgersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? rootPublicKey,
+    Value<String>? schoolId,
+    Value<String>? schoolName,
+    Value<String?>? sealedJson,
+    Value<int>? generation,
+    Value<DateTime?>? receivedAt,
+  }) {
+    return HostLedgersCompanion(
+      id: id ?? this.id,
+      rootPublicKey: rootPublicKey ?? this.rootPublicKey,
+      schoolId: schoolId ?? this.schoolId,
+      schoolName: schoolName ?? this.schoolName,
+      sealedJson: sealedJson ?? this.sealedJson,
+      generation: generation ?? this.generation,
+      receivedAt: receivedAt ?? this.receivedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (rootPublicKey.present) {
+      map['root_public_key'] = Variable<String>(rootPublicKey.value);
+    }
+    if (schoolId.present) {
+      map['school_id'] = Variable<String>(schoolId.value);
+    }
+    if (schoolName.present) {
+      map['school_name'] = Variable<String>(schoolName.value);
+    }
+    if (sealedJson.present) {
+      map['sealed_json'] = Variable<String>(sealedJson.value);
+    }
+    if (generation.present) {
+      map['generation'] = Variable<int>(generation.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<DateTime>(receivedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('HostLedgersCompanion(')
+          ..write('id: $id, ')
+          ..write('rootPublicKey: $rootPublicKey, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('schoolName: $schoolName, ')
+          ..write('sealedJson: $sealedJson, ')
+          ..write('generation: $generation, ')
+          ..write('receivedAt: $receivedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -12013,6 +13135,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   );
   late final $CoTeachingClassesTable coTeachingClasses =
       $CoTeachingClassesTable(this);
+  late final $FailoverStandbysTable failoverStandbys = $FailoverStandbysTable(
+    this,
+  );
+  late final $HostLedgersTable hostLedgers = $HostLedgersTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -12064,6 +13190,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final Index idxCoTeachingClassesUuid = Index(
     'idx_co_teaching_classes_uuid',
     'CREATE UNIQUE INDEX idx_co_teaching_classes_uuid ON co_teaching_classes (class_group_uuid)',
+  );
+  late final Index idxFailoverStandbysKey = Index(
+    'idx_failover_standbys_key',
+    'CREATE UNIQUE INDEX idx_failover_standbys_key ON failover_standbys (public_key)',
   );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
@@ -12118,6 +13248,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     learnerSubjects,
     classCoTeachers,
     coTeachingClasses,
+    failoverStandbys,
+    hostLedgers,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -12131,6 +13263,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxLearnerSubjectsUnique,
     idxClassCoTeachersUnique,
     idxCoTeachingClassesUuid,
+    idxFailoverStandbysKey,
   ];
 }
 
@@ -15352,6 +16485,7 @@ typedef $$ClassGroupsTableCreateCompanionBuilder =
       Value<bool> joined,
       Value<int?> rosterVersion,
       Value<String?> rosterJson,
+      Value<int?> hostEpoch,
     });
 typedef $$ClassGroupsTableUpdateCompanionBuilder =
     ClassGroupsCompanion Function({
@@ -15366,6 +16500,7 @@ typedef $$ClassGroupsTableUpdateCompanionBuilder =
       Value<bool> joined,
       Value<int?> rosterVersion,
       Value<String?> rosterJson,
+      Value<int?> hostEpoch,
     });
 
 class $$ClassGroupsTableFilterComposer
@@ -15429,6 +16564,11 @@ class $$ClassGroupsTableFilterComposer
 
   ColumnFilters<String> get rosterJson => $composableBuilder(
     column: $table.rosterJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get hostEpoch => $composableBuilder(
+    column: $table.hostEpoch,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -15496,6 +16636,11 @@ class $$ClassGroupsTableOrderingComposer
     column: $table.rosterJson,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get hostEpoch => $composableBuilder(
+    column: $table.hostEpoch,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ClassGroupsTableAnnotationComposer
@@ -15547,6 +16692,9 @@ class $$ClassGroupsTableAnnotationComposer
     column: $table.rosterJson,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get hostEpoch =>
+      $composableBuilder(column: $table.hostEpoch, builder: (column) => column);
 }
 
 class $$ClassGroupsTableTableManager
@@ -15591,6 +16739,7 @@ class $$ClassGroupsTableTableManager
                 Value<bool> joined = const Value.absent(),
                 Value<int?> rosterVersion = const Value.absent(),
                 Value<String?> rosterJson = const Value.absent(),
+                Value<int?> hostEpoch = const Value.absent(),
               }) => ClassGroupsCompanion(
                 id: id,
                 className: className,
@@ -15603,6 +16752,7 @@ class $$ClassGroupsTableTableManager
                 joined: joined,
                 rosterVersion: rosterVersion,
                 rosterJson: rosterJson,
+                hostEpoch: hostEpoch,
               ),
           createCompanionCallback:
               ({
@@ -15617,6 +16767,7 @@ class $$ClassGroupsTableTableManager
                 Value<bool> joined = const Value.absent(),
                 Value<int?> rosterVersion = const Value.absent(),
                 Value<String?> rosterJson = const Value.absent(),
+                Value<int?> hostEpoch = const Value.absent(),
               }) => ClassGroupsCompanion.insert(
                 id: id,
                 className: className,
@@ -15629,6 +16780,7 @@ class $$ClassGroupsTableTableManager
                 joined: joined,
                 rosterVersion: rosterVersion,
                 rosterJson: rosterJson,
+                hostEpoch: hostEpoch,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -16738,6 +17890,10 @@ typedef $$SyncIdentityTableCreateCompanionBuilder =
       Value<String?> schoolName,
       required String signingSeed,
       Value<String?> deviceRole,
+      Value<int> hostGeneration,
+      Value<String?> failoverSealKey,
+      Value<String?> failoverKdfSalt,
+      Value<int?> failoverKdfRounds,
     });
 typedef $$SyncIdentityTableUpdateCompanionBuilder =
     SyncIdentityCompanion Function({
@@ -16746,6 +17902,10 @@ typedef $$SyncIdentityTableUpdateCompanionBuilder =
       Value<String?> schoolName,
       Value<String> signingSeed,
       Value<String?> deviceRole,
+      Value<int> hostGeneration,
+      Value<String?> failoverSealKey,
+      Value<String?> failoverKdfSalt,
+      Value<int?> failoverKdfRounds,
     });
 
 class $$SyncIdentityTableFilterComposer
@@ -16779,6 +17939,26 @@ class $$SyncIdentityTableFilterComposer
 
   ColumnFilters<String> get deviceRole => $composableBuilder(
     column: $table.deviceRole,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get hostGeneration => $composableBuilder(
+    column: $table.hostGeneration,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get failoverSealKey => $composableBuilder(
+    column: $table.failoverSealKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get failoverKdfSalt => $composableBuilder(
+    column: $table.failoverKdfSalt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get failoverKdfRounds => $composableBuilder(
+    column: $table.failoverKdfRounds,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -16816,6 +17996,26 @@ class $$SyncIdentityTableOrderingComposer
     column: $table.deviceRole,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get hostGeneration => $composableBuilder(
+    column: $table.hostGeneration,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get failoverSealKey => $composableBuilder(
+    column: $table.failoverSealKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get failoverKdfSalt => $composableBuilder(
+    column: $table.failoverKdfSalt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get failoverKdfRounds => $composableBuilder(
+    column: $table.failoverKdfRounds,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncIdentityTableAnnotationComposer
@@ -16845,6 +18045,26 @@ class $$SyncIdentityTableAnnotationComposer
 
   GeneratedColumn<String> get deviceRole => $composableBuilder(
     column: $table.deviceRole,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get hostGeneration => $composableBuilder(
+    column: $table.hostGeneration,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get failoverSealKey => $composableBuilder(
+    column: $table.failoverSealKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get failoverKdfSalt => $composableBuilder(
+    column: $table.failoverKdfSalt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get failoverKdfRounds => $composableBuilder(
+    column: $table.failoverKdfRounds,
     builder: (column) => column,
   );
 }
@@ -16889,12 +18109,20 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolName = const Value.absent(),
                 Value<String> signingSeed = const Value.absent(),
                 Value<String?> deviceRole = const Value.absent(),
+                Value<int> hostGeneration = const Value.absent(),
+                Value<String?> failoverSealKey = const Value.absent(),
+                Value<String?> failoverKdfSalt = const Value.absent(),
+                Value<int?> failoverKdfRounds = const Value.absent(),
               }) => SyncIdentityCompanion(
                 id: id,
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
                 deviceRole: deviceRole,
+                hostGeneration: hostGeneration,
+                failoverSealKey: failoverSealKey,
+                failoverKdfSalt: failoverKdfSalt,
+                failoverKdfRounds: failoverKdfRounds,
               ),
           createCompanionCallback:
               ({
@@ -16903,12 +18131,20 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolName = const Value.absent(),
                 required String signingSeed,
                 Value<String?> deviceRole = const Value.absent(),
+                Value<int> hostGeneration = const Value.absent(),
+                Value<String?> failoverSealKey = const Value.absent(),
+                Value<String?> failoverKdfSalt = const Value.absent(),
+                Value<int?> failoverKdfRounds = const Value.absent(),
               }) => SyncIdentityCompanion.insert(
                 id: id,
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
                 deviceRole: deviceRole,
+                hostGeneration: hostGeneration,
+                failoverSealKey: failoverSealKey,
+                failoverKdfSalt: failoverKdfSalt,
+                failoverKdfRounds: failoverKdfRounds,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -18091,6 +19327,450 @@ typedef $$CoTeachingClassesTableProcessedTableManager =
       CoTeachingClass,
       PrefetchHooks Function()
     >;
+typedef $$FailoverStandbysTableCreateCompanionBuilder =
+    FailoverStandbysCompanion Function({
+      Value<int> id,
+      required String publicKey,
+      required String name,
+      Value<DateTime> pairedAt,
+      Value<DateTime?> lastMirroredAt,
+    });
+typedef $$FailoverStandbysTableUpdateCompanionBuilder =
+    FailoverStandbysCompanion Function({
+      Value<int> id,
+      Value<String> publicKey,
+      Value<String> name,
+      Value<DateTime> pairedAt,
+      Value<DateTime?> lastMirroredAt,
+    });
+
+class $$FailoverStandbysTableFilterComposer
+    extends Composer<_$OticDatabase, $FailoverStandbysTable> {
+  $$FailoverStandbysTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get pairedAt => $composableBuilder(
+    column: $table.pairedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastMirroredAt => $composableBuilder(
+    column: $table.lastMirroredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$FailoverStandbysTableOrderingComposer
+    extends Composer<_$OticDatabase, $FailoverStandbysTable> {
+  $$FailoverStandbysTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get publicKey => $composableBuilder(
+    column: $table.publicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get pairedAt => $composableBuilder(
+    column: $table.pairedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastMirroredAt => $composableBuilder(
+    column: $table.lastMirroredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$FailoverStandbysTableAnnotationComposer
+    extends Composer<_$OticDatabase, $FailoverStandbysTable> {
+  $$FailoverStandbysTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get publicKey =>
+      $composableBuilder(column: $table.publicKey, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get pairedAt =>
+      $composableBuilder(column: $table.pairedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastMirroredAt => $composableBuilder(
+    column: $table.lastMirroredAt,
+    builder: (column) => column,
+  );
+}
+
+class $$FailoverStandbysTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $FailoverStandbysTable,
+          FailoverStandby,
+          $$FailoverStandbysTableFilterComposer,
+          $$FailoverStandbysTableOrderingComposer,
+          $$FailoverStandbysTableAnnotationComposer,
+          $$FailoverStandbysTableCreateCompanionBuilder,
+          $$FailoverStandbysTableUpdateCompanionBuilder,
+          (
+            FailoverStandby,
+            BaseReferences<
+              _$OticDatabase,
+              $FailoverStandbysTable,
+              FailoverStandby
+            >,
+          ),
+          FailoverStandby,
+          PrefetchHooks Function()
+        > {
+  $$FailoverStandbysTableTableManager(
+    _$OticDatabase db,
+    $FailoverStandbysTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$FailoverStandbysTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$FailoverStandbysTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$FailoverStandbysTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> publicKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> pairedAt = const Value.absent(),
+                Value<DateTime?> lastMirroredAt = const Value.absent(),
+              }) => FailoverStandbysCompanion(
+                id: id,
+                publicKey: publicKey,
+                name: name,
+                pairedAt: pairedAt,
+                lastMirroredAt: lastMirroredAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String publicKey,
+                required String name,
+                Value<DateTime> pairedAt = const Value.absent(),
+                Value<DateTime?> lastMirroredAt = const Value.absent(),
+              }) => FailoverStandbysCompanion.insert(
+                id: id,
+                publicKey: publicKey,
+                name: name,
+                pairedAt: pairedAt,
+                lastMirroredAt: lastMirroredAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$FailoverStandbysTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $FailoverStandbysTable,
+      FailoverStandby,
+      $$FailoverStandbysTableFilterComposer,
+      $$FailoverStandbysTableOrderingComposer,
+      $$FailoverStandbysTableAnnotationComposer,
+      $$FailoverStandbysTableCreateCompanionBuilder,
+      $$FailoverStandbysTableUpdateCompanionBuilder,
+      (
+        FailoverStandby,
+        BaseReferences<_$OticDatabase, $FailoverStandbysTable, FailoverStandby>,
+      ),
+      FailoverStandby,
+      PrefetchHooks Function()
+    >;
+typedef $$HostLedgersTableCreateCompanionBuilder =
+    HostLedgersCompanion Function({
+      Value<int> id,
+      required String rootPublicKey,
+      required String schoolId,
+      required String schoolName,
+      Value<String?> sealedJson,
+      Value<int> generation,
+      Value<DateTime?> receivedAt,
+    });
+typedef $$HostLedgersTableUpdateCompanionBuilder =
+    HostLedgersCompanion Function({
+      Value<int> id,
+      Value<String> rootPublicKey,
+      Value<String> schoolId,
+      Value<String> schoolName,
+      Value<String?> sealedJson,
+      Value<int> generation,
+      Value<DateTime?> receivedAt,
+    });
+
+class $$HostLedgersTableFilterComposer
+    extends Composer<_$OticDatabase, $HostLedgersTable> {
+  $$HostLedgersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rootPublicKey => $composableBuilder(
+    column: $table.rootPublicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sealedJson => $composableBuilder(
+    column: $table.sealedJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$HostLedgersTableOrderingComposer
+    extends Composer<_$OticDatabase, $HostLedgersTable> {
+  $$HostLedgersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rootPublicKey => $composableBuilder(
+    column: $table.rootPublicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sealedJson => $composableBuilder(
+    column: $table.sealedJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$HostLedgersTableAnnotationComposer
+    extends Composer<_$OticDatabase, $HostLedgersTable> {
+  $$HostLedgersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get rootPublicKey => $composableBuilder(
+    column: $table.rootPublicKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get schoolId =>
+      $composableBuilder(column: $table.schoolId, builder: (column) => column);
+
+  GeneratedColumn<String> get schoolName => $composableBuilder(
+    column: $table.schoolName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get sealedJson => $composableBuilder(
+    column: $table.sealedJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get generation => $composableBuilder(
+    column: $table.generation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$HostLedgersTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $HostLedgersTable,
+          HostLedger,
+          $$HostLedgersTableFilterComposer,
+          $$HostLedgersTableOrderingComposer,
+          $$HostLedgersTableAnnotationComposer,
+          $$HostLedgersTableCreateCompanionBuilder,
+          $$HostLedgersTableUpdateCompanionBuilder,
+          (
+            HostLedger,
+            BaseReferences<_$OticDatabase, $HostLedgersTable, HostLedger>,
+          ),
+          HostLedger,
+          PrefetchHooks Function()
+        > {
+  $$HostLedgersTableTableManager(_$OticDatabase db, $HostLedgersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$HostLedgersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$HostLedgersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$HostLedgersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> rootPublicKey = const Value.absent(),
+                Value<String> schoolId = const Value.absent(),
+                Value<String> schoolName = const Value.absent(),
+                Value<String?> sealedJson = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<DateTime?> receivedAt = const Value.absent(),
+              }) => HostLedgersCompanion(
+                id: id,
+                rootPublicKey: rootPublicKey,
+                schoolId: schoolId,
+                schoolName: schoolName,
+                sealedJson: sealedJson,
+                generation: generation,
+                receivedAt: receivedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String rootPublicKey,
+                required String schoolId,
+                required String schoolName,
+                Value<String?> sealedJson = const Value.absent(),
+                Value<int> generation = const Value.absent(),
+                Value<DateTime?> receivedAt = const Value.absent(),
+              }) => HostLedgersCompanion.insert(
+                id: id,
+                rootPublicKey: rootPublicKey,
+                schoolId: schoolId,
+                schoolName: schoolName,
+                sealedJson: sealedJson,
+                generation: generation,
+                receivedAt: receivedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$HostLedgersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $HostLedgersTable,
+      HostLedger,
+      $$HostLedgersTableFilterComposer,
+      $$HostLedgersTableOrderingComposer,
+      $$HostLedgersTableAnnotationComposer,
+      $$HostLedgersTableCreateCompanionBuilder,
+      $$HostLedgersTableUpdateCompanionBuilder,
+      (
+        HostLedger,
+        BaseReferences<_$OticDatabase, $HostLedgersTable, HostLedger>,
+      ),
+      HostLedger,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -18142,4 +19822,8 @@ class $OticDatabaseManager {
       $$ClassCoTeachersTableTableManager(_db, _db.classCoTeachers);
   $$CoTeachingClassesTableTableManager get coTeachingClasses =>
       $$CoTeachingClassesTableTableManager(_db, _db.coTeachingClasses);
+  $$FailoverStandbysTableTableManager get failoverStandbys =>
+      $$FailoverStandbysTableTableManager(_db, _db.failoverStandbys);
+  $$HostLedgersTableTableManager get hostLedgers =>
+      $$HostLedgersTableTableManager(_db, _db.hostLedgers);
 }

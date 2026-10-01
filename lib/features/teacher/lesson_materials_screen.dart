@@ -10,10 +10,12 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/custom_subject_service.dart';
+import '../../services/notes/note_pdf_store.dart';
 import '../../services/offline_storage_service.dart';
 import '../../services/resource_import_service.dart';
 import '../../services/resource_text_extractor.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../notes/note_pdf_screen.dart';
 import 'class_providers.dart';
 import 'resource_labels.dart';
 
@@ -50,7 +52,7 @@ class LessonMaterialsScreen extends ConsumerWidget {
           if (subjects.isEmpty) {
             return _EmptyState(
               title: tr(context, ResourceLabels.noSubjects),
-              hint: tr(context, ResourceLabels.noSubjectsHint),
+              hint: '',
             );
           }
           return ListView(
@@ -125,6 +127,9 @@ class _SubjectTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final resources = ref.watch(topicResourcesProvider(subject.subjectId));
+    final pdfs =
+        ref.watch(ownNotePdfsProvider(subject.subjectId)).valueOrNull ??
+        const <String, NotePdf>{};
     final shares =
         ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
         const {};
@@ -170,14 +175,6 @@ class _SubjectTile extends ConsumerWidget {
                 Padding(padding: const EdgeInsets.all(16), child: Text('$e')),
             data: (list) => Column(
               children: [
-                if (list.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Text(
-                      tr(context, ResourceLabels.noResourcesHint),
-                      style: TextStyle(color: Theme.of(context).hintColor),
-                    ),
-                  ),
                 for (final r in list)
                   ListTile(
                     dense: true,
@@ -190,6 +187,12 @@ class _SubjectTile extends ConsumerWidget {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        if (pdfs[r.resourceTitle] case final pdf?)
+                          IconButton(
+                            tooltip: tr(context, 'Open the PDF'),
+                            icon: const Icon(Icons.picture_as_pdf_outlined),
+                            onPressed: () => openNotePdf(context, pdf),
+                          ),
                         IconButton(
                           tooltip: tr(context, 'Share with classes'),
                           icon: Icon(
@@ -241,16 +244,7 @@ class _SubjectTile extends ConsumerWidget {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Text(
-              tr(context, ResourceLabels.uploadHint),
-              style: TextStyle(
-                fontSize: 12,
-                color: Theme.of(context).hintColor,
-              ),
-            ),
-          ),
+          const SizedBox(height: 12),
         ],
       ),
     );
@@ -258,6 +252,9 @@ class _SubjectTile extends ConsumerWidget {
 
   void _refresh(WidgetRef ref) {
     ref.invalidate(topicResourcesProvider(subject.subjectId));
+    ref.invalidate(ownNotePdfsProvider(subject.subjectId));
+    // A deleted note's PDF goes with it.
+    unawaited(ref.read(notePdfStoreProvider).collectGarbage());
     ref.invalidate(customSubjectsProvider);
     ref.invalidate(mergedSubjectsProvider);
     ref.invalidate(subjectByIdProvider(subject.subjectId));
@@ -322,6 +319,8 @@ class _SubjectTile extends ConsumerWidget {
         trFill(context, ResourceLabels.diagramsMarked, {'count': '${report.diagramCount}'}),
       if (report.unreadablePages > 0)
         trFill(context, ResourceLabels.pagesUnreadable, {'count': '${report.unreadablePages}'}),
+      if (report.format == 'pdf' && !report.keptOriginal)
+        tr(context, 'Text only — PDF too large to keep'),
     ];
     _toast(
       context,
@@ -465,20 +464,6 @@ class _SubjectTile extends ConsumerWidget {
                             : picked.remove(c.uuid),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: Text(
-                      tr(
-                        ctx,
-                        'Only learners who joined a ticked class get this note, '
-                        'and only for this subject.',
-                      ),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(ctx).hintColor,
-                      ),
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -598,12 +583,14 @@ class _EmptyState extends StatelessWidget {
               title,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 6),
-            Text(
-              hint,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Theme.of(context).hintColor),
-            ),
+            if (hint.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                hint,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Theme.of(context).hintColor),
+              ),
+            ],
           ],
         ),
       ),

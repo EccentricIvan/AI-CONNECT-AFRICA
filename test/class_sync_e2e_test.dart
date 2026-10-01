@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:ai_connect_africa/collaboration/sync/class_crypto.dart';
 import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart';
@@ -8,6 +9,7 @@ import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/tables/sync_identity_table.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
+import 'package:ai_connect_africa/services/notes/note_pdf_store.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:ai_connect_africa/services/resource_import_service.dart';
 import 'dart:typed_data';
@@ -69,6 +71,8 @@ void main() {
   late ClassShareServer server;
   late ClassGroup east, west;
   late TeacherEndpoint endpoint;
+  late Directory teacherPdfDir;
+  late NotePdfStore teacherPdfs;
   final cleanups = <Future<void> Function()>[];
 
   setUp(() async {
@@ -108,7 +112,13 @@ void main() {
     );
     // "Bases notes" is shared with nobody.
 
-    server = ClassShareServer(teacher, joinRounds: _rounds);
+    teacherPdfDir = await Directory.systemTemp.createTemp('otic_pdf_t');
+    teacherPdfs = NotePdfStore(teacher, root: () async => teacherPdfDir);
+    server = ClassShareServer(
+      teacher,
+      joinRounds: _rounds,
+      pdfStore: teacherPdfs,
+    );
     _autoDecide(server);
     final port = await server.start(
       classUuids: {east.groupUuid!, west.groupUuid!},
@@ -124,6 +134,7 @@ void main() {
     cleanups.clear();
     await server.stop();
     await teacher.close();
+    await teacherPdfDir.delete(recursive: true);
   });
 
   Future<(OticDatabase, SelectiveSyncManager)> student({String? school}) async {
@@ -363,6 +374,41 @@ void main() {
     final bodies = (await _received(db)).map((r) => r.contentChunk).join();
     expect(bodies, contains('blue litmus red'));
     expect(bodies, isNot(contains('harmless')));
+  });
+
+  test('an address that never answers is skipped quickly', () async {
+    final (db, m) = await student();
+    final group = await join(m, east);
+    // Not routable: a connection attempt hangs rather than being refused,
+    // like a remembered address of a device that left the hotspot.
+    const dead = (address: '10.255.255.1', port: kDefaultSyncPort);
+    final clock = Stopwatch()..start();
+    final result = await m.syncClassEverywhere(
+      candidates: [dead, endpoint],
+      group: group,
+    );
+    clock.stop();
+    expect(result.ok, isTrue, reason: result.error);
+    expect(
+      {for (final r in await _received(db)) r.resourceTitle},
+      {'Acids notes', 'Forces'},
+    );
+    expect(
+      clock.elapsed,
+      lessThan(const Duration(seconds: 10)),
+      reason: 'it used to wait out the 20 s request timeout, twice',
+    );
+  });
+
+  test('a sync with only dead addresses fails with the usual wording', () async {
+    final (_, m) = await student();
+    final group = await join(m, east);
+    final result = await m.syncClassEverywhere(
+      candidates: [(address: '10.255.255.1', port: kDefaultSyncPort)],
+      group: group,
+    );
+    expect(result.ok, isFalse);
+    expect(result.error, startsWith('Could not sync with 10.255.255.1.'));
   });
 
   test('an edited note replaces the old copy, with no duplicates', () async {
@@ -1048,6 +1094,149 @@ void main() {
       final (s, at) = await sharing(a, ga);
       await pull(mb, s, at, ga);
       expect((await notesOf(b)).keys, contains('Forces'));
+    });
+  });
+
+  group('a note’s original PDF', () {
+    final pdf = Uint8List.fromList(utf8.encode('%PDF-1.4 acids and bases'));
+
+    Future<(OticDatabase, SelectiveSyncManager, NotePdfStore)> pdfStudent() async {
+      final db = _db();
+      final dir = await Directory.systemTemp.createTemp('otic_pdf_s');
+      final store = NotePdfStore(
+        db,
+        root: () async => dir,
+        gcGrace: Duration.zero,
+      );
+      final manager = SelectiveSyncManager(
+        db,
+        joinRounds: _rounds,
+        pdfStore: store,
+      );
+      cleanups.add(() async {
+        manager.dispose();
+        await db.close();
+        await dir.delete(recursive: true);
+      });
+      return (db, manager, store);
+    }
+
+    Future<String> keepOnTeacher() async {
+      final sha = (await teacherPdfs.put(pdf))!;
+      await teacherPdfs.recordOwn(
+        subjectId: 'chemistry',
+        documentTitle: 'Acids notes',
+        sha: sha,
+        pages: 3,
+        bytes: pdf.length,
+      );
+      return sha;
+    }
+
+    test('reaches the class with the note, once', () async {
+      final sha = await keepOnTeacher();
+      final (_, m, store) = await pdfStudent();
+      final group = await join(m, east);
+      final first = await m.syncClass(teacher: endpoint, group: group);
+      expect(first.ok, isTrue, reason: first.error);
+      expect(first.pdfsFetched, 1);
+      expect(await (await store.fileFor(sha))!.readAsBytes(), pdf);
+      final found = await store.find('Acids notes', classUuid: group.groupUuid);
+      expect(found?.pages, 3);
+
+      final again = await m.syncClass(teacher: endpoint, group: group);
+      expect(again.pdfsFetched, 0, reason: 'already on the device');
+    });
+
+    test('never goes to a class the note isn’t shared with', () async {
+      await keepOnTeacher();
+      final (_, m, store) = await pdfStudent();
+      final group = await join(m, west);
+      final r = await m.syncClass(teacher: endpoint, group: group);
+      expect(r.pdfsFetched, 0);
+      expect(await store.recorded(classUuid: group.groupUuid), isEmpty);
+    });
+
+    test('a file that doesn’t match the signed hash is refused', () async {
+      final sha = await keepOnTeacher();
+      // Swapped on disk after the note was recorded.
+      await File('${teacherPdfDir.path}${Platform.pathSeparator}$sha.pdf')
+          .writeAsBytes(utf8.encode('%PDF-1.4 something else'));
+      final (_, m, store) = await pdfStudent();
+      final group = await join(m, east);
+      final r = await m.syncClass(teacher: endpoint, group: group);
+      expect(r.ok, isTrue, reason: r.error);
+      expect(r.pdfsFetched, 0);
+      expect(await store.has(sha), isFalse);
+    });
+
+    test('unsharing the note removes the PDF too', () async {
+      final sha = await keepOnTeacher();
+      final (_, m, store) = await pdfStudent();
+      final group = await join(m, east);
+      await m.syncClass(teacher: endpoint, group: group);
+      expect(await store.has(sha), isTrue);
+
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: 'Acids notes',
+        classUuids: {},
+      );
+      await m.syncClass(teacher: endpoint, group: group);
+      expect(await store.has(sha), isFalse);
+    });
+
+    test('a 15 MB PDF arrives via the student screen’s sync, and another '
+        'student isn’t held up meanwhile', () async {
+      final rnd = Random(7);
+      final big = Uint8List.fromList(
+        List<int>.generate(15 * 1024 * 1024, (_) => rnd.nextInt(256)),
+      );
+      final sha = (await teacherPdfs.put(big))!;
+      await teacherPdfs.recordOwn(
+        subjectId: 'chemistry',
+        documentTitle: 'Acids notes',
+        sha: sha,
+        pages: 120,
+        bytes: big.length,
+      );
+      final (_, m, store) = await pdfStudent();
+      final group = await join(m, east);
+      final (_, other) = await student();
+      final otherGroup = await join(other, west);
+
+      final clock = Stopwatch()..start();
+      final download = m.syncClassEverywhere(
+        candidates: [endpoint],
+        group: group,
+      );
+      // Started while the PDF is in flight.
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final quick = Stopwatch()..start();
+      final small = await other.syncClass(
+        teacher: endpoint,
+        group: otherGroup,
+      );
+      quick.stop();
+      final r = await download;
+      clock.stop();
+      // ignore: avoid_print
+      print('15 MB PDF sync: ${clock.elapsedMilliseconds} ms; other '
+          'student’s sync meanwhile: ${quick.elapsedMilliseconds} ms');
+
+      expect(r.ok, isTrue, reason: r.error);
+      expect(r.pdfsFetched, 1, reason: 'counted through syncClassEverywhere');
+      expect(await (await store.fileFor(sha))!.length(), big.length);
+      expect(small.ok, isTrue, reason: small.error);
+      expect(quick.elapsed, lessThan(const Duration(seconds: 5)));
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('the tutor never retrieves the PDF record as notes', () async {
+      await keepOnTeacher();
+      final hits = await teacher.topicResourceDao.searchAllChunks(
+        needle: 'PDF sha256 pages bytes',
+      );
+      expect(hits.where((h) => h.topicKey == kPdfMarkerTopic), isEmpty);
     });
   });
 }

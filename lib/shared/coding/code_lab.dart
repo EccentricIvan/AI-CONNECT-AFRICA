@@ -14,6 +14,7 @@ import 'code_lab_session.dart';
 import '../../features/projects/scaffold/project_scaffold.dart';
 import '../../features/projects/widgets/save_lab_to_projects.dart';
 import '../../services/projects/project_manifest.dart';
+import '../widgets/studio_page.dart';
 
 /// One step of a guided lab: what to read, what to type, what to try next.
 class CodeLabLesson {
@@ -294,6 +295,7 @@ class _CodeLabScaffoldState extends ConsumerState<CodeLabScaffold>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: const AppBarBackButton(),
         title: Row(
           children: [
             Icon(widget.icon, size: 20, color: AppColors.primary),

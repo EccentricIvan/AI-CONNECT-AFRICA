@@ -12,6 +12,7 @@ import '../settings/coder_package_prompt.dart';
 import '../../services/projects/project_manifest.dart';
 import '../projects/scaffold/project_scaffold.dart';
 import '../projects/widgets/save_lab_to_projects.dart';
+import '../../shared/widgets/studio_page.dart';
 
 class _PyLesson {
   const _PyLesson({required this.title, required this.instruction, required this.starterCode, required this.expectedOutput, this.hint, this.challenge});
@@ -518,6 +519,7 @@ class _PythonLabScreenState extends ConsumerState<PythonLabScreen>
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: const AppBarBackButton(),
         title: Row(children: [
           const Icon(Icons.terminal, size: 20, color: AppColors.primary),
           const SizedBox(width: 8),

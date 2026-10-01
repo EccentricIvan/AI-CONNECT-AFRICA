@@ -125,9 +125,7 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
       if (!mounted) return;
       _message(
         r.ok
-            ? 'You now co-teach this class. Add your notes in Lesson '
-                  'materials, share them with the class, then start sharing '
-                  'it from Class sync.'
+            ? 'Joined as co-teacher'
             : r.error!,
       );
       if (r.ok) _code.clear();
@@ -149,9 +147,8 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
       if (!mounted) return;
       _message(
         ok
-            ? 'Up to date with ${delegatedClassLabel(c)}’s teacher.'
-            : 'Couldn’t reach ${delegatedClassLabel(c)}’s teacher. Make sure '
-                  'their device is sharing the class.',
+            ? 'Up to date'
+            : 'Couldn’t reach ${delegatedClassLabel(c)}’s teacher',
       );
     } finally {
       manager.dispose();
@@ -164,10 +161,7 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Stop co-teaching ${delegatedClassLabel(c)}?'),
-        content: const Text(
-          'This device stops sharing into that class. Ask its teacher to '
-          'revoke you too, so students stop expecting your notes.',
-        ),
+        content: const Text('Your notes will no longer be shared with this class.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -211,8 +205,8 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
-        title: 'Co-teach a class',
-        subtitle: 'Share your own subject’s notes into another teacher’s class',
+        title: 'Co-teaching',
+        subtitle: 'Teach a subject in another teacher’s class',
         icon: Icons.group_add_rounded,
         iconColor: AppColors.accentBlue,
         showBack: true,
@@ -232,19 +226,12 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                     color: ac.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'The class’s teacher makes the code on their device (Class '
-                  'sync → Teachers on this class → Invite a co-teacher) and '
-                  'taps Accept when your name appears.',
-                  style: TextStyle(fontSize: 12, color: ac.textSecondary),
-                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _name,
                   textCapitalization: TextCapitalization.words,
                   decoration: const InputDecoration(
-                    labelText: 'Your name, as the teacher will see it',
+                    labelText: 'Your name',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -253,7 +240,8 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                   controller: _code,
                   textCapitalization: TextCapitalization.characters,
                   decoration: const InputDecoration(
-                    labelText: 'Invite code, e.g. K7M4-P9QX',
+                    labelText: 'Invite code',
+                    hintText: 'K7M4-P9QX',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -262,7 +250,7 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                   controller: _address,
                   onChanged: (_) => setState(() {}),
                   decoration: const InputDecoration(
-                    labelText: 'Teacher’s address (only if not found)',
+                    labelText: 'Teacher device address (optional)',
                     hintText: '192.168.43.1',
                     border: OutlineInputBorder(),
                   ),
@@ -270,8 +258,8 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _endpoints.isEmpty
-                      ? 'No teacher device found yet.'
-                      : 'Teacher devices found: ${_endpoints.length}',
+                      ? 'Searching…'
+                      : '${_endpoints.length} found',
                   style: TextStyle(fontSize: 12, color: ac.textSecondary),
                 ),
                 const SizedBox(height: 12),
@@ -315,8 +303,8 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                   ),
                   Text(
                     delegatedSubjects(c).isEmpty
-                        ? 'No subjects — the class’s teacher revoked you.'
-                        : 'You teach: ${delegatedSubjects(c).map(names).join(', ')}',
+                        ? 'Revoked'
+                        : delegatedSubjects(c).map(names).join(', '),
                     style: TextStyle(fontSize: 12, color: ac.textSecondary),
                   ),
                   const SizedBox(height: 8),
@@ -325,11 +313,11 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
                     children: [
                       OutlinedButton(
                         onPressed: _busy ? null : () => _refresh(c),
-                        child: const Text('Check for changes'),
+                        child: const Text('Refresh'),
                       ),
                       TextButton(
                         onPressed: () => _leave(c),
-                        child: const Text('Stop co-teaching'),
+                        child: const Text('Leave'),
                       ),
                     ],
                   ),

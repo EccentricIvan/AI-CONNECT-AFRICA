@@ -1,15 +1,22 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:drift/drift.dart'
+    show InsertMode, TableUpdate, TableUpdateQuery, Value;
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
 import '../../db/tables/sync_identity_table.dart' show kRoleStudent;
+import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
+import 'failover_crypto.dart';
+import 'p2p_failover_service.dart' show buildSealedLedger;
 import 'progress_report.dart';
 import 'routing_envelope.dart';
+import 'share_keep_alive.dart';
 
 /// Paths of the class-sync protocol. Version 4: a class may have
 /// co-teacher devices, each delegated specific subjects and each serving
@@ -32,6 +39,27 @@ const kCoTeacherJoinPath = 'api/v4/coteacher/join';
 
 /// A student device reporting its learners' progress to the teacher.
 const kReportPath = 'api/v4/report';
+
+/// The original PDF behind a note, by the SHA-256 its marker row records
+/// (see `NotePdfStore`). Served only when that marker is in a channel the
+/// requester may pull, so it reaches exactly who gets the note. Added
+/// without a version bump: a build without it answers 404, and the note
+/// still syncs as text.
+const kFilePath = 'api/v4/sync/file';
+
+/// Host failover: a device pairing as this host's standby (code + Accept,
+/// binding the standby's own key), then pulling the encrypted host ledger
+/// with requests signed by that key. Root teacher device only.
+const kStandbyPairPath = 'api/v4/failover/pair';
+const kStandbyLedgerPath = 'api/v4/failover/ledger';
+
+/// Header naming the standby's public key on a ledger request; the request
+/// signature travels in [kMacHeader].
+const kStandbyHeader = 'x-otic-standby';
+
+/// Lifetime of a standby pairing code — short, like a co-teacher's: the
+/// standby ends up holding the school's signing key (passphrase-sealed).
+const kStandbyCodeTtl = Duration(minutes: 15);
 
 /// Most learners one device may report at once — a shared classroom
 /// device, not a whole school.
@@ -75,7 +103,7 @@ enum ShareRole {
 }
 
 /// What kind of request is waiting for the sharer's Accept/Decline.
-enum PendingJoinKind { student, coTeacher }
+enum PendingJoinKind { student, coTeacher, standby }
 
 /// Someone who typed the right code and is waiting for the sharer's answer.
 class PendingJoin {
@@ -171,10 +199,14 @@ class ClassShareServer {
     this.role = ShareRole.teacher,
     this.joinRounds = kJoinKdfRounds,
     this.approvalTimeout = kJoinApprovalTimeout,
-  });
+    NotePdfStore? pdfStore,
+  }) : pdfStore = pdfStore ?? NotePdfStore(_db);
 
   final OticDatabase _db;
   final ShareRole role;
+
+  /// Where the notes' original PDFs are read from.
+  final NotePdfStore pdfStore;
 
   /// PBKDF2 rounds for join codes — lowered only in tests.
   final int joinRounds;
@@ -188,6 +220,9 @@ class ClassShareServer {
   /// not just read access, so it isn't spent by — or counted against —
   /// ordinary student join guessing.
   final Map<String, _OpenCode> _coTeacherCodes = {};
+
+  /// Standby pairing codes (host failover) — kept apart for the same reason.
+  final Map<String, _OpenCode> _standbyCodes = {};
   final Map<String, int> _failedJoins = {};
 
   final Map<String, _Waiting> _waiting = {};
@@ -195,6 +230,16 @@ class ClassShareServer {
 
   /// Classmate role: tokens of devices the sharer accepted.
   final Set<String> _sessions = {};
+
+  /// One class+subject's envelopes and digest, keyed `uuid/subject`. Every
+  /// handshake used to rebuild and re-hash every shared note, once per
+  /// student per sync; now that happens once per change. Cleared on any
+  /// write to the notes, their shares or the classes, and [_cacheGen]
+  /// stops a build that raced a write from being stored.
+  final Map<String, ({List<ResourceChunkEnvelope> chunks, String digest})>
+  _channelCache = {};
+  int _cacheGen = 0;
+  StreamSubscription<Set<TableUpdate>>? _cacheInvalidator;
 
   bool get isRunning => _server != null;
   int? get port => _server?.port;
@@ -244,14 +289,34 @@ class ClassShareServer {
       server = await shelf_io.serve(_route, InternetAddress.anyIPv4, 0);
     }
     _server = server;
+    _cacheInvalidator ??= _db
+        .tableUpdates(
+          TableUpdateQuery.onAllTables([
+            _db.topicResources,
+            _db.resourceShares,
+            _db.classGroups,
+          ]),
+        )
+        .listen((_) {
+          _cacheGen++;
+          _channelCache.clear();
+        });
+    // Android: keep serving with the screen off or the app in the background.
+    unawaited(ShareKeepAlive.acquire());
     return server.port;
   }
 
   Future<void> stop() async {
+    if (_server != null) unawaited(ShareKeepAlive.release());
     await _server?.close(force: true);
     _server = null;
+    unawaited(_cacheInvalidator?.cancel());
+    _cacheInvalidator = null;
+    _channelCache.clear();
+    _cacheGen++;
     _codes.clear();
     _coTeacherCodes.clear();
+    _standbyCodes.clear();
     _sessions.clear();
     for (final w in _waiting.values) {
       if (!w.decision.isCompleted) w.decision.complete(false);
@@ -332,6 +397,27 @@ class ClassShareServer {
     return code;
   }
 
+  /// Opens a code a standby device types to pair with this host (host
+  /// failover). Null unless this is a teacher device sharing as teacher
+  /// with a failover passphrase set (`P2PFailoverService.enableFailover`) —
+  /// without one there is no ledger to hand over.
+  Future<String?> openStandbyCode({Duration ttl = kStandbyCodeTtl}) async {
+    if (role != ShareRole.teacher) return null;
+    final me = await _db.classSyncDao.identity();
+    if (me.deviceRole == kRoleStudent ||
+        me.schoolId == null ||
+        me.failoverSealKey == null) {
+      return null;
+    }
+    _standbyCodes.clear();
+    final code = newJoinCode();
+    _standbyCodes[normalizeJoinCode(code)!] = _OpenCode(
+      '',
+      DateTime.now().add(ttl),
+    );
+    return code;
+  }
+
   void _emitPending() {
     if (!_pendingCtrl.isClosed) _pendingCtrl.add(pendingJoins);
   }
@@ -404,8 +490,12 @@ class ClassShareServer {
         kJoinPath => await _join(request),
         kCoTeacherJoinPath when role == ShareRole.teacher =>
           await _coTeacherJoin(request),
-        kHandshakePath || kChannelPath => await _sync(request),
+        kHandshakePath || kChannelPath || kFilePath => await _sync(request),
         kReportPath when role == ShareRole.teacher => await _sync(request),
+        kStandbyPairPath when role == ShareRole.teacher =>
+          await _standbyPair(request),
+        kStandbyLedgerPath when role == ShareRole.teacher =>
+          await _standbyLedger(request),
         _ => _notFound(),
       };
     } catch (_) {
@@ -576,6 +666,106 @@ class ClassShareServer {
     return _notFound();
   }
 
+  // ── Host failover: standby pairing and ledger ─────────────────────────
+
+  Future<Response> _standbyPair(Request request) async {
+    final now = DateTime.now();
+    _standbyCodes.removeWhere((_, c) => c.expires.isBefore(now));
+    final from = _remote(request);
+    if (_standbyCodes.isEmpty || _lockedOut(from)) return _notFound();
+    final body = jsonDecode(await request.readAsString());
+    final salt = body is Map ? body['nonce'] : null;
+    final proof = body is Map ? body['proof'] : null;
+    final rawName = body is Map ? body['name'] : null;
+    final standbyKey = body is Map ? body['device_public_key'] : null;
+    if (salt is! String ||
+        salt.length < 16 ||
+        proof is! String ||
+        standbyKey is! String ||
+        standbyKey.isEmpty) {
+      return _notFound();
+    }
+
+    for (final entry in _standbyCodes.entries.toList()) {
+      final secret = await joinSecret(entry.key, salt, rounds: joinRounds);
+      final expected = await standbyPairProof(secret, salt, standbyKey);
+      if (!constantTimeEquals(expected, proof)) continue;
+
+      final me = await _db.classSyncDao.identity();
+      if (me.schoolId == null || me.failoverSealKey == null) {
+        return _notFound();
+      }
+      if (!await _approve(
+        request,
+        rawName,
+        '',
+        kind: PendingJoinKind.standby,
+      )) {
+        return _notFound();
+      }
+      final name = rawName is String && rawName.trim().isNotEmpty
+          ? rawName.trim().substring(0, rawName.trim().length.clamp(0, 40))
+          : 'A standby device';
+      await _db
+          .into(_db.failoverStandbys)
+          .insert(
+            FailoverStandbysCompanion.insert(publicKey: standbyKey, name: name),
+            mode: InsertMode.insertOrReplace,
+          );
+      _standbyCodes.remove(entry.key);
+      return _json({
+        'bundle': await sealJoinBundle(secret, salt, {
+          'school_id': me.schoolId,
+          'school_name': me.schoolName ?? '',
+          'root_public_key': await signingPublicKey(me.signingSeed),
+        }),
+      });
+    }
+    _failedJoins[from] = (_failedJoins[from] ?? 0) + 1;
+    return _notFound();
+  }
+
+  /// A paired standby pulling the current ledger. The request is signed
+  /// with the standby's pinned key; the reply is the passphrase-sealed
+  /// ledger, signed with the root key over the standby's nonce.
+  Future<Response> _standbyLedger(Request request) async {
+    final standbyKey = request.headers[kStandbyHeader];
+    final nonce = request.headers[kNonceHeader];
+    final sig = request.headers[kMacHeader];
+    if (standbyKey == null || nonce == null || nonce.length < 16 || sig == null) {
+      return _notFound();
+    }
+    final paired = await (_db.select(_db.failoverStandbys)
+          ..where((t) => t.publicKey.equals(standbyKey)))
+        .getSingleOrNull();
+    if (paired == null) return _notFound();
+    final raw = await request.readAsString();
+    if (!await verifyStandbyRequest(
+      standbyPublicKey: standbyKey,
+      path: kStandbyLedgerPath,
+      nonce: nonce,
+      body: raw,
+      signature: sig,
+    )) {
+      return _notFound();
+    }
+    final ledger = await buildSealedLedger(_db);
+    if (ledger == null) return _notFound();
+    final me = await _db.classSyncDao.identity();
+    final ledgerJson = jsonEncode(ledger);
+    await (_db.update(_db.failoverStandbys)
+          ..where((t) => t.id.equals(paired.id)))
+        .write(FailoverStandbysCompanion(lastMirroredAt: Value(DateTime.now())));
+    return _json({
+      'ledger_json': ledgerJson,
+      'sig': await signLedgerReply(
+        rootSeed: me.signingSeed,
+        nonce: nonce,
+        ledgerJson: ledgerJson,
+      ),
+    });
+  }
+
   // ── Sync ────────────────────────────────────────────────────────────────
 
   Future<Response> _sync(Request request) async {
@@ -611,6 +801,7 @@ class ClassShareServer {
       kReportPath when !served.isDelegate =>
         await _report(served, classKey, nonce, body['report']),
       kReportPath => null,
+      kFilePath => await _noteFile(served, body['subject_id'], body['sha256']),
       _ => await _channel(served, body['subject_id']),
     };
     if (reply == null) return _notFound();
@@ -621,6 +812,7 @@ class ClassShareServer {
           classKey: classKey,
           requestNonce: nonce,
           json: reply,
+          heavy: path == kFilePath,
         ),
       );
     }
@@ -631,6 +823,7 @@ class ClassShareServer {
         signingSeed: me.signingSeed,
         requestNonce: nonce,
         json: reply,
+        heavy: path == kFilePath,
       ),
     );
   }
@@ -678,11 +871,7 @@ class ClassShareServer {
       }
       await dao.retireUnshared(uuid, subjects.toSet());
       for (final subject in subjects) {
-        final chunks = await _envelopes(
-          uuid,
-          await dao.sharedChunks(uuid, subject),
-        );
-        final digest = await channelDigest(chunks.map((e) => e.chunkId));
+        final digest = (await _cachedChannel(uuid, subject)).digest;
         final version = await dao.servedVersion(uuid, subject, digest);
         manifests.add(
           ChannelManifest(
@@ -728,6 +917,10 @@ class ClassShareServer {
       // Forwarded verbatim, whichever device this reply comes from — its
       // own signature is what makes it trustworthy, not who's relaying it.
       if (served.rosterJson != null) 'roster': jsonDecode(served.rosterJson!),
+      // Root only: how many failover takeovers this host identity has had,
+      // so students refuse a replaced device (see ClassGroups.hostEpoch).
+      if (role == ShareRole.teacher && !served.isDelegate)
+        'host_epoch': (await dao.identity()).hostGeneration,
     };
   }
 
@@ -765,16 +958,79 @@ class ClassShareServer {
       // serve a subject outside its allocation even if that changed.
       return null;
     }
-    final uuid = served.groupUuid;
-    final rows = role == ShareRole.teacher
-        ? await _db.classSyncDao.sharedChunks(uuid, subject)
-        : await _db.classSyncDao.receivedChunks(uuid, subject);
-    final chunks = await _envelopes(uuid, rows);
+    final channel = await _cachedChannel(served.groupUuid, subject);
     return {
       'subject_id': subject,
-      'digest': await channelDigest(chunks.map((e) => e.chunkId)),
-      'chunks': [for (final e in chunks) e.toJson()],
+      'digest': channel.digest,
+      'chunks': [for (final e in channel.chunks) e.toJson()],
     };
+  }
+
+  /// The PDF [sha] of [subject], if a note in that channel records it and
+  /// this device has the file.
+  Future<Map<String, Object?>?> _noteFile(
+    _ServedClass served,
+    Object? subject,
+    Object? sha,
+  ) async {
+    if (subject is! String || sha is! String || sha.length != 64) return null;
+    if (served.allocatedSubjects != null &&
+        !served.allocatedSubjects!.contains(subject)) {
+      return null;
+    }
+    final channel = await _cachedChannel(served.groupUuid, subject);
+    final listed = channel.chunks.any(
+      (e) =>
+          e.payload['topic_key'] == kPdfMarkerTopic &&
+          '${e.payload['content_chunk']}'.contains('sha256=$sha '),
+    );
+    if (!listed) return null;
+    // One file at a time: thirty students' first sync must not hold thirty
+    // PDFs in a 4 GB phone's memory at once.
+    final previous = _fileTurn;
+    final done = Completer<void>();
+    _fileTurn = done.future;
+    await previous;
+    try {
+      final file = await pdfStore.fileFor(sha);
+      if (file == null) return null;
+      final path = file.path;
+      final data = await Isolate.run(() {
+        final bytes = File(path).readAsBytesSync();
+        return bytes.length > kMaxNotePdfBytes ? null : base64Encode(bytes);
+      });
+      if (data == null) return null;
+      return {'sha256': sha, 'data': data};
+    } catch (_) {
+      return null;
+    } finally {
+      done.complete();
+    }
+  }
+
+  /// Completes when the PDF being served before this one is out.
+  Future<void> _fileTurn = Future.value();
+
+  /// [subject]'s channel of [classUuid] as this device serves it in its
+  /// role: its own shared notes (teacher), or the received copy (classmate).
+  Future<({List<ResourceChunkEnvelope> chunks, String digest})> _cachedChannel(
+    String classUuid,
+    String subject,
+  ) async {
+    final key = '$classUuid/$subject';
+    final hit = _channelCache[key];
+    if (hit != null) return hit;
+    final gen = _cacheGen;
+    final rows = role == ShareRole.teacher
+        ? await _db.classSyncDao.sharedChunks(classUuid, subject)
+        : await _db.classSyncDao.receivedChunks(classUuid, subject);
+    final chunks = await _envelopes(classUuid, rows);
+    final built = (
+      chunks: chunks,
+      digest: await channelDigest(chunks.map((e) => e.chunkId)),
+    );
+    if (gen == _cacheGen) _channelCache[key] = built;
+    return built;
   }
 
   /// Envelopes for [rows]. A received row stores exactly the payload the

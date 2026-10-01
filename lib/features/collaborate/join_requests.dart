@@ -32,31 +32,25 @@ class JoinRequestsCard extends StatelessWidget {
             children: [
               Text(
                 pending.isEmpty
-                    ? 'Nobody is waiting to join'
+                    ? 'No join requests'
                     : 'Asking to join (${pending.length})',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: ac.textPrimary,
                 ),
               ),
-              if (pending.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    'When someone types the code, their name appears here for '
-                    'you to Accept or Decline.',
-                    style: TextStyle(fontSize: 12, color: ac.textSecondary),
-                  ),
-                ),
               for (final p in pending)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [
                       Icon(
-                        p.kind == PendingJoinKind.coTeacher
-                            ? Icons.school_rounded
-                            : Icons.person_outline_rounded,
+                        switch (p.kind) {
+                          PendingJoinKind.coTeacher => Icons.school_rounded,
+                          PendingJoinKind.standby => Icons.backup_rounded,
+                          PendingJoinKind.student =>
+                            Icons.person_outline_rounded,
+                        },
                         size: 20,
                       ),
                       const SizedBox(width: 8),
@@ -70,9 +64,17 @@ class JoinRequestsCard extends StatelessWidget {
                                   : '${p.name} · ${p.address}',
                               style: TextStyle(color: ac.textPrimary),
                             ),
+                            if (p.kind == PendingJoinKind.standby)
+                              Text(
+                                'Standby device',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: ac.textSecondary,
+                                ),
+                              ),
                             if (p.kind == PendingJoinKind.coTeacher)
                               Text(
-                                'Co-teacher for: ${p.subjectIds.map(subjectName ?? (s) => s).join(', ')}',
+                                'Co-teacher · ${p.subjectIds.map(subjectName ?? (s) => s).join(', ')}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: ac.textSecondary,

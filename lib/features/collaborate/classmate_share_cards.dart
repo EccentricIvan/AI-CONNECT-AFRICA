@@ -71,8 +71,7 @@ class _ShareWithClassmatesCardState
       if ((await db.classSyncDao.relayableChannels(uuid)).isEmpty) {
         setState(
           () => _note =
-              'Sync with your teacher first — you can only pass on notes you '
-              'have received.',
+              'Sync with your teacher first',
         );
         return;
       }
@@ -128,9 +127,7 @@ class _ShareWithClassmatesCardState
           ),
           const SizedBox(height: 4),
           Text(
-            'Pass your teacher’s notes for ${classLabel(widget.group)} to a '
-            'classmate who missed the sync. They must have joined the class '
-            'with the teacher’s code. Keep this screen open while sharing.',
+            classLabel(widget.group),
             style: TextStyle(fontSize: 12, color: ac.textSecondary, height: 1.4),
           ),
           const SizedBox(height: 12),
@@ -164,9 +161,8 @@ class _ShareWithClassmatesCardState
               ],
             ),
             Text(
-              'Your classmate types this code (valid 30 minutes).'
-              '${_addresses.isEmpty ? '' : ' If their device can’t find yours, '
-                        'they type this address: ${_addresses.join(' or ')}'}',
+              'Valid 30 minutes'
+              '${_addresses.isEmpty ? '' : ' · ${_addresses.join(', ')}'}',
               style: TextStyle(fontSize: 12, color: ac.textSecondary),
             ),
             const SizedBox(height: 10),
@@ -224,7 +220,7 @@ class _GetFromClassmateCardState extends ConsumerState<GetFromClassmateCard> {
     }
     setState(() {
       _busy = true;
-      _status = 'Waiting for your classmate to tap Accept…';
+      _status = 'Waiting for approval…';
       _statusIsError = false;
     });
     final manager = SelectiveSyncManager(ref.read(dbProvider));
@@ -279,11 +275,8 @@ class _GetFromClassmateCardState extends ConsumerState<GetFromClassmateCard> {
           const SizedBox(height: 4),
           Text(
             widget.found.isEmpty
-                ? 'Missed your teacher? Ask a classmate to tap Share with '
-                      'classmates, then type the code they show.'
-                : '${widget.found.length} classmate'
-                      '${widget.found.length == 1 ? ' is' : 's are'} sharing '
-                      'nearby. Type the code they show.',
+                ? 'No classmates sharing nearby'
+                : '${widget.found.length} sharing nearby',
             style: TextStyle(fontSize: 12, color: ac.textSecondary, height: 1.4),
           ),
           const SizedBox(height: 10),

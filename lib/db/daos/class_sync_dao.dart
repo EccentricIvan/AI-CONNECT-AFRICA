@@ -317,15 +317,18 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
   ) => transaction(() async {
     final row = await _served(classUuid, subjectId);
     if (row == null) {
+      // A host that took over (failover) starts new channels above every
+      // version the replaced device could have signed.
+      final first = generationFloor((await identity()).hostGeneration) + 1;
       await into(servedChannels).insert(
         ServedChannelsCompanion.insert(
           classGroupUuid: classUuid,
           subjectId: subjectId,
           digest: Value(digest),
-          version: 1,
+          version: first,
         ),
       );
-      return 1;
+      return first;
     }
     if (row.digest == digest) return row.version;
     await (update(servedChannels)..where((t) => t.id.equals(row.id))).write(
@@ -710,6 +713,22 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
         rosterVersion: Value(roster.version),
         rosterJson: Value(jsonEncode(roster.toJson())),
       ),
+    );
+  }
+
+  /// Student device: records that a root-signed handshake for [classUuid]
+  /// carried [epoch] — never lowers it (see `ClassGroups.hostEpoch`).
+  Future<void> raiseHostEpoch(String classUuid, int epoch) async {
+    await customUpdate(
+      'UPDATE class_groups SET host_epoch = ? '
+      'WHERE group_uuid = ? AND joined = 1 '
+      '  AND COALESCE(host_epoch, 0) < ?',
+      variables: [
+        Variable.withInt(epoch),
+        Variable.withString(classUuid),
+        Variable.withInt(epoch),
+      ],
+      updates: {classGroups},
     );
   }
 

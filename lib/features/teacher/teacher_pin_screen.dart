@@ -76,7 +76,7 @@ class _TeacherUnlockScreenState extends ConsumerState<TeacherUnlockScreen> {
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
         title: 'Teacher area',
-        subtitle: 'Enter the teacher PIN to continue',
+        subtitle: 'Enter PIN',
         icon: Icons.lock_rounded,
         iconColor: AppColors.accentBlue,
         showBack: true,
@@ -111,9 +111,7 @@ class _TeacherUnlockScreenState extends ConsumerState<TeacherUnlockScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Forgot the PIN? It can only be removed by clearing this '
-              "app's data, which also removes every learner's progress on "
-              'this device.',
+              'Forgot PIN? Reset requires clearing app data.',
               style: TextStyle(fontSize: 12, color: colors.textSecondary),
             ),
           ],

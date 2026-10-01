@@ -178,9 +178,9 @@ class TutorPipeline {
     );
 
     // After _remember, so the pointer never becomes part of tutor memory.
-    final pointers = _diagramPointers(classNotes, studentMessage);
-    if (pointers.isNotEmpty) {
-      final extra = '\n\n${pointers.join('\n')}';
+    final diagrams = _diagramPointers(classNotes, studentMessage);
+    if (diagrams.isNotEmpty) {
+      final extra = '\n\n${diagrams.map((d) => d.pointer()).join('\n')}';
       text = '$text$extra';
       await emitToken(onToken, extra);
     }
@@ -194,6 +194,7 @@ class TutorPipeline {
       followUpPrompt: followUp,
       topic: _currentTopic,
       lesson: _activeMatch?.lesson,
+      diagrams: diagrams,
     );
   }
 
@@ -235,12 +236,12 @@ class TutorPipeline {
 
   /// "See Figure 3.2, page 14 of the PDF…" lines for diagrams in [notes] that
   /// relate to what the student asked, each at most once per topic.
-  List<String> _diagramPointers(String notes, String studentMessage) {
+  List<DiagramMarker> _diagramPointers(String notes, String studentMessage) {
     if (!notes.contains('[DIAGRAM: ')) return const [];
     final asked = _contentWords(
       '$studentMessage ${_activeMatch?.lesson.keyTerms.keys.join(' ') ?? ''}',
     );
-    final out = <String>[];
+    final out = <DiagramMarker>[];
     for (final (start, end) in DiagramMarker.spans(notes)) {
       final marker = DiagramMarker.parseAll(notes.substring(start, end)).single;
       if (_shownDiagrams.contains(marker.key)) continue;
@@ -252,7 +253,7 @@ class TutorPipeline {
         continue;
       }
       _shownDiagrams.add(marker.key);
-      out.add(marker.pointer());
+      out.add(marker);
       if (out.length == 2) break;
     }
     return out;

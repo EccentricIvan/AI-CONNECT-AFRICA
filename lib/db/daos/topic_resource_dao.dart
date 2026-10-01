@@ -97,6 +97,8 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
   }) {
     final q = select(topicResources)
       ..where((t) => t.subjectId.equals(subjectId))
+      // A note's original-PDF record isn't teaching text.
+      ..where((t) => t.topicKey.equals(kPdfMarkerTopicKey).not())
       ..where((t) => _visibleTo(t, visibleClassUuid));
     if (termMarker != null) {
       q.where(
@@ -168,6 +170,7 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
       'SELECT t.* FROM topic_resources_fts f '
       'JOIN topic_resources t ON t.id = f.rowid '
       'WHERE topic_resources_fts MATCH ? '
+      "AND t.topic_key <> '$kPdfMarkerTopicKey' "
       '${subjectId == null ? '' : 'AND t.subject_id = ? '}'
       '${termMarker == null ? '' : 'AND (t.term_marker = ? OR t.term_marker = ?) '}'
       'AND (t.class_group_uuid IS NULL'
@@ -275,6 +278,11 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 }
 
 /// One teacher-visible resource, with its chunking already collapsed away.
+/// Topic key of a note's original-PDF record (see `NotePdfStore`) — kept
+/// out of the tutor's retrieval. Starts with `~` so `MIN(topic_key)` in
+/// [TopicResourceDao.listResources] never picks it.
+const kPdfMarkerTopicKey = '~pdf-original';
+
 class ResourceSummary {
   const ResourceSummary({
     required this.resourceTitle,
