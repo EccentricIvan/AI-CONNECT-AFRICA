@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
@@ -153,16 +154,40 @@ class _NoteBody extends ConsumerWidget {
 }
 
 /// Questions written from the subject's notes, answered in place.
-class SubjectQuizTab extends ConsumerWidget {
+class SubjectQuizTab extends ConsumerStatefulWidget {
   const SubjectQuizTab({super.key, required this.subjectId});
 
   final String subjectId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SubjectQuizTab> createState() => _SubjectQuizTabState();
+}
+
+class _SubjectQuizTabState extends ConsumerState<SubjectQuizTab> {
+  String get subjectId => widget.subjectId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Questions written ahead from the notes come up at once, no button.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final quiz = ref.read(subjectQuizProvider(subjectId));
+      if (quiz.questions.isEmpty && !quiz.generating) {
+        ref.read(subjectQuizProvider(subjectId).notifier).startStored();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ac = AppColors.of(context);
     final quiz = ref.watch(subjectQuizProvider(subjectId));
     final notifier = ref.read(subjectQuizProvider(subjectId).notifier);
+    // The quiz and the chat share one engine.
+    final chatBusy = ref.watch(
+      chatProvider.select((c) => c.valueOrNull?.isGenerating ?? false),
+    );
 
     if (quiz.questions.isEmpty && !quiz.generating) {
       return Center(
@@ -179,7 +204,7 @@ class SubjectQuizTab extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
             FilledButton.icon(
-              onPressed: () => notifier.start(),
+              onPressed: chatBusy ? null : () => notifier.start(),
               icon: const Icon(Icons.play_arrow_rounded),
               label: Text(tr(context, 'Start quiz')),
             ),
@@ -233,7 +258,7 @@ class SubjectQuizTab extends ConsumerWidget {
           if (quiz.finished) ...[
             const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: () => notifier.start(),
+              onPressed: chatBusy ? null : () => notifier.start(),
               icon: const Icon(Icons.refresh_rounded),
               label: Text(tr(context, 'New quiz')),
             ),

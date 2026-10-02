@@ -26,6 +26,7 @@ import '../../voice/voice_provider.dart';
 import '../../voice/voice_service.dart';
 import '../../services/pdf/diagram_detector.dart';
 import '../notes/note_pdf_screen.dart';
+import 'class_notes_sheet.dart';
 import 'home_greeting.dart';
 
 class _ChatEntry {
@@ -260,6 +261,11 @@ class _LearnScreenState extends ConsumerState<LearnScreen> {
               icon: Icons.auto_awesome_rounded,
               iconColor: AppColors.accentViolet,
               actions: [
+                StudioHeaderIconButton(
+                  icon: Icons.menu_book_rounded,
+                  tooltip: tr(context, 'Notes'),
+                  onTap: () => showClassNotesSheet(context),
+                ),
                 StudioHeaderIconButton(
                   icon: Icons.refresh_rounded,
                   tooltip: tr(context, UiRegistry.newSession),
@@ -921,20 +927,29 @@ class _HomeChromeAppBar extends StatelessWidget implements PreferredSizeWidget {
                 semanticLabel: 'Logo',
               ),
               const SizedBox(width: 6),
-              const Text(
-                'CONNECT AFRICA',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: 'Inter',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.2,
-                  color: AppColors.navy,
+              // Flexible so the header icons never overflow a narrow phone.
+              const Flexible(
+                child: Text(
+                  'CONNECT AFRICA',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Inter',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                    color: AppColors.navy,
+                  ),
                 ),
               ),
             ],
             const Spacer(),
+            StudioHeaderIconButton(
+              icon: Icons.menu_book_rounded,
+              tooltip: tr(context, 'Notes'),
+              onTap: () => showClassNotesSheet(context),
+            ),
+            const SizedBox(width: 8),
             if (onRefresh != null) ...[
               StudioHeaderIconButton(
                 icon: Icons.refresh_rounded,

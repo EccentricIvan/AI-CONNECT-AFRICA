@@ -142,7 +142,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/learn/subject/:id',
             builder: (_, state) =>
-                UnitsScreen(subjectId: state.pathParameters['id'] ?? ''),
+                UnitsScreen(
+                  subjectId: state.pathParameters['id'] ?? '',
+                  initialTab:
+                      int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0,
+                ),
           ),
           GoRoute(
             path: '/learn/subject/:id/lesson/:unit/:lesson',

@@ -14,6 +14,7 @@ import 'features/model_setup/model_not_installed_screen.dart';
 import 'l10n/app_locale.dart';
 import 'l10n/language_provider.dart';
 import 'services/model_fetch_service.dart';
+import 'services/notes/note_quiz_builder.dart';
 import 'services/storage_housekeeper.dart';
 
 class OticApp extends ConsumerStatefulWidget {
@@ -80,6 +81,9 @@ class _OticAppState extends ConsumerState<OticApp> {
     } catch (e) {
       debugPrint('StorageHousekeeper kickoff failed: $e');
     }
+    // Quiz questions for note PDFs not finished last time (or uploaded
+    // before questions were written ahead).
+    if (mounted) unawaited(ref.read(noteQuizBuilderProvider).resumePending());
   }
 
   @override

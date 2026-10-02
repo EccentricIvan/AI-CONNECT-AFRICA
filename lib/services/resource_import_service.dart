@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import 'ocr/ocr_engine.dart';
 import 'offline_storage_service.dart';
 import 'pdf/diagram_detector.dart';
 import 'notes/note_pdf_store.dart';
+import 'notes/note_quiz_builder.dart';
 import 'pdf/pdf_page_extractor.dart';
 import 'resource_text_extractor.dart';
 
@@ -39,10 +41,14 @@ class ResourceImportService {
     OcrLookup? ocr,
     PdfOpener openPdf = _openWithPdfium,
     this.pdfStore,
+    this.onPdfKept,
   }) : _ocr = ocr,
        _openPdf = openPdf;
 
   final OfflineStorageService _storage;
+
+  /// Called once a PDF's original is kept — the quiz builder starts on it.
+  final void Function(NotePdf pdf)? onPdfKept;
 
   /// Keeps an imported PDF's original so it can be opened as it is, and
   /// synced with the note. Null keeps text only.
@@ -167,8 +173,9 @@ class ResourceImportService {
       try {
         final sha = await store.put(bytes);
         if (sha != null) {
+          final subject = normalizeSubjectId(subjectId);
           await store.recordOwn(
-            subjectId: normalizeSubjectId(subjectId),
+            subjectId: subject,
             documentTitle: docTitle,
             sha: sha,
             pages: pdf?.pages ?? 0,
@@ -176,6 +183,15 @@ class ResourceImportService {
             termMarker: termMarker,
           );
           keptOriginal = true;
+          onPdfKept?.call(
+            NotePdf(
+              sha256: sha,
+              pages: pdf?.pages ?? 0,
+              bytes: bytes.length,
+              subjectId: subject,
+              documentTitle: docTitle,
+            ),
+          );
         }
       } catch (e) {
         debugPrint('Keeping the original PDF failed: $e');
@@ -429,6 +445,9 @@ bool looksLikeHeading(String line) {
   final t = line.trim();
   if (t.isEmpty || t.length > 80) return false;
   if (isDiagramMarkerLine(t)) return false;
+  // A line of symbols from an unmapped font is not a heading, however
+  // "ALL CAPS" its few letters are.
+  if (!looksLikeTitleText(t)) return false;
   // Prose ends in punctuation; headings almost never do.
   if (RegExp(r'[.,;:]$').hasMatch(t)) return false;
   // A heading is a few words, not a paragraph.
@@ -480,6 +499,9 @@ final resourceImportServiceProvider = Provider<ResourceImportService>((ref) {
     ref.watch(offlineStorageServiceProvider),
     ocr: () => ref.read(ocrEngineProvider.future),
     pdfStore: ref.watch(notePdfStoreProvider),
+    onPdfKept: (pdf) => unawaited(
+      ref.read(noteQuizBuilderProvider).enqueue(pdf, fresh: true),
+    ),
   );
 });
 

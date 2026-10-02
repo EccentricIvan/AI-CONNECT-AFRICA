@@ -15,7 +15,13 @@ const _prose =
     'Photosynthesis is the process by which green plants use sunlight, water '
     'and carbon dioxide to make glucose and release oxygen into the air.';
 
-enum Kind { text, scan, picture, blank, rules }
+enum Kind { text, scan, picture, blank, rules, mixed }
+
+/// One clean line, then lines in a font with no text map.
+const _garbageLine = '\u0001~\u0002P\u0003\u0004\u0005\u0006W\u0007\u0008K\u000e\u000f~\u0010P\u0011';
+const _mixed =
+    'Chapter 2: Industrial processes in the chemical industry today\n'
+    '$_garbageLine\n$_garbageLine\n$_garbageLine\n$_garbageLine';
 
 RenderedPage _render(Kind kind, int maxSide) {
   final w = (maxSide * 0.75).round(), h = maxSide;
@@ -41,7 +47,7 @@ RenderedPage _render(Kind kind, int maxSide) {
       for (var y = h ~/ 5; y < h * 4 ~/ 5; y += h ~/ 12) {
         box(w ~/ 10, y, w * 9 ~/ 10, y + 3);
       }
-    case Kind.text || Kind.scan || Kind.blank:
+    case Kind.text || Kind.scan || Kind.blank || Kind.mixed:
       break;
   }
   return RenderedPage(bgra: px, width: w, height: h);
@@ -58,7 +64,11 @@ class FakePdf implements PdfPageSource {
 
   @override
   Future<PageText> text(int page) async =>
-      PageText(kinds[page - 1] == Kind.text ? _prose : '', const []);
+      PageText(switch (kinds[page - 1]) {
+        Kind.text => _prose,
+        Kind.mixed => _mixed,
+        _ => '',
+      }, const []);
 
   @override
   Future<RenderedPage?> render(int page, {required int maxSide}) async {
@@ -93,6 +103,20 @@ void main() {
       expect(ocr.calls, 0);
       expect(r.text, contains('Photosynthesis'));
       expect(r.ocrPages, 0);
+    });
+
+    test('a page mostly in an unmapped font still goes to OCR', () async {
+      final ocr = FakeOcr(_prose);
+      final r = await extractPdfPages(FakePdf([Kind.mixed]), documentTitle: 'Bio', ocr: ocr);
+      expect(ocr.calls, 1);
+      expect(r.text, contains('Photosynthesis'));
+
+      final page = await readablePageText(FakePdf([Kind.mixed]), 1, ocr: FakeOcr(_prose));
+      expect(page, contains('Photosynthesis'));
+      // Without OCR the readable part is kept, never the symbols.
+      final bare = await readablePageText(FakePdf([Kind.mixed]), 1);
+      expect(bare, startsWith('Chapter 2'));
+      expect(bare, isNot(contains('~')));
     });
 
     test('a scanned page is read by OCR', () async {
