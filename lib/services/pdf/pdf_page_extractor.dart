@@ -109,6 +109,39 @@ const _minNativeChars = 40;
 const _ocrMaxSide = 2000;
 const _pictureCheckMaxSide = 400;
 
+/// One page's readable text — embedded text, or OCR when the page is a scan
+/// — or '' when it has none. No diagram markers.
+Future<String> readablePageText(
+  PdfPageSource source,
+  int page, {
+  OcrEngine? ocr,
+}) async {
+  final raw = (await source.text(page)).text;
+  final native = normalizeExtractedText(raw);
+  final nativeOk =
+      looksLikeRealText(native) &&
+      native.length >= _minNativeChars &&
+      !mostlyUnreadable(raw);
+  if (nativeOk) {
+    return native;
+  }
+  // Without OCR, the readable part beats nothing.
+  final fallback = looksLikeRealText(native) ? native : '';
+  if (ocr == null) return fallback;
+  try {
+    final rendered = await source.render(
+      page,
+      maxSide: math.min(_ocrMaxSide, ocr.maxDimension),
+    );
+    if (rendered == null) return fallback;
+    final text = normalizeExtractedText((await ocr.recognize(rendered)).text);
+    return looksLikeRealText(text) ? text : fallback;
+  } catch (e) {
+    debugPrint('OCR failed on page $page: $e');
+    return fallback;
+  }
+}
+
 /// Reads every page: embedded text when the page has real text, OCR when it's
 /// a scan, and a diagram marker where a picture or caption is. Nothing is
 /// stored here, so cancelling leaves no trace.
@@ -141,7 +174,12 @@ Future<PdfExtraction> extractPdfPages(
     var boxes = native.boxes;
     RenderedPage? rendered;
 
-    final nativeOk = looksLikeRealText(body) && body.length >= _minNativeChars;
+    // A page partly in an unmapped font loses those lines when cleaned, so
+    // it goes to OCR even if what is left would pass.
+    final nativeOk =
+        looksLikeRealText(body) &&
+        body.length >= _minNativeChars &&
+        !mostlyUnreadable(native.text);
     if (!nativeOk && ocr != null) {
       try {
         rendered = await source.render(

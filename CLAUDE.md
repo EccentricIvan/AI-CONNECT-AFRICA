@@ -193,8 +193,13 @@ able to read them as uploaded.
     digest covers it. It is shared and unshared, relayed verbatim by
     classmates, deleted, and carried in a failover ledger exactly like the
     note.
-  - The `~` keeps it out of `MIN(topic_key)`. FTS search and
-    `chunksForSubject` exclude it.
+  - The `~` keeps it out of `MIN(topic_key)`. FTS search, `chunksForSubject`
+    and the notes text exclude **every** `~` row (`kRecordTopicPrefix`).
+- **Quiz questions** are `~quiz` rows of the same note (`[QUIZ: page=N] {json}`),
+  one per PDF page, written in the background by `NoteQuizBuilder` after
+  upload (resumed at launch, own PDFs only, retried — never skipped — when
+  the engine fails). They sync, share and delete with the note; Quiz shows
+  them instantly (`NoteQuizStore`).
 - **Bytes** come from `api/v4/sync/file` (`ClassShareServer._noteFile`).
   - It serves a file only if its marker is in a channel the requester may
     pull.

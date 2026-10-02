@@ -8,6 +8,7 @@ import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../curriculum/curriculum_models.dart';
 import '../../services/custom_subject_service.dart';
+import '../../services/notes/note_quiz_builder.dart';
 import 'subject_notes.dart';
 
 /// Multiple-choice questions written from the teacher's own notes — one
@@ -45,6 +46,14 @@ class NotesQuizGenerator {
   Future<QuizQuestion?> fromPassage(
     String passage, {
     required String subject,
+  }) async => (await tryPassage(passage, subject: subject)).question;
+
+  /// Like [fromPassage], but says when the engine itself failed — it
+  /// answers with a stock sentence instead of throwing — so a caller that
+  /// records progress can retry that passage instead of skipping it.
+  Future<({QuizQuestion? question, bool engineFailed})> tryPassage(
+    String passage, {
+    required String subject,
   }) async {
     final clipped = passage.length > 900 ? passage.substring(0, 900) : passage;
     final prompt =
@@ -69,12 +78,17 @@ Rules:
         maxTokens: 320,
         temperature: 0.3,
       );
-      return parse(raw);
+      return (question: parse(raw), engineFailed: isEngineFallback(raw));
     } catch (e) {
       debugPrint('Notes quiz question failed: $e');
-      return null;
+      return (question: null, engineFailed: true);
     }
   }
+
+  /// The stock sentences the engines answer with when generation failed.
+  static bool isEngineFallback(String raw) =>
+      raw.contains('I hit a brief snag') ||
+      raw.contains('on-device model is unavailable');
 
   /// The question in [raw], or null when it isn't a usable one.
   static QuizQuestion? parse(String raw) {
@@ -162,7 +176,31 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
   @override
   SubjectQuizState build(String subjectId) => const SubjectQuizState();
 
+  /// Questions per round taken from the ones written ahead.
+  static const storedRoundSize = 10;
+
+  /// Shows a round of the questions written ahead from the notes' pages
+  /// (`NoteQuizBuilder`) at once. False when there are none yet.
+  Future<bool> startStored() async {
+    final round = ++_round;
+    try {
+      final classUuid = await ref.read(learnerClassUuidProvider.future);
+      final stored = await ref
+          .read(noteQuizStoreProvider)
+          .questions(arg, classUuid: classUuid);
+      if (round != _round || stored.isEmpty) return false;
+      stored.shuffle();
+      final pick = stored.take(storedRoundSize).toList();
+      state = SubjectQuizState(questions: pick, target: pick.length);
+      return true;
+    } catch (e) {
+      debugPrint('Stored quiz unavailable: $e');
+      return false;
+    }
+  }
+
   Future<void> start({int count = 5}) async {
+    if (await startStored()) return;
     final round = ++_round;
     state = SubjectQuizState(generating: true, target: count);
     try {

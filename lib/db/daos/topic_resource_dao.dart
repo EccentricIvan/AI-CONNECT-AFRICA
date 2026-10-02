@@ -89,17 +89,20 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 
   /// Every chunk for a subject, regardless of topic — the fallback a retrieval
   /// uses when the active topic has no resources of its own.
+  ///
+  /// A null [limit] reads every chunk, in upload order.
   Future<List<TopicResource>> chunksForSubject({
     required String subjectId,
     int? termMarker,
-    int limit = 400,
+    int? limit = 400,
     String? visibleClassUuid,
   }) {
     final q = select(topicResources)
       ..where((t) => t.subjectId.equals(subjectId))
-      // A note's original-PDF record isn't teaching text.
-      ..where((t) => t.topicKey.equals(kPdfMarkerTopicKey).not())
-      ..where((t) => _visibleTo(t, visibleClassUuid));
+      // A note's original-PDF record and quiz questions aren't teaching text.
+      ..where((t) => t.topicKey.like('$kRecordTopicPrefix%').not())
+      ..where((t) => _visibleTo(t, visibleClassUuid))
+      ..orderBy([(t) => OrderingTerm.asc(t.id)]);
     if (termMarker != null) {
       q.where(
         (t) =>
@@ -107,8 +110,66 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
             t.termMarker.equals(kAllTermsMarker),
       );
     }
-    q.limit(limit);
+    if (limit != null) q.limit(limit);
     return q.get();
+  }
+
+  /// Stored quiz questions of [subjectId] a learner in [visibleClassUuid]
+  /// may take — see `NoteQuizStore`.
+  Future<List<TopicResource>> quizRows({
+    required String subjectId,
+    String? visibleClassUuid,
+  }) {
+    return (select(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.topicKey.equals(kQuizTopicKey))
+          ..where((t) => _visibleTo(t, visibleClassUuid)))
+        .get();
+  }
+
+  /// Adds one quiz question row to this device's note [documentTitle].
+  Future<void> insertQuizRow({
+    required String subjectId,
+    required String documentTitle,
+    required String content,
+    required int termMarker,
+  }) async {
+    final at = DateTime.now().toUtc().toIso8601String();
+    await into(topicResources).insert(
+      TopicResourcesCompanion.insert(
+        subjectId: subjectId,
+        topicKey: kQuizTopicKey,
+        termMarker: Value(termMarker),
+        resourceTitle: documentTitle,
+        contentChunk: content,
+        createdAt: at,
+        documentTitle: Value(documentTitle),
+        updatedAt: Value(at),
+      ),
+    );
+  }
+
+  /// Drops this device's own quiz questions for [documentTitle].
+  Future<int> deleteQuizRows({
+    required String subjectId,
+    required String documentTitle,
+  }) {
+    return (delete(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.topicKey.equals(kQuizTopicKey))
+          ..where((t) => t.documentTitle.equals(documentTitle))
+          ..where((t) => t.classGroupUuid.isNull()))
+        .go();
+  }
+
+  /// Subjects with at least one note a learner in [visibleClassUuid] may
+  /// read — a PDF-only note's marker row counts.
+  Future<List<String>> subjectIdsWithNotes({String? visibleClassUuid}) async {
+    final q = selectOnly(topicResources, distinct: true)
+      ..addColumns([topicResources.subjectId])
+      ..where(_visibleTo(topicResources, visibleClassUuid));
+    final rows = await q.get();
+    return [for (final r in rows) r.read(topicResources.subjectId)!];
   }
 
   /// Best-matching rows for [needle] within one subject, most relevant first.
@@ -170,7 +231,7 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
       'SELECT t.* FROM topic_resources_fts f '
       'JOIN topic_resources t ON t.id = f.rowid '
       'WHERE topic_resources_fts MATCH ? '
-      "AND t.topic_key <> '$kPdfMarkerTopicKey' "
+      "AND t.topic_key NOT LIKE '$kRecordTopicPrefix%' "
       '${subjectId == null ? '' : 'AND t.subject_id = ? '}'
       '${termMarker == null ? '' : 'AND (t.term_marker = ? OR t.term_marker = ?) '}'
       'AND (t.class_group_uuid IS NULL'
@@ -282,6 +343,14 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 /// out of the tutor's retrieval. Starts with `~` so `MIN(topic_key)` in
 /// [TopicResourceDao.listResources] never picks it.
 const kPdfMarkerTopicKey = '~pdf-original';
+
+/// Topic key of a quiz question written from one page of a note's PDF
+/// (see `NoteQuizStore`). Rides with the note like [kPdfMarkerTopicKey].
+const kQuizTopicKey = '~quiz';
+
+/// Every record row (not teaching text) has a topic key starting with this;
+/// the tutor's search and the notes text skip them all.
+const kRecordTopicPrefix = '~';
 
 class ResourceSummary {
   const ResourceSummary({

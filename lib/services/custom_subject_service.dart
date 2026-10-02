@@ -7,6 +7,7 @@ import '../db/daos/topic_resource_dao.dart';
 import '../db/otic_database.dart';
 import '../db/providers/db_provider.dart';
 import 'offline_storage_service.dart';
+import 'resource_text_extractor.dart';
 
 /// Subjects a teacher created, and the bridge that makes them browsable.
 ///
@@ -153,7 +154,12 @@ Subject buildCustomSubject(
 
   final units = <Unit>[];
   for (final term in termOrder) {
-    final inTerm = resources.where((r) => r.termMarker == term).toList();
+    // A section whose heading was unreadable folds into its document, once.
+    final seen = <String>{};
+    final inTerm = [
+      for (final r in resources.where((r) => r.termMarker == term))
+        if (seen.add(cleanLessonTitle(r.resourceTitle))) r,
+    ];
     if (inTerm.isEmpty) continue;
     units.add(
       Unit(
@@ -161,7 +167,7 @@ Subject buildCustomSubject(
         lessons: [
           for (final r in inTerm)
             Lesson(
-              title: r.resourceTitle,
+              title: cleanLessonTitle(r.resourceTitle),
               // The card and reader show the title; the body is retrieved from
               // topic_resources when the student opens it, so the whole
               // document is not held in memory just to list it.
@@ -179,6 +185,18 @@ Subject buildCustomSubject(
     color: row.color,
     units: units,
   );
+}
+
+/// [title] ("Document — Section") without a section part that came out of
+/// the PDF as unreadable symbols. Notes stored before headings were checked
+/// still carry those.
+String cleanLessonTitle(String title) {
+  final cut = title.lastIndexOf(' — ');
+  if (cut < 0) return title;
+  final section = dropUnreadableLines(title.substring(cut + 3)).trim();
+  return looksLikeTitleText(section)
+      ? '${title.substring(0, cut)} — $section'
+      : title.substring(0, cut);
 }
 
 /// Result of a create attempt.

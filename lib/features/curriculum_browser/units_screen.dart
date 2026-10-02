@@ -10,8 +10,11 @@ import '../../shared/widgets/studio_page.dart';
 import '../learn/subject_tabs.dart';
 
 class UnitsScreen extends ConsumerWidget {
-  const UnitsScreen({super.key, required this.subjectId});
+  const UnitsScreen({super.key, required this.subjectId, this.initialTab = 0});
   final String subjectId;
+
+  /// 0 Notes, 1 Quiz, 2 Lessons.
+  final int initialTab;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -36,8 +39,10 @@ class UnitsScreen extends ConsumerWidget {
         }
 
         final hasLessons = subject.units.isNotEmpty;
+        final tabs = hasLessons ? 3 : 2;
         return DefaultTabController(
-          length: hasLessons ? 3 : 2,
+          length: tabs,
+          initialIndex: initialTab.clamp(0, tabs - 1),
           child: Scaffold(
             backgroundColor: Colors.transparent,
             appBar: StudioAppBar(
