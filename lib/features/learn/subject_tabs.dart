@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdfrx/pdfrx.dart';
 
 import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
@@ -8,12 +7,15 @@ import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
+import '../notes/note_access.dart';
 import '../notes/note_pdf_screen.dart';
+import '../notes/pdf_reader.dart';
 import 'notes_quiz.dart';
 import 'subject_notes.dart';
 
-/// A subject's notes as the teacher shared them: the PDF itself, rendered
-/// in place, or the note's text when there is no PDF.
+/// A subject's notes as the teacher uploaded them: the original PDF,
+/// shown as it is. Text pulled out of a file is for the tutor only, never
+/// shown here as a stand-in for the document.
 class SubjectNotesTab extends ConsumerStatefulWidget {
   const SubjectNotesTab({super.key, required this.subjectId});
 
@@ -29,11 +31,23 @@ class _SubjectNotesTabState extends ConsumerState<SubjectNotesTab> {
   @override
   Widget build(BuildContext context) {
     final ac = AppColors.of(context);
+    final readable = ref.watch(readableNoteSubjectsProvider);
+    if (readable.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (!canReadNotes(readable.valueOrNull ?? const {}, widget.subjectId)) {
+      return const NotRegisteredForNotes();
+    }
     final notesAsync = ref.watch(subjectNotesProvider(widget.subjectId));
     return notesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(tr(context, 'Notes unavailable'))),
-      data: (notes) {
+      data: (all) {
+        // Notes with their original PDF first, so one opens by default.
+        final notes = [
+          ...all.where((n) => n.pdf != null),
+          ...all.where((n) => n.pdf == null),
+        ];
         if (notes.isEmpty) {
           return Center(
             child: Text(
@@ -99,55 +113,27 @@ class _NoteBody extends ConsumerWidget {
       if (path == null) {
         return const Center(child: CircularProgressIndicator());
       }
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: PdfViewer.file(
-              path,
-              params: const PdfViewerParams(
-                backgroundColor: Colors.transparent,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: FloatingActionButton.small(
-              heroTag: 'pdf-${pdf.sha256}',
-              tooltip: tr(context, 'Full screen'),
-              onPressed: () => openNotePdf(context, pdf),
-              child: const Icon(Icons.open_in_full_rounded),
-            ),
-          ),
-        ],
+      return PdfReader(
+        path: path,
+        title: note.title,
+        memoryKey: pdf.sha256,
+        embedded: true,
+        onFullScreen: () => openNotePdf(context, pdf),
       );
     }
-    return MaxWidth(
-      maxWidth: 820,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-        children: [
-          Text(
-            note.title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: ac.textPrimary,
-            ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          tr(
+            context,
+            pdf == null
+                ? 'Original not kept. Re-upload the PDF to view it.'
+                : 'Not downloaded yet',
           ),
-          if (pdf != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              tr(context, 'PDF not downloaded'),
-              style: TextStyle(fontSize: 12, color: ac.textSecondary),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SelectableText(
-            note.text,
-            style: TextStyle(fontSize: 15, height: 1.6, color: ac.textPrimary),
-          ),
-        ],
+          textAlign: TextAlign.center,
+          style: TextStyle(color: ac.textSecondary),
+        ),
       ),
     );
   }

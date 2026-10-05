@@ -115,6 +115,10 @@ class LearnerDataWiper {
       if (key.startsWith('lesson_done_s${studentId}_')) {
         await prefs.remove(key);
       }
+      // Their PDF highlights (kPdfHighlightPrefix in pdf_highlights.dart).
+      if (key.startsWith('pdf_hl_s${studentId}_')) {
+        await prefs.remove(key);
+      }
     }
     if (prefs.getInt('active_student_id') == studentId) {
       await prefs.remove('active_student_id');
@@ -180,7 +184,9 @@ class LearnerDataWiper {
 
     final prefs = await SharedPreferences.getInstance();
     for (final key in prefs.getKeys().toList()) {
-      if (key == 'active_student_id' || key.startsWith('lesson_done_')) {
+      if (key == 'active_student_id' ||
+          key.startsWith('lesson_done_') ||
+          key.startsWith('pdf_hl_')) {
         await prefs.remove(key);
       }
     }

@@ -11,6 +11,7 @@ import '../../db/providers/db_provider.dart';
 import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import '../../features/teacher/teacher_device_screens.dart';
 import '../../features/achievements/achievements_screen.dart';
+import '../../features/notes/my_notes_screen.dart';
 import '../../features/notes/note_pdf_screen.dart';
 import '../../features/teachers/teachers_screen.dart';
 import '../../features/certificates/certificates_screen.dart';
@@ -191,6 +192,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/achievements',
             builder: (_, __) => const AchievementsScreen(),
           ),
+          GoRoute(
+            path: '/my-notes',
+            builder: (_, __) => const MyNotesScreen(),
+          ),
           // Student side of class sync — deliberately outside /teacher*, so
           // no teacher PIN: the join code is what grants access.
           GoRoute(
@@ -232,7 +237,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               sha256: state.uri.queryParameters['sha'] ?? '',
               title: state.uri.queryParameters['title'] ?? '',
               initialPage:
-                  int.tryParse(state.uri.queryParameters['page'] ?? '') ?? 1,
+                  int.tryParse(state.uri.queryParameters['page'] ?? '') ?? 0,
             ),
           ),
           GoRoute(

@@ -101,6 +101,12 @@ class AppShell extends ConsumerWidget {
   /// business in the student-facing nav at all.
   static const _overflow = [
     _NavDest(
+      'My notes',
+      Icons.picture_as_pdf_outlined,
+      Icons.picture_as_pdf_rounded,
+      '/my-notes',
+    ),
+    _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,
       Icons.emoji_events_rounded,

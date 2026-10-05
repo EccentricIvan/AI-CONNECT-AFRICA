@@ -9,16 +9,19 @@ import '../../services/pdf/diagram_detector.dart';
 import '../../services/notes/note_pdf_store.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learn/subject_notes.dart';
+import 'note_access.dart';
+import 'pdf_reader.dart';
 
 /// Opens [pdf] at [page] (1-based) — e.g. from the tutor's "see page 14".
-void openNotePdf(BuildContext context, NotePdf pdf, {int page = 1}) {
+/// Without a page it reopens where the reader left off.
+void openNotePdf(BuildContext context, NotePdf pdf, {int? page}) {
   context.push(
     Uri(
       path: '/note-pdf',
       queryParameters: {
         'sha': pdf.sha256,
         'title': pdf.documentTitle,
-        'page': '$page',
+        if (page != null) 'page': '$page',
       },
     ).toString(),
   );
@@ -31,7 +34,7 @@ class NotePdfScreen extends ConsumerWidget {
     super.key,
     required this.sha256,
     required this.title,
-    this.initialPage = 1,
+    this.initialPage = 0,
   });
 
   final String sha256;
@@ -40,30 +43,41 @@ class NotePdfScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final name = title.isEmpty ? 'Note' : title;
+    final allowed = ref.watch(notePdfAllowedProvider(sha256));
+    if (allowed.valueOrNull != true) {
+      return _bare(
+        name,
+        allowed.isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : const NotRegisteredForNotes(),
+      );
+    }
     final file = ref.watch(notePdfPathProvider(sha256));
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: StudioAppBar(
-        title: title.isEmpty ? 'Note' : title,
-        subtitle: initialPage > 1 ? 'Page $initialPage' : null,
-        icon: Icons.picture_as_pdf_rounded,
-        iconColor: AppColors.accentOrange,
-      ),
-      body: file.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => _Missing(reason: '$e'),
-        data: (path) => path == null
-            ? const _Missing()
-            : PdfViewer.file(
-                path,
-                initialPageNumber: initialPage < 1 ? 1 : initialPage,
-                params: const PdfViewerParams(
-                  backgroundColor: Colors.transparent,
-                ),
-              ),
-      ),
+    return file.when(
+      loading: () =>
+          _bare(name, const Center(child: CircularProgressIndicator())),
+      error: (e, _) => _bare(name, _Missing(reason: '$e')),
+      data: (path) => path == null
+          ? _bare(name, const _Missing())
+          : PdfReader(
+              path: path,
+              title: name,
+              memoryKey: sha256,
+              initialPage: initialPage,
+            ),
     );
   }
+
+  Widget _bare(String name, Widget body) => Scaffold(
+    backgroundColor: Colors.transparent,
+    appBar: StudioAppBar(
+      title: name,
+      icon: Icons.picture_as_pdf_rounded,
+      iconColor: AppColors.accentOrange,
+    ),
+    body: body,
+  );
 }
 
 /// The stored file's path for a PDF's SHA-256, or null when it isn't here.
@@ -107,7 +121,12 @@ class DiagramPageButtons extends ConsumerWidget {
     final pdfs =
         ref.watch(visibleNotePdfsProvider(classUuid)).valueOrNull ??
         const <NotePdf>[];
-    final byTitle = {for (final p in pdfs) p.documentTitle: p};
+    final readable = ref.watch(readableNoteSubjectsProvider);
+    if (!readable.hasValue) return const SizedBox.shrink();
+    final byTitle = {
+      for (final p in pdfs)
+        if (canReadNotes(readable.value, p.subjectId)) p.documentTitle: p,
+    };
     final buttons = [
       for (final d in diagrams)
         if (byTitle[d.document] case final pdf?)
