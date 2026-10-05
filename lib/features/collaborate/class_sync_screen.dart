@@ -537,8 +537,8 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
 }
 
 /// The subjects a learner says they take — every built-in subject plus the
-/// ones their teacher made. A record for the teacher (it arrives with the
-/// learner's progress); it doesn't hide or unlock anything.
+/// ones their teacher made. It arrives with the learner's progress, and on
+/// a student device it decides whose notes they may read (`note_access.dart`).
 class _MySubjectsCard extends ConsumerWidget {
   const _MySubjectsCard({required this.studentId, required this.learnerName});
 
