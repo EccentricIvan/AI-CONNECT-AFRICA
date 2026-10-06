@@ -8,6 +8,7 @@ import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/tables/sync_identity_table.dart';
+import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/notes/note_pdf_store.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
@@ -636,31 +637,87 @@ void main() {
 
   // ── One teacher device; students enroll ─────────────────────────────────
 
-  group('only the teacher device makes classes and subjects', () {
-    test('joining makes a device a student device, which can’t claim the '
-        'teacher role or share as a teacher', () async {
+  group('every device can teach; subjects follow their teacher', () {
+    test('a device that joined a class can still teach its own, but never '
+        'share the joined one as a teacher', () async {
       final (db, m) = await student();
-      expect(await db.classSyncDao.deviceRole(), isNull);
       final g = await join(m, east);
-      expect(await db.classSyncDao.deviceRole(), kRoleStudent);
-      expect(await db.classSyncDao.claimTeacherRole(), isFalse);
-
-      // Even a class it made before joining can't be shared from it.
+      expect(g.joined, isTrue);
       final own = await _class(db, 'Club', '');
-      expect(
-        await ClassShareServer(db, joinRounds: _rounds).openJoinCode(own),
-        isNull,
-      );
+      final host = ClassShareServer(db, joinRounds: _rounds);
+      expect(await host.openJoinCode(own), isNotNull);
+      expect(await host.openJoinCode(g), isNull);
+    });
+
+    test('a device that teaches can join another teacher’s class', () async {
+      final (db, m) = await student();
+      expect(await db.classSyncDao.claimTeacherRole(), isTrue);
+      await _class(db, 'Club', '');
+      final g = await join(m, east);
       expect(g.joined, isTrue);
     });
 
-    test('the teacher device can’t join a class as a student', () async {
-      final (db, m) = await student();
-      expect(await db.classSyncDao.claimTeacherRole(), isTrue);
+    test('a device can’t join a class it created', () async {
+      final m = SelectiveSyncManager(teacher, joinRounds: _rounds);
+      cleanups.add(() async => m.dispose());
       final code = await server.openJoinCode(east);
       final r = await m.joinClass(teachers: [endpoint], typedCode: code!);
       expect(r.ok, isFalse);
-      expect(r.error, contains('teacher’s device'));
+      expect(r.error, contains('created on this device'));
+    });
+
+    test('notes received for a subject this device also teaches are never '
+        'listed or deleted as its own', () async {
+      final (db, m) = await student();
+      await _note(db, 'carpentry', 'Joints', 'A mortise joint holds a tenon.');
+      await _note(teacher, 'carpentry', 'Joints', 'A dovetail resists pulling.');
+      await teacher.classSyncDao.setShares(
+        subjectId: 'carpentry',
+        documentTitle: 'Joints',
+        classUuids: {east.groupUuid!},
+      );
+      final g = await join(m, east);
+      await m.syncClass(teacher: endpoint, group: g);
+      expect(await _received(db), isNotEmpty);
+
+      final storage = OfflineStorageService(db);
+      final mine = await storage.listResources(
+        subjectId: 'carpentry',
+        ownOnly: true,
+      );
+      expect(mine.single.chunkCount, 1, reason: 'only the own note');
+
+      await storage.deleteTopicResourceByTitle(
+        'Joints',
+        subjectId: 'carpentry',
+      );
+      expect(await _received(db), isNotEmpty, reason: 'received note stays');
+      await db.topicResourceDao.deleteBySubject('carpentry');
+      expect(await _received(db), isNotEmpty, reason: 'received note stays');
+    });
+
+    test('a class’s students are offered only its own teacher’s subjects',
+        () async {
+      final subjects = CustomSubjectService(
+        teacher,
+        OfflineStorageService(teacher),
+      );
+      final amina = (await TeacherProfileService(
+        teacher,
+      ).create(name: 'Amina', pin: '1234')).profile!.id;
+      final okello = (await TeacherProfileService(
+        teacher,
+      ).create(name: 'Okello', pin: '9876')).profile!.id;
+      // The first profile took over the classes made before profiles.
+      await subjects.create(name: 'Carpentry', ownerTeacherId: amina);
+      await subjects.create(name: 'Fine Art', ownerTeacherId: okello);
+
+      final (db, m) = await student();
+      final g = await join(m, east);
+      await m.syncClass(teacher: endpoint, group: g);
+      expect({for (final s in await db.customSubjectDao.all()) s.name}, {
+        'Carpentry',
+      });
     });
 
     test('the teacher’s subjects reach students, and follow the teacher’s '

@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../collaboration/lan_discovery.dart';
@@ -15,7 +14,6 @@ import '../../collaboration/sync/sync_address.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import '../../l10n/app_locale.dart';
 import '../../services/custom_subject_service.dart';
 import '../../shared/widgets/responsive.dart';
@@ -318,41 +316,6 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     }
     final joined = group != null && group.joined;
     final endpoints = _endpoints;
-    final isTeacherDevice =
-        ref.watch(deviceRoleProvider).valueOrNull == kRoleTeacher;
-
-    if (isTeacherDevice) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: StudioAppBar(
-          title: tr(context, 'Class sync'),
-          subtitle: tr(context, 'This is the teacher’s device'),
-          icon: Icons.sync_rounded,
-          iconColor: AppColors.accentTeal,
-        ),
-        body: MaxWidth(
-          maxWidth: 760,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              StudioCard(
-                accent: AppColors.accentBlue,
-                child: Text(
-                  'This is a teacher device.',
-                  style: TextStyle(color: ac.textPrimary, height: 1.5),
-                ),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () => context.go('/teacher/sync'),
-                icon: const Icon(Icons.school_rounded),
-                label: const Text('Open Teacher → Class sync'),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -537,8 +500,8 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
 }
 
 /// The subjects a learner says they take — every built-in subject plus the
-/// ones their teacher made. A record for the teacher (it arrives with the
-/// learner's progress); it doesn't hide or unlock anything.
+/// ones their teacher made. It arrives with the learner's progress, and on
+/// a student device it decides whose notes they may read (`note_access.dart`).
 class _MySubjectsCard extends ConsumerWidget {
   const _MySubjectsCard({required this.studentId, required this.learnerName});
 

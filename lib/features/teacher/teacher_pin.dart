@@ -8,7 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 const _hashKey = 'teacher_pin_hash';
 const _saltKey = 'teacher_pin_salt';
 
-/// One shared PIN per device guarding the Teacher and Admin areas.
+/// The Teachers PIN: one PIN every teacher on the device knows, guarding
+/// the Teachers area. There each teacher signs in with their own PIN
+/// (`TeacherProfileService`).
 ///
 /// This keeps a curious learner on a shared classroom device out of the
 /// class lists and the lesson materials. It is a classroom lock, not
@@ -32,9 +34,7 @@ class TeacherPin {
     if (!isValidFormat(pin)) {
       throw ArgumentError('A PIN is 4 to 8 digits.');
     }
-    final rng = Random.secure();
-    final salt =
-        base64Url.encode(List<int>.generate(16, (_) => rng.nextInt(256)));
+    final salt = newPinSalt();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_saltKey, salt);
     await prefs.setString(_hashKey, _hash(salt, pin));
@@ -55,8 +55,17 @@ class TeacherPin {
     return _hash(salt, pin) == hash;
   }
 
-  static String _hash(String salt, String pin) =>
-      sha256.convert(utf8.encode('$salt:$pin')).toString();
+  static String _hash(String salt, String pin) => hashPin(salt, pin);
+}
+
+/// Salted SHA-256 of a PIN — the Teachers PIN and each teacher's own.
+String hashPin(String salt, String pin) =>
+    sha256.convert(utf8.encode('$salt:$pin')).toString();
+
+/// A fresh random salt for [hashPin].
+String newPinSalt() {
+  final rng = Random.secure();
+  return base64Url.encode(List<int>.generate(16, (_) => rng.nextInt(256)));
 }
 
 final teacherPinProvider = Provider((ref) => TeacherPin());
@@ -76,26 +85,13 @@ bool isTeacherRoute(String location) =>
     location == '/admin' ||
     location.startsWith('/admin/');
 
-/// Where a request for the teacher section goes, given this device's
-/// [role] (`sync_identity.device_role`), or null to carry on to the PIN
-/// check. Only one device per school is the teacher's:
-///
-/// * a student device → `/student-device`, never into the teacher section;
-/// * an undecided device → `/teacher-setup`, which asks before making this
-///   the teacher device (carrying the destination on);
-/// * the teacher device → through.
-///
-/// `/teachers` (and the old `/admin`) isn't role-gated: every device has
-/// learners to manage.
-String? teacherRoleRedirect(Uri uri, {required String? role}) {
+/// Where a request for a teacher tool (`/teacher*`) goes when no teacher
+/// is signed in: to Teachers, where they sign in or create a profile.
+/// Null to carry on. `/teachers` itself needs only the Teachers PIN.
+String? teacherProfileRedirect(Uri uri, {required bool signedIn}) {
   final path = uri.path;
   if (path != '/teacher' && !path.startsWith('/teacher/')) return null;
-  if (role == 'student') return '/student-device';
-  if (role == null) {
-    return Uri(path: '/teacher-setup', queryParameters: {'to': uri.toString()})
-        .toString();
-  }
-  return null;
+  return signedIn ? null : '/teachers';
 }
 
 /// Where the router should send a request for [uri], or null to let it

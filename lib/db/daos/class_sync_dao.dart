@@ -76,7 +76,10 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
 
   // ── This device's role ──────────────────────────────────────────────────
 
-  /// [kRoleTeacher], [kRoleStudent], or null (undecided).
+  /// [kRoleTeacher], [kRoleStudent], or null (undecided): what this device
+  /// did first, kept as a record only. Nothing is gated on it — every
+  /// device can teach and join classes; teachers are told apart by their
+  /// profiles (`teacher_profiles`).
   Future<String?> deviceRole() async => (await identity()).deviceRole;
 
   Stream<String?> watchDeviceRole() =>
@@ -95,7 +98,7 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
   }
 
   /// Marks this a student device, on its first join through a teacher.
-  /// Never downgrades a teacher device (joining refuses those anyway).
+  /// Never overwrites a role already recorded.
   Future<void> becomeStudentDevice() async {
     if (await deviceRole() != null) return;
     await (update(syncIdentity)..where((t) => t.id.equals(1))).write(
@@ -130,6 +133,10 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
               (t) => OrderingTerm.asc(t.streamName),
             ]))
           .get();
+
+  /// Classes this device joined as a student.
+  Future<List<ClassGroup>> joinedClasses() =>
+      (select(classGroups)..where((t) => t.joined.equals(true))).get();
 
   Stream<List<ClassGroup>> watchOwnedClasses() =>
       (select(classGroups)
@@ -370,11 +377,16 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
 
   // ── Subjects the teacher offers ─────────────────────────────────────────
 
-  /// Subjects made on this device — the list a teacher device sends with
-  /// every sync.
-  Future<List<CustomSubject>> ownSubjects() =>
+  /// Subjects made on this device — the list a class's host sends with
+  /// every sync: only [ownerTeacherId]'s (the class's teacher) when given.
+  Future<List<CustomSubject>> ownSubjects({int? ownerTeacherId}) =>
       (select(customSubjects)
             ..where((t) => t.classGroupUuid.isNull())
+            ..where(
+              (t) => ownerTeacherId == null
+                  ? const Constant(true)
+                  : t.ownerTeacherId.equals(ownerTeacherId),
+            )
             ..orderBy([(t) => OrderingTerm.asc(t.name)]))
           .get();
 

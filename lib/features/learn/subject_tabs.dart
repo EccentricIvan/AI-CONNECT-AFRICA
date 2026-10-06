@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:pdfrx/pdfrx.dart';
 
+import '../../ai_core/providers/ai_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
+import '../notes/note_access.dart';
 import '../notes/note_pdf_screen.dart';
+import '../notes/pdf_reader.dart';
 import 'notes_quiz.dart';
 import 'subject_notes.dart';
 
-/// A subject's notes as the teacher shared them: the PDF itself, rendered
-/// in place, or the note's text when there is no PDF.
+/// A subject's notes as the teacher uploaded them: the original PDF,
+/// shown as it is. Text pulled out of a file is for the tutor only, never
+/// shown here as a stand-in for the document.
 class SubjectNotesTab extends ConsumerStatefulWidget {
   const SubjectNotesTab({super.key, required this.subjectId});
 
@@ -28,11 +31,23 @@ class _SubjectNotesTabState extends ConsumerState<SubjectNotesTab> {
   @override
   Widget build(BuildContext context) {
     final ac = AppColors.of(context);
+    final readable = ref.watch(readableNoteSubjectsProvider);
+    if (readable.isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (!canReadNotes(readable.valueOrNull ?? const {}, widget.subjectId)) {
+      return const NotRegisteredForNotes();
+    }
     final notesAsync = ref.watch(subjectNotesProvider(widget.subjectId));
     return notesAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(tr(context, 'Notes unavailable'))),
-      data: (notes) {
+      data: (all) {
+        // Notes with their original PDF first, so one opens by default.
+        final notes = [
+          ...all.where((n) => n.pdf != null),
+          ...all.where((n) => n.pdf == null),
+        ];
         if (notes.isEmpty) {
           return Center(
             child: Text(
@@ -98,77 +113,91 @@ class _NoteBody extends ConsumerWidget {
       if (path == null) {
         return const Center(child: CircularProgressIndicator());
       }
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: PdfViewer.file(
-              path,
-              params: const PdfViewerParams(
-                backgroundColor: Colors.transparent,
-              ),
-            ),
-          ),
-          Positioned(
-            right: 12,
-            bottom: 12,
-            child: FloatingActionButton.small(
-              heroTag: 'pdf-${pdf.sha256}',
-              tooltip: tr(context, 'Full screen'),
-              onPressed: () => openNotePdf(context, pdf),
-              child: const Icon(Icons.open_in_full_rounded),
-            ),
-          ),
-        ],
+      return PdfReader(
+        path: path,
+        title: note.title,
+        memoryKey: pdf.sha256,
+        embedded: true,
+        onFullScreen: () => openNotePdf(context, pdf),
       );
     }
-    return MaxWidth(
-      maxWidth: 820,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
-        children: [
-          Text(
-            note.title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: ac.textPrimary,
-            ),
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(
+          tr(
+            context,
+            pdf == null
+                ? 'Original not kept. Re-upload the PDF to view it.'
+                : 'Not downloaded yet',
           ),
-          if (pdf != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              tr(context, 'PDF not downloaded'),
-              style: TextStyle(fontSize: 12, color: ac.textSecondary),
-            ),
-          ],
-          const SizedBox(height: 12),
-          SelectableText(
-            note.text,
-            style: TextStyle(fontSize: 15, height: 1.6, color: ac.textPrimary),
-          ),
-        ],
+          textAlign: TextAlign.center,
+          style: TextStyle(color: ac.textSecondary),
+        ),
       ),
     );
   }
 }
 
 /// Questions written from the subject's notes, answered in place.
-class SubjectQuizTab extends ConsumerWidget {
+class SubjectQuizTab extends ConsumerStatefulWidget {
   const SubjectQuizTab({super.key, required this.subjectId});
 
   final String subjectId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SubjectQuizTab> createState() => _SubjectQuizTabState();
+}
+
+class _SubjectQuizTabState extends ConsumerState<SubjectQuizTab> {
+  String get subjectId => widget.subjectId;
+
+  @override
+  void initState() {
+    super.initState();
+    // Questions written ahead from the notes come up at once, no button.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final quiz = ref.read(subjectQuizProvider(subjectId));
+      if (quiz.questions.isEmpty && !quiz.generating) {
+        ref.read(subjectQuizProvider(subjectId).notifier).startStored();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final ac = AppColors.of(context);
     final quiz = ref.watch(subjectQuizProvider(subjectId));
     final notifier = ref.read(subjectQuizProvider(subjectId).notifier);
+    // The quiz and the chat share one engine.
+    final chatBusy = ref.watch(
+      chatProvider.select((c) => c.valueOrNull?.isGenerating ?? false),
+    );
+
+    final topics =
+        ref.watch(subjectQuizTopicsProvider(subjectId)).valueOrNull ??
+        const <(String, int)>[];
+    final topicChips = topics.isEmpty
+        ? null
+        : _TopicChips(
+            topics: topics,
+            selected: quiz.topic,
+            onSelected: (t) => notifier.startStored(topic: t),
+          );
 
     if (quiz.questions.isEmpty && !quiz.generating) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (topicChips != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: topicChips,
+              ),
+              const SizedBox(height: 16),
+            ],
             Icon(Icons.quiz_outlined, size: 48, color: ac.textSecondary),
             const SizedBox(height: 12),
             if (quiz.error != null) ...[
@@ -179,7 +208,7 @@ class SubjectQuizTab extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
             FilledButton.icon(
-              onPressed: () => notifier.start(),
+              onPressed: chatBusy ? null : () => notifier.start(),
               icon: const Icon(Icons.play_arrow_rounded),
               label: Text(tr(context, 'Start quiz')),
             ),
@@ -193,6 +222,7 @@ class SubjectQuizTab extends ConsumerWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
+          if (topicChips != null) ...[topicChips, const SizedBox(height: 12)],
           Row(
             children: [
               Text(
@@ -233,9 +263,48 @@ class SubjectQuizTab extends ConsumerWidget {
           if (quiz.finished) ...[
             const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: () => notifier.start(),
+              onPressed: chatBusy
+                  ? null
+                  : () => notifier.start(topic: quiz.topic),
               icon: const Icon(Icons.refresh_rounded),
               label: Text(tr(context, 'New quiz')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "All topics" and one chip per topic with stored questions.
+class _TopicChips extends StatelessWidget {
+  const _TopicChips({
+    required this.topics,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<(String, int)> topics;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: Text(tr(context, 'All topics')),
+            selected: selected == null,
+            onSelected: (_) => onSelected(null),
+          ),
+          for (final (topic, count) in topics) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text('$topic ($count)'),
+              selected: selected == topic,
+              onSelected: (_) => onSelected(topic),
             ),
           ],
         ],

@@ -7,7 +7,6 @@ import 'package:ai_connect_africa/core/theme/app_theme.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/collaborate/class_sync_screen.dart';
-import 'package:ai_connect_africa/features/teacher/teacher_device_screens.dart';
 import 'package:ai_connect_africa/features/teacher/teacher_sync_screen.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:drift/drift.dart' show DatabaseConnection, Value, driftRuntimeOptions;
@@ -167,19 +166,6 @@ void main() {
       await until(tester, find.textContaining('Class progress'));
       expect(find.text('Amina'), findsWidgets, reason: 'progress reported');
       await screenshot(tester, 'teacher_class_sync_$label');
-      expect(tester.takeException(), isNull);
-
-      // ── The teacher-role screens ─────────────────────────────────────
-      await show(
-        tester,
-        student,
-        const TeacherDeviceSetupScreen(destination: '/teacher'),
-      );
-      await until(tester, find.text('Yes, this is the teacher’s device'));
-      await screenshot(tester, 'teacher_setup_$label');
-      await show(tester, student, const StudentDeviceScreen());
-      await until(tester, find.text('Open Class sync'));
-      await screenshot(tester, 'student_device_$label');
       expect(tester.takeException(), isNull);
 
       // Leave the screens so their servers and sockets stop.

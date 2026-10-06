@@ -5,7 +5,7 @@ import 'package:drift/drift.dart';
 import 'package:http/http.dart' as http;
 
 import '../../db/otic_database.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleStudent, kRoleTeacher;
+import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
 import 'class_crypto.dart';
 import 'class_share_server.dart'
     show
@@ -113,10 +113,8 @@ class P2PFailoverService {
       );
     }
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleStudent || me.schoolId == null) {
-      return const FailoverResult.failed(
-        'Set the school on this teacher device first',
-      );
+    if (me.schoolId == null) {
+      return const FailoverResult.failed('Set the school first');
     }
     final salt = newNonce();
     final key = await deriveLedgerKey(passphrase, salt, rounds: kdfRounds);
@@ -163,11 +161,6 @@ class P2PFailoverService {
       );
     }
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleStudent) {
-      return const FailoverResult.failed(
-        'A student device can’t be a standby',
-      );
-    }
     final myKey = await signingPublicKey(me.signingSeed);
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
@@ -351,10 +344,13 @@ class P2PFailoverService {
   /// off. A co-teacher of these same classes may be promoted: its subjects
   /// fold back into the root's, and the re-signed roster drops its old key.
   /// Running it again with the same ledger is harmless.
+  /// The classes and subjects taken over become [ownerTeacherId]'s (the
+  /// teacher signed in here).
   Future<PromotionResult> promoteToHostNode(
     String teacherPassphrase,
-    Map<String, dynamic> backupLedger,
-  ) async {
+    Map<String, dynamic> backupLedger, {
+    int? ownerTeacherId,
+  }) async {
     final ledger = Map<String, Object?>.from(backupLedger);
     final header = ledgerHeader(ledger);
     if (header == null) {
@@ -393,11 +389,6 @@ class P2PFailoverService {
     };
 
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleStudent) {
-      return const PromotionResult.failed(
-        'A student device can’t take over',
-      );
-    }
     if (me.schoolId != null && me.schoolId != header.schoolId) {
       return PromotionResult.failed(
         'This device belongs to ${me.schoolName ?? 'another school'}.',
@@ -417,6 +408,13 @@ class P2PFailoverService {
       if (ownElsewhere.isNotEmpty || coTeachElsewhere.isNotEmpty) {
         return const PromotionResult.failed(
           'This device already teaches other classes',
+        );
+      }
+      // Its key names this device in the progress reports it sends for
+      // the classes it joined as a student.
+      if ((await _db.classSyncDao.joinedClasses()).isNotEmpty) {
+        return const PromotionResult.failed(
+          'This device joined classes as a student',
         );
       }
     }
@@ -456,6 +454,7 @@ class P2PFailoverService {
           joined: const Value(false),
           rosterVersion: Value(c['roster_version'] as int?),
           rosterJson: Value(c['roster_json'] as String?),
+          ownerTeacherId: Value(ownerTeacherId),
         );
         final existing = await (_db.select(_db.classGroups)
               ..where((t) => t.groupUuid.equals(uuid)))
@@ -554,6 +553,7 @@ class P2PFailoverService {
                 icon: Value(s['icon'] as String? ?? 'menu_book'),
                 color: Value(s['color'] as String? ?? '#4F46E5'),
                 createdAt: at,
+                ownerTeacherId: Value(ownerTeacherId),
               ),
               mode: InsertMode.insertOrIgnore,
             );
@@ -691,8 +691,7 @@ Future<Map<String, dynamic>?> buildSealedLedger(OticDatabase db) async {
   if (key == null ||
       salt == null ||
       rounds == null ||
-      schoolId == null ||
-      me.deviceRole == kRoleStudent) {
+      schoolId == null) {
     return null;
   }
   final owned = [

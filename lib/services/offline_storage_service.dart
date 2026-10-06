@@ -154,10 +154,14 @@ class OfflineStorageService {
   // ── Read ───────────────────────────────────────────────────────────────
 
   /// Every resource a teacher has added, newest first, chunking collapsed.
-  Future<List<ResourceSummary>> listResources({String? subjectId}) async {
+  Future<List<ResourceSummary>> listResources({
+    String? subjectId,
+    bool ownOnly = false,
+  }) async {
     try {
       return await _dao.listResources(
         subjectId: subjectId == null ? null : normalizeSubjectId(subjectId),
+        ownOnly: ownOnly,
       );
     } catch (e) {
       debugPrint('listResources failed: $e');
@@ -372,7 +376,8 @@ final activeClassUuidProvider = FutureProvider<String?>((ref) async {
 /// Teacher-visible resource list for a subject (null = every subject).
 final topicResourcesProvider =
     FutureProvider.family<List<ResourceSummary>, String?>((ref, subjectId) {
+      // Lesson materials: only notes made here, which a teacher may change.
       return ref
           .watch(offlineStorageServiceProvider)
-          .listResources(subjectId: subjectId);
+          .listResources(subjectId: subjectId, ownOnly: true);
     });

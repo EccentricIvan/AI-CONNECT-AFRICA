@@ -183,6 +183,7 @@ class CoTeacherDao extends DatabaseAccessor<OticDatabase>
     required String rootPublicKey,
     required List<String> subjectIds,
     required ClassRoster roster,
+    int? ownerTeacherId,
   }) async {
     await into(coTeachingClasses).insert(
       CoTeachingClassesCompanion.insert(
@@ -195,6 +196,7 @@ class CoTeacherDao extends DatabaseAccessor<OticDatabase>
         subjectIdsJson: jsonEncode(subjectIds),
         rosterVersion: roster.version,
         rosterJson: jsonEncode(roster.toJson()),
+        ownerTeacherId: Value(ownerTeacherId),
       ),
       mode: InsertMode.insertOrReplace,
     );

@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 
 import '../../curriculum/curriculum_provider.dart' show CurriculumService;
 import '../../db/otic_database.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleStudent, kRoleTeacher;
 import 'class_crypto.dart';
 import 'class_share_server.dart'
     show
@@ -320,10 +319,10 @@ class SelectiveSyncManager {
     final school = schoolName is String ? schoolName : '';
 
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleTeacher) {
-      return const JoinResult.failed(
-        'This is the teacher’s device, so it can’t join a class as a student.',
-      );
+    // Any device may teach and join classes; just not its own.
+    final local = await _db.classGroupDao.findByUuid(uuid);
+    if (local != null && !local.joined) {
+      return const JoinResult.failed('This class was created on this device.');
     }
     if (me.schoolId != null && me.schoolId != schoolId) {
       return JoinResult.failed(
@@ -419,14 +418,13 @@ class SelectiveSyncManager {
   // ── Join as a co-teacher ────────────────────────────────────────────────
 
   /// Tries a co-teacher invite [typedCode] against each candidate root
-  /// device on the network, as [name]. Refuses on a device that already
-  /// joined a class as a student — a co-teacher is still a teacher device,
-  /// and a student device can't become one (mirrors
-  /// `ClassSyncDao.claimTeacherRole`'s own guard).
+  /// device on the network, as [name]. The class is recorded as
+  /// [ownerTeacherId]'s (the teacher signed in here).
   Future<CoTeacherJoinResult> joinAsCoTeacher({
     required List<TeacherEndpoint> roots,
     required String typedCode,
     String name = '',
+    int? ownerTeacherId,
   }) async {
     final code = normalizeJoinCode(typedCode);
     if (code == null) {
@@ -441,12 +439,6 @@ class SelectiveSyncManager {
       );
     }
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleStudent) {
-      return const CoTeacherJoinResult.failed(
-        'This device already joined a class as a student, so it can’t '
-        'also become a co-teacher.',
-      );
-    }
     final myPublicKey = await signingPublicKey(me.signingSeed);
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
@@ -515,6 +507,20 @@ class SelectiveSyncManager {
           'its signed roster.',
         );
       }
+      final local = await _db.classGroupDao.findByUuid(uuid);
+      if (local != null && !local.joined) {
+        return const CoTeacherJoinResult.failed(
+          'This class was created on this device.',
+        );
+      }
+      final held = await _db.coTeacherDao.delegatedByUuid(uuid);
+      if (held != null &&
+          held.ownerTeacherId != null &&
+          held.ownerTeacherId != ownerTeacherId) {
+        return const CoTeacherJoinResult.failed(
+          'Another teacher on this device co-teaches this class.',
+        );
+      }
       if (me.schoolId != null && me.schoolId != schoolId) {
         return CoTeacherJoinResult.failed(
           'This device belongs to ${me.schoolName ?? 'another school'}. '
@@ -537,6 +543,7 @@ class SelectiveSyncManager {
         rootPublicKey: rootKey,
         subjectIds: mine,
         roster: roster,
+        ownerTeacherId: ownerTeacherId,
       );
       return const CoTeacherJoinResult.joined();
     }

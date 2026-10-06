@@ -52,31 +52,26 @@ void main() {
     });
   });
 
-  group('teacherRoleRedirect — the teacher section only on the teacher device',
+  group('teacherProfileRedirect — teacher tools need a teacher signed in',
       () {
-    String? gate(String path, String? role) =>
-        teacherRoleRedirect(Uri.parse(path), role: role);
+    String? gate(String path, {required bool signedIn}) =>
+        teacherProfileRedirect(Uri.parse(path), signedIn: signedIn);
 
-    test('a student device never enters the teacher section', () {
-      expect(gate('/teacher', 'student'), '/student-device');
-      expect(gate('/teacher/materials', 'student'), '/student-device');
-      expect(gate('/teacher/sync', 'student'), '/student-device');
+    test('signed out, the tools send the teacher to Teachers to sign in', () {
+      expect(gate('/teacher', signedIn: false), '/teachers');
+      expect(gate('/teacher/materials', signedIn: false), '/teachers');
+      expect(gate('/teacher/sync', signedIn: false), '/teachers');
     });
 
-    test('an undecided device is asked first, keeping the destination', () {
-      expect(gate('/teacher/sync', null), '/teacher-setup?to=%2Fteacher%2Fsync');
+    test('signed in, the tools open — on any device', () {
+      expect(gate('/teacher', signedIn: true), isNull);
+      expect(gate('/teacher/materials', signedIn: true), isNull);
     });
 
-    test('the teacher device goes through; other routes are untouched', () {
-      expect(gate('/teacher', 'teacher'), isNull);
-      expect(gate('/admin', 'student'), isNull);
-      expect(
-        gate('/teachers', 'student'),
-        isNull,
-        reason: 'a student device has learners to manage too',
-      );
-      expect(gate('/class-sync', 'student'), isNull);
-      expect(gate('/teacher-setup', null), isNull, reason: 'no loop');
+    test('Teachers itself and other routes need no profile', () {
+      expect(gate('/teachers', signedIn: false), isNull, reason: 'no loop');
+      expect(gate('/admin', signedIn: false), isNull);
+      expect(gate('/class-sync', signedIn: false), isNull);
     });
   });
 

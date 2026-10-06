@@ -10,6 +10,8 @@ import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learn/path/path_provider.dart';
+import '../../services/custom_subject_service.dart';
+import '../../services/notes/quiz_scores.dart';
 import '../../services/projects/project_providers.dart';
 
 class AchievementsScreen extends ConsumerWidget {
@@ -218,6 +220,12 @@ class _AchievementsBodyState extends ConsumerState<_AchievementsBody> {
                       cols: adaptiveColumns(box.maxWidth - hPad * 2,
                           min: 2, max: 4, itemWidth: 210),
                       firstLessonEarned: earnedIds.contains('first_lesson'),
+                    ),
+                    _QuizScores(
+                      studentId: student.id,
+                      cols: adaptiveColumns(box.maxWidth - hPad * 2,
+                          min: 2, max: 4, itemWidth: 210),
+                      gap: wide ? 32 : 24,
                     ),
                     SizedBox(height: wide ? 32 : 24),
                     _BadgesHeader(
@@ -604,6 +612,84 @@ class _AreaProgress extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// The learner's quiz scores per topic: the latest round and the best.
+/// Hidden until a quiz is finished.
+class _QuizScores extends ConsumerWidget {
+  const _QuizScores({
+    required this.studentId,
+    required this.cols,
+    required this.gap,
+  });
+
+  final int studentId;
+  final int cols;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scores =
+        ref.watch(learnerQuizScoresProvider(studentId)).valueOrNull ??
+            const <TopicQuizScore>[];
+    if (scores.isEmpty) return const SizedBox.shrink();
+    final ac = AppColors.of(context);
+    final names = {
+      for (final s in ref.watch(mergedSubjectsProvider).valueOrNull ??
+          const [])
+        s.id: s.name,
+    };
+    return Padding(
+      padding: EdgeInsets.only(top: gap),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: Text(
+              tr(context, 'Quiz scores'),
+              style: TextStyle(
+                fontFamily: 'Saira',
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: ac.textPrimary,
+              ),
+            ),
+          ),
+          GridView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              mainAxisExtent: 132,
+            ),
+            children: [
+              for (final s in scores)
+                _AreaCard(
+                  icon: Icons.fact_check_rounded,
+                  color: AppColors.practiceColor,
+                  title: s.topic,
+                  value: trFill(context, '{correct}/{total} correct', {
+                    'correct': '${s.lastCorrect}',
+                    'total': '${s.lastTotal}',
+                  }),
+                  detail: trFill(context, '{subject} · best {pct}%', {
+                    'subject': names[s.subjectId] ?? s.subjectId,
+                    'pct': '${s.bestPercent}',
+                  }),
+                  ratio: s.lastTotal == 0 ? 0 : s.lastCorrect / s.lastTotal,
+                  onTap: () => GoRouter.of(context).push(
+                    '/learn/subject/${Uri.encodeComponent(s.subjectId)}?tab=1',
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

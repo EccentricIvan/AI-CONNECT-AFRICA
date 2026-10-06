@@ -3,8 +3,8 @@ import 'package:drift/drift.dart';
 import 'students_table.dart';
 
 /// Subjects a learner says they take — a record the teacher sees in Class
-/// progress. It doesn't hide or unlock anything: every subject stays open
-/// to every learner.
+/// progress. On a student device it also decides which subjects' notes
+/// (text and PDFs) the learner may read; lessons stay open to everyone.
 @TableIndex(
   name: 'idx_learner_subjects_unique',
   columns: {#studentId, #subjectId},

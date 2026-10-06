@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/language_provider.dart';
+import '../learn/notes_quiz.dart';
 import '../teacher/teacher_pin.dart';
+import '../teacher/teacher_profiles.dart';
 
 /// Hands a shared device from one learner to another.
 ///
@@ -26,8 +28,12 @@ class LearnerSwitcher {
     // Drop the previous learner's thread, tutor memory and engine session
     // first, before anything can observe the new learner.
     _ref.read(chatProvider.notifier).reset();
+    // A quiz is written from one class's notes; the next learner's class
+    // may differ.
+    _ref.invalidate(subjectQuizProvider);
     // The device is being handed to a learner: the teacher area locks again.
     _ref.read(teacherUnlockedProvider.notifier).state = false;
+    _ref.read(activeTeacherProvider.notifier).state = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kActiveStudentIdKey, student.id);

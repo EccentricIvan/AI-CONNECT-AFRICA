@@ -570,10 +570,63 @@ bool looksLikeRealText(String text, {double minPrintableRatio = 0.85}) {
   return words >= 3;
 }
 
+/// Characters no font shows: control codes, private-use glyph ids, the
+/// replacement character. A PDF font without a text map comes out as these.
+final _unreadableChars = RegExp(
+  r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F-�￾￿]',
+);
+
+/// Drops lines that are mostly unreadable characters, and strips the odd
+/// stray one from the rest.
+///
+/// [looksLikeRealText] judges a whole page, so a page of good text can
+/// still carry a few lines in an unmapped font — which then turned into
+/// lesson titles and quiz passages of boxes.
+String dropUnreadableLines(String text) {
+  if (!_unreadableChars.hasMatch(text)) return text;
+  final out = <String>[];
+  for (final line in text.split('\n')) {
+    final bad = _unreadableChars.allMatches(line).length;
+    if (bad == 0) {
+      out.add(line);
+      continue;
+    }
+    final visible = line.replaceAll(RegExp(r'\s'), '').length;
+    // A stray null byte is noise to strip; a run of them is a garbage line.
+    if (bad >= 3 && bad * 4 >= visible) continue;
+    out.add(line.replaceAll(_unreadableChars, ''));
+  }
+  return out.join('\n');
+}
+
+/// True when more than a tenth of [raw]'s visible characters are unreadable
+/// — the page used an unmapped font, so its cleaned text is incomplete and
+/// it should be read by OCR instead.
+bool mostlyUnreadable(String raw) {
+  final bad = _unreadableChars.allMatches(raw).length;
+  if (bad == 0) return false;
+  final visible = raw.replaceAll(RegExp(r'\s'), '').length;
+  return visible > 0 && bad * 10 > visible;
+}
+
+/// True when [title] reads as a section title: real words, no symbol soup.
+bool looksLikeTitleText(String title) {
+  final t = title.trim();
+  if (t.isEmpty || _unreadableChars.hasMatch(t)) return false;
+  if (!RegExp(r'[A-Za-z]{3,}').hasMatch(t)) return false;
+  final odd = RegExp(
+    r'''[^\p{L}\p{N}\s\-–—:;,.()'’"/&?!#+%]''',
+    unicode: true,
+  ).allMatches(t).length;
+  return odd == 0;
+}
+
 /// Collapses the whitespace noise every extractor produces, without destroying
 /// the paragraph breaks that chunking depends on.
 String normalizeExtractedText(String raw) {
-  var t = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+  var t = dropUnreadableLines(
+    raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),
+  );
   t = t.replaceAll(' ', '');
   // Hyphenated line wrap: "photo-\nsynthesis" → "photosynthesis".
   t = t.replaceAllMapped(

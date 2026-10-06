@@ -89,17 +89,20 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 
   /// Every chunk for a subject, regardless of topic — the fallback a retrieval
   /// uses when the active topic has no resources of its own.
+  ///
+  /// A null [limit] reads every chunk, in upload order.
   Future<List<TopicResource>> chunksForSubject({
     required String subjectId,
     int? termMarker,
-    int limit = 400,
+    int? limit = 400,
     String? visibleClassUuid,
   }) {
     final q = select(topicResources)
       ..where((t) => t.subjectId.equals(subjectId))
-      // A note's original-PDF record isn't teaching text.
-      ..where((t) => t.topicKey.equals(kPdfMarkerTopicKey).not())
-      ..where((t) => _visibleTo(t, visibleClassUuid));
+      // A note's original-PDF record and quiz questions aren't teaching text.
+      ..where((t) => t.topicKey.like('$kRecordTopicPrefix%').not())
+      ..where((t) => _visibleTo(t, visibleClassUuid))
+      ..orderBy([(t) => OrderingTerm.asc(t.id)]);
     if (termMarker != null) {
       q.where(
         (t) =>
@@ -107,8 +110,130 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
             t.termMarker.equals(kAllTermsMarker),
       );
     }
-    q.limit(limit);
+    if (limit != null) q.limit(limit);
     return q.get();
+  }
+
+  /// Stored quiz questions of [subjectId] a learner in [visibleClassUuid]
+  /// may take — see `NoteQuizStore`.
+  Future<List<TopicResource>> quizRows({
+    required String subjectId,
+    String? visibleClassUuid,
+  }) {
+    return (select(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.topicKey.equals(kQuizTopicKey))
+          ..where((t) => _visibleTo(t, visibleClassUuid)))
+        .get();
+  }
+
+  /// Adds one quiz question row to this device's note [documentTitle].
+  Future<void> insertQuizRow({
+    required String subjectId,
+    required String documentTitle,
+    required String content,
+    required int termMarker,
+  }) async {
+    final at = DateTime.now().toUtc().toIso8601String();
+    await into(topicResources).insert(
+      TopicResourcesCompanion.insert(
+        subjectId: subjectId,
+        topicKey: kQuizTopicKey,
+        termMarker: Value(termMarker),
+        resourceTitle: documentTitle,
+        contentChunk: content,
+        createdAt: at,
+        documentTitle: Value(documentTitle),
+        updatedAt: Value(at),
+      ),
+    );
+  }
+
+  /// Drops this device's own quiz questions for [documentTitle].
+  Future<int> deleteQuizRows({
+    required String subjectId,
+    required String documentTitle,
+  }) {
+    return (delete(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.topicKey.equals(kQuizTopicKey))
+          ..where((t) => t.documentTitle.equals(documentTitle))
+          ..where((t) => t.classGroupUuid.isNull()))
+        .go();
+  }
+
+  /// Live [quizRows]: the Quiz tab picks up questions as they are written.
+  Stream<List<TopicResource>> watchQuizRows({
+    required String subjectId,
+    String? visibleClassUuid,
+  }) {
+    return (select(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.topicKey.equals(kQuizTopicKey))
+          ..where((t) => _visibleTo(t, visibleClassUuid)))
+        .watch();
+  }
+
+  /// This device's own text rows of one note, in upload order — what its
+  /// topic quizzes are written from.
+  Future<List<TopicResource>> ownNoteText({
+    required String subjectId,
+    required String documentTitle,
+  }) {
+    return (select(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.documentTitle.equals(documentTitle))
+          ..where((t) => t.classGroupUuid.isNull())
+          ..where((t) => t.topicKey.like('$kRecordTopicPrefix%').not())
+          ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+        .get();
+  }
+
+  /// Drops this device's own text rows of one note — all of them, or only
+  /// those written after [createdAfter] (ISO-8601 UTC), which is a batch
+  /// that was cut off before it was recorded as done. Record rows (the
+  /// PDF marker, quiz questions) stay.
+  Future<int> deleteOwnNoteText({
+    required String subjectId,
+    required String documentTitle,
+    String? createdAfter,
+  }) {
+    final q = delete(topicResources)
+      ..where((t) => t.subjectId.equals(subjectId))
+      ..where((t) => t.documentTitle.equals(documentTitle))
+      ..where((t) => t.classGroupUuid.isNull())
+      ..where((t) => t.topicKey.like('$kRecordTopicPrefix%').not());
+    if (createdAfter != null) {
+      q.where((t) => t.createdAt.isBiggerThanValue(createdAfter));
+    }
+    return q.go();
+  }
+
+  /// Every note written on this device that has text, as
+  /// (subjectId, documentTitle).
+  Future<List<(String, String)>> ownNotesWithText() async {
+    final q = selectOnly(topicResources, distinct: true)
+      ..addColumns([topicResources.subjectId, topicResources.documentTitle])
+      ..where(topicResources.classGroupUuid.isNull())
+      ..where(topicResources.documentTitle.isNotNull())
+      ..where(topicResources.topicKey.like('$kRecordTopicPrefix%').not());
+    return [
+      for (final r in await q.get())
+        (
+          r.read(topicResources.subjectId)!,
+          r.read(topicResources.documentTitle)!,
+        ),
+    ];
+  }
+
+  /// Subjects with at least one note a learner in [visibleClassUuid] may
+  /// read — a PDF-only note's marker row counts.
+  Future<List<String>> subjectIdsWithNotes({String? visibleClassUuid}) async {
+    final q = selectOnly(topicResources, distinct: true)
+      ..addColumns([topicResources.subjectId])
+      ..where(_visibleTo(topicResources, visibleClassUuid));
+    final rows = await q.get();
+    return [for (final r in rows) r.read(topicResources.subjectId)!];
   }
 
   /// Best-matching rows for [needle] within one subject, most relevant first.
@@ -170,7 +295,7 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
       'SELECT t.* FROM topic_resources_fts f '
       'JOIN topic_resources t ON t.id = f.rowid '
       'WHERE topic_resources_fts MATCH ? '
-      "AND t.topic_key <> '$kPdfMarkerTopicKey' "
+      "AND t.topic_key NOT LIKE '$kRecordTopicPrefix%' "
       '${subjectId == null ? '' : 'AND t.subject_id = ? '}'
       '${termMarker == null ? '' : 'AND (t.term_marker = ? OR t.term_marker = ?) '}'
       'AND (t.class_group_uuid IS NULL'
@@ -197,7 +322,8 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
   ///
   /// Scoped by subject when [subjectId] is given so two subjects can both hold
   /// a document called "Term 1 Notes" without one deletion taking out both.
-  /// Returns the number of chunks removed.
+  /// Only this device's own notes: one received from a class with the same
+  /// title stays. Returns the number of chunks removed.
   Future<int> deleteByTitle(String title, {String? subjectId}) async {
     // Its class shares go with it, or a later note with the same title
     // would silently inherit them.
@@ -209,7 +335,8 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
     final q = delete(topicResources)
       ..where(
         (t) => t.documentTitle.equals(title) | t.resourceTitle.equals(title),
-      );
+      )
+      ..where((t) => t.classGroupUuid.isNull());
     if (subjectId != null) {
       q.where((t) => t.subjectId.equals(subjectId));
     }
@@ -220,14 +347,16 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
   ///
   /// Used when a teacher deletes a custom subject: the subject row and its
   /// material go together, or the material becomes unreachable rows that no
-  /// screen can list and no one can delete.
+  /// screen can list and no one can delete. Only this device's own notes:
+  /// ones received from a class for a subject with the same id stay.
   Future<int> deleteBySubject(String subjectId) async {
     await customStatement('DELETE FROM resource_shares WHERE subject_id = ?', [
       subjectId,
     ]);
-    return (delete(
-      topicResources,
-    )..where((t) => t.subjectId.equals(subjectId))).go();
+    return (delete(topicResources)
+          ..where((t) => t.subjectId.equals(subjectId))
+          ..where((t) => t.classGroupUuid.isNull()))
+        .go();
   }
 
   // What class sync may serve lives in ClassSyncDao.sharedChunks — only
@@ -238,12 +367,26 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
   /// Grouped in SQL by document: a file is split into sections (one per
   /// heading, for retrieval) and each section into chunks, but a teacher
   /// thinks in the files they added and must never be shown either split.
-  Future<List<ResourceSummary>> listResources({String? subjectId}) async {
-    final where = subjectId == null ? '' : 'WHERE subject_id = ?';
+  ///
+  /// [ownOnly]: only notes made on this device, never ones received from a
+  /// class — what a teacher may change.
+  Future<List<ResourceSummary>> listResources({
+    String? subjectId,
+    bool ownOnly = false,
+  }) async {
+    final conditions = [
+      if (subjectId != null) 'subject_id = ?',
+      if (ownOnly) 'class_group_uuid IS NULL',
+    ];
+    final where = conditions.isEmpty
+        ? ''
+        : 'WHERE ${conditions.join(' AND ')}';
     final rows = await customSelect(
       'SELECT COALESCE(document_title, resource_title) AS resource_title, '
       '       subject_id, MIN(topic_key) AS topic_key, MIN(term_marker) AS term_marker, '
-      '       COUNT(*) AS chunk_count, MIN(created_at) AS created_at '
+      '       COUNT(*) AS chunk_count, MIN(created_at) AS created_at, '
+      "       SUM(CASE WHEN topic_key LIKE '$kRecordTopicPrefix%' THEN 0 ELSE 1 END) AS text_count, "
+      "       SUM(CASE WHEN topic_key = '$kQuizTopicKey' THEN 1 ELSE 0 END) AS quiz_count "
       'FROM topic_resources $where '
       'GROUP BY COALESCE(document_title, resource_title), subject_id '
       'ORDER BY created_at DESC',
@@ -259,6 +402,8 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
             topicKey: r.read<String>('topic_key'),
             termMarker: r.read<int>('term_marker'),
             chunkCount: r.read<int>('chunk_count'),
+            textCount: r.read<int>('text_count'),
+            quizCount: r.read<int>('quiz_count'),
             createdAt: DateTime.tryParse(r.read<String>('created_at')),
           ),
         )
@@ -283,6 +428,14 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
 /// [TopicResourceDao.listResources] never picks it.
 const kPdfMarkerTopicKey = '~pdf-original';
 
+/// Topic key of a quiz question written from one page of a note's PDF
+/// (see `NoteQuizStore`). Rides with the note like [kPdfMarkerTopicKey].
+const kQuizTopicKey = '~quiz';
+
+/// Every record row (not teaching text) has a topic key starting with this;
+/// the tutor's search and the notes text skip them all.
+const kRecordTopicPrefix = '~';
+
 class ResourceSummary {
   const ResourceSummary({
     required this.resourceTitle,
@@ -290,6 +443,8 @@ class ResourceSummary {
     required this.topicKey,
     required this.termMarker,
     required this.chunkCount,
+    this.textCount = 0,
+    this.quizCount = 0,
     this.createdAt,
   });
 
@@ -300,6 +455,11 @@ class ResourceSummary {
 
   /// Internal detail — never render this in a teacher-facing view.
   final int chunkCount;
+
+  /// Rows of teaching text (0 while a PDF is still being read) and stored
+  /// quiz questions.
+  final int textCount;
+  final int quizCount;
 
   final DateTime? createdAt;
 }

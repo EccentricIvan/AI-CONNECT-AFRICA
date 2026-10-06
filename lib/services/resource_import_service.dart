@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -9,6 +10,8 @@ import 'ocr/ocr_engine.dart';
 import 'offline_storage_service.dart';
 import 'pdf/diagram_detector.dart';
 import 'notes/note_pdf_store.dart';
+import 'notes/note_quiz_builder.dart';
+import 'notes/note_text_indexer.dart';
 import 'pdf/pdf_page_extractor.dart';
 import 'resource_text_extractor.dart';
 
@@ -39,10 +42,25 @@ class ResourceImportService {
     OcrLookup? ocr,
     PdfOpener openPdf = _openWithPdfium,
     this.pdfStore,
+    this.onPdfKept,
+    this.onPdfSaved,
+    this.onNoteSaved,
   }) : _ocr = ocr,
        _openPdf = openPdf;
 
   final OfflineStorageService _storage;
+
+  /// Called once a PDF's original is kept after its text was read.
+  final void Function(NotePdf pdf)? onPdfKept;
+
+  /// Set when a background reader exists: a PDF is then saved at once —
+  /// kept and listed, openable straight away — and handed to this to read
+  /// its pages later. Without it, a PDF is read before it is saved.
+  final void Function(NotePdf pdf)? onPdfSaved;
+
+  /// Called once a note's text is stored (subject, document title) — the
+  /// quiz builder starts on it.
+  final void Function(String subjectId, String documentTitle)? onNoteSaved;
 
   /// Keeps an imported PDF's original so it can be opened as it is, and
   /// synced with the note. Null keeps text only.
@@ -56,6 +74,7 @@ class ResourceImportService {
     required String subjectId,
     int termMarker = kAllTermsMarker,
     String? topicKeyOverride,
+    String? documentTitle,
     void Function(int done, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -75,6 +94,7 @@ class ResourceImportService {
       subjectId: subjectId,
       termMarker: termMarker,
       topicKeyOverride: topicKeyOverride,
+      documentTitle: documentTitle,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
@@ -88,15 +108,32 @@ class ResourceImportService {
     required String subjectId,
     int termMarker = kAllTermsMarker,
     String? topicKeyOverride,
+
+    /// The note's title; the file name without its extension by default.
+    String? documentTitle,
     void Function(int done, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final docTitle = _stripExtension(fileName);
+    final docTitle = documentTitle?.trim().isNotEmpty == true
+        ? documentTitle!.trim()
+        : stripFileExtension(fileName);
     final String text;
     final String format;
     PdfExtraction? pdf;
 
-    if (fileName.toLowerCase().endsWith('.pdf') && bytes.isNotEmpty) {
+    final isPdf = fileName.toLowerCase().endsWith('.pdf') && bytes.isNotEmpty;
+    if (isPdf && onPdfSaved != null && topicKeyOverride == null) {
+      final saved = await _savePdfNow(
+        fileName,
+        bytes,
+        docTitle,
+        subjectId: subjectId,
+        termMarker: termMarker,
+      );
+      if (saved != null) return saved;
+    }
+
+    if (isPdf) {
       final read = await _readPdf(
         fileName,
         bytes,
@@ -167,8 +204,9 @@ class ResourceImportService {
       try {
         final sha = await store.put(bytes);
         if (sha != null) {
+          final subject = normalizeSubjectId(subjectId);
           await store.recordOwn(
-            subjectId: normalizeSubjectId(subjectId),
+            subjectId: subject,
             documentTitle: docTitle,
             sha: sha,
             pages: pdf?.pages ?? 0,
@@ -176,12 +214,22 @@ class ResourceImportService {
             termMarker: termMarker,
           );
           keptOriginal = true;
+          onPdfKept?.call(
+            NotePdf(
+              sha256: sha,
+              pages: pdf?.pages ?? 0,
+              bytes: bytes.length,
+              subjectId: subject,
+              documentTitle: docTitle,
+            ),
+          );
         }
       } catch (e) {
         debugPrint('Keeping the original PDF failed: $e');
       }
     }
 
+    onNoteSaved?.call(normalizeSubjectId(subjectId), docTitle);
     return ImportReport(
       fileName: fileName,
       documentTitle: docTitle,
@@ -194,6 +242,63 @@ class ResourceImportService {
       unreadablePages: pdf?.unreadablePages ?? 0,
       diagramCount: pdf?.diagrams ?? 0,
       keptOriginal: keptOriginal,
+    );
+  }
+
+  /// Keeps the PDF and records it as the note, without reading a page —
+  /// [onPdfSaved] reads them in the background. Null when the PDF can't be
+  /// kept (too big, or PDFium can't open it): it is then read first.
+  Future<ImportReport?> _savePdfNow(
+    String fileName,
+    Uint8List bytes,
+    String docTitle, {
+    required String subjectId,
+    required int termMarker,
+  }) async {
+    final store = pdfStore;
+    if (store == null || bytes.length > kMaxNotePdfBytes) return null;
+    final int pages;
+    try {
+      final source = await _openPdf(bytes, fileName);
+      pages = source.pageCount;
+      await source.close();
+    } catch (e) {
+      debugPrint('PDFium could not open $fileName: $e');
+      return null;
+    }
+    if (pages == 0) return null;
+    final sha = await store.put(bytes);
+    if (sha == null) return null;
+    final subject = normalizeSubjectId(subjectId);
+    await store.recordOwn(
+      subjectId: subject,
+      documentTitle: docTitle,
+      sha: sha,
+      pages: pages,
+      bytes: bytes.length,
+      termMarker: kTermMarkers.contains(termMarker)
+          ? termMarker
+          : kAllTermsMarker,
+    );
+    onPdfSaved!(
+      NotePdf(
+        sha256: sha,
+        pages: pages,
+        bytes: bytes.length,
+        subjectId: subject,
+        documentTitle: docTitle,
+      ),
+    );
+    return ImportReport(
+      fileName: fileName,
+      documentTitle: docTitle,
+      format: 'pdf',
+      chunkCount: 0,
+      topics: const [],
+      wordCount: 0,
+      pageCount: pages,
+      keptOriginal: true,
+      readingLater: true,
     );
   }
 
@@ -280,6 +385,7 @@ class ResourceImportService {
     if (written == 0) {
       return ImportReport.failed(title, 'That note could not be saved.');
     }
+    onNoteSaved?.call(normalizeSubjectId(subjectId), title.trim());
     return ImportReport(
       fileName: title,
       documentTitle: title,
@@ -317,6 +423,7 @@ class ImportReport {
     this.unreadablePages = 0,
     this.diagramCount = 0,
     this.keptOriginal = false,
+    this.readingLater = false,
   }) : failure = null,
        cancelled = false;
 
@@ -330,7 +437,8 @@ class ImportReport {
       ocrPages = 0,
       unreadablePages = 0,
       diagramCount = 0,
-      keptOriginal = false;
+      keptOriginal = false,
+      readingLater = false;
 
   /// PDFs only: pages in the file, pages read by OCR, pages with nothing
   /// readable, and diagram markers added.
@@ -341,6 +449,9 @@ class ImportReport {
 
   /// PDFs only: the original was kept, so it can be opened as it is.
   final bool keptOriginal;
+
+  /// PDFs only: saved at once; its pages are read in the background.
+  final bool readingLater;
   final bool cancelled;
 
   final String fileName;
@@ -357,7 +468,7 @@ class ImportReport {
   final int wordCount;
   final String? failure;
 
-  bool get ok => failure == null && chunkCount > 0;
+  bool get ok => failure == null && (chunkCount > 0 || readingLater);
 }
 
 // ── Sectioning ───────────────────────────────────────────────────────────
@@ -429,6 +540,9 @@ bool looksLikeHeading(String line) {
   final t = line.trim();
   if (t.isEmpty || t.length > 80) return false;
   if (isDiagramMarkerLine(t)) return false;
+  // A line of symbols from an unmapped font is not a heading, however
+  // "ALL CAPS" its few letters are.
+  if (!looksLikeTitleText(t)) return false;
   // Prose ends in punctuation; headings almost never do.
   if (RegExp(r'[.,;:]$').hasMatch(t)) return false;
   // A heading is a few words, not a paragraph.
@@ -465,7 +579,8 @@ String _cleanHeading(String line) {
 
 String _baseName(String path) => path.split(RegExp(r'[/\\]')).last;
 
-String _stripExtension(String fileName) {
+/// A file's note title: its name without the extension, `_`/`-` as spaces.
+String stripFileExtension(String fileName) {
   final dot = fileName.lastIndexOf('.');
   final base = dot > 0 ? fileName.substring(0, dot) : fileName;
   return base.replaceAll('_', ' ').replaceAll('-', ' ').trim();
@@ -480,6 +595,11 @@ final resourceImportServiceProvider = Provider<ResourceImportService>((ref) {
     ref.watch(offlineStorageServiceProvider),
     ocr: () => ref.read(ocrEngineProvider.future),
     pdfStore: ref.watch(notePdfStoreProvider),
+    onPdfSaved: (pdf) =>
+        unawaited(ref.read(noteTextIndexerProvider).enqueue(pdf, fresh: true)),
+    onNoteSaved: (subject, title) => unawaited(
+      ref.read(noteQuizBuilderProvider).enqueue(subject, title, fresh: true),
+    ),
   );
 });
 

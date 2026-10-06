@@ -9,7 +9,6 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleStudent;
 import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
 import 'failover_crypto.dart';
@@ -342,11 +341,8 @@ class ClassShareServer {
     if (uuid == null) return null;
     final ClassGroup? usable;
     if (role == ShareRole.teacher) {
-      // A student device never shares as a teacher, whatever it owns.
-      if (group.joined ||
-          await _db.classSyncDao.deviceRole() == kRoleStudent) {
-        return null;
-      }
+      // Only a class created here; never one joined as a student.
+      if (group.joined) return null;
       final keyed = await _db.classSyncDao.ensureClassKey(group);
       usable = keyed.schoolId == null ? null : keyed;
     } else {
@@ -377,10 +373,7 @@ class ClassShareServer {
     Duration ttl = kCoTeacherInviteTtl,
   }) async {
     final uuid = group.groupUuid;
-    if (uuid == null ||
-        role != ShareRole.teacher ||
-        group.joined ||
-        await _db.classSyncDao.deviceRole() == kRoleStudent) {
+    if (uuid == null || role != ShareRole.teacher || group.joined) {
       return null;
     }
     final keyed = await _db.classSyncDao.ensureClassKey(group);
@@ -404,11 +397,7 @@ class ClassShareServer {
   Future<String?> openStandbyCode({Duration ttl = kStandbyCodeTtl}) async {
     if (role != ShareRole.teacher) return null;
     final me = await _db.classSyncDao.identity();
-    if (me.deviceRole == kRoleStudent ||
-        me.schoolId == null ||
-        me.failoverSealKey == null) {
-      return null;
-    }
+    if (me.schoolId == null || me.failoverSealKey == null) return null;
     _standbyCodes.clear();
     final code = newJoinCode();
     _standbyCodes[normalizeJoinCode(code)!] = _OpenCode(
@@ -906,12 +895,16 @@ class ClassShareServer {
     return {
       'class_group_uuid': uuid,
       'subjects': manifests,
-      // The subjects this teacher made, so students can see and enroll in
-      // them. Only in root's own (signed) reply — never a co-teacher's or
-      // a classmate's.
+      // The subjects this class's teacher made, so students can see and
+      // enroll in them. Only in root's own (signed) reply — never a
+      // co-teacher's or a classmate's.
       if (role == ShareRole.teacher && !served.isDelegate)
         'catalog': [
-          for (final s in await dao.ownSubjects())
+          for (final s in await dao.ownSubjects(
+            ownerTeacherId: (await _db.classGroupDao.findByUuid(
+              uuid,
+            ))?.ownerTeacherId,
+          ))
             {'id': s.subjectId, 'name': s.name, 'icon': s.icon, 'color': s.color},
         ],
       // Forwarded verbatim, whichever device this reply comes from — its

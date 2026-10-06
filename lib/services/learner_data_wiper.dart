@@ -73,6 +73,7 @@ class LearnerDataWiper {
     'assignments',
     'chat_sessions',
     'learner_subjects',
+    'quiz_results',
   };
 
   /// Deletes one learner and everything scoped to them — the rest of a
@@ -113,6 +114,10 @@ class LearnerDataWiper {
       // them alone; wipeAll below clears those too, once no student remains
       // for them to (wrongly) apply to.
       if (key.startsWith('lesson_done_s${studentId}_')) {
+        await prefs.remove(key);
+      }
+      // Their PDF highlights (kPdfHighlightPrefix in pdf_highlights.dart).
+      if (key.startsWith('pdf_hl_s${studentId}_')) {
         await prefs.remove(key);
       }
     }
@@ -180,7 +185,9 @@ class LearnerDataWiper {
 
     final prefs = await SharedPreferences.getInstance();
     for (final key in prefs.getKeys().toList()) {
-      if (key == 'active_student_id' || key.startsWith('lesson_done_')) {
+      if (key == 'active_student_id' ||
+          key.startsWith('lesson_done_') ||
+          key.startsWith('pdf_hl_')) {
         await prefs.remove(key);
       }
     }
@@ -217,6 +224,9 @@ class LearnerDataWiper {
     )..where((t) => t.studentId.equals(studentId))).go();
     await (_db.delete(
       _db.assignments,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.quizResults,
     )..where((t) => t.studentId.equals(studentId))).go();
     await _db.studentDao.deleteStudent(studentId);
     return sessionIds;

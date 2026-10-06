@@ -75,8 +75,8 @@ class _TeacherUnlockScreenState extends ConsumerState<TeacherUnlockScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: const StudioAppBar(
-        title: 'Teacher area',
-        subtitle: 'Enter PIN',
+        title: 'Teachers',
+        subtitle: 'Teachers PIN',
         icon: Icons.lock_rounded,
         iconColor: AppColors.accentBlue,
         showBack: true,
@@ -131,7 +131,7 @@ Future<void> showTeacherPinSettings(BuildContext context, WidgetRef ref) async {
 
   if (await pin.isSet()) {
     if (!context.mounted) return;
-    final current = await _askPin(context, title: 'Current teacher PIN');
+    final current = await _askPin(context, title: 'Current Teachers PIN');
     if (current == null) return;
     if (!await pin.verify(current)) {
       messenger.showSnackBar(
@@ -143,7 +143,7 @@ Future<void> showTeacherPinSettings(BuildContext context, WidgetRef ref) async {
     final action = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Teacher PIN'),
+        title: const Text('Teachers PIN'),
         children: [
           SimpleDialogOption(
             onPressed: () => Navigator.pop(ctx, 'change'),
@@ -159,7 +159,7 @@ Future<void> showTeacherPinSettings(BuildContext context, WidgetRef ref) async {
     if (action == 'remove') {
       await pin.clear();
       messenger.showSnackBar(
-        const SnackBar(content: Text('Teacher PIN removed.')),
+        const SnackBar(content: Text('Teachers PIN removed.')),
       );
       return;
     }
@@ -167,7 +167,7 @@ Future<void> showTeacherPinSettings(BuildContext context, WidgetRef ref) async {
   }
 
   if (!context.mounted) return;
-  final next = await _askPin(context, title: 'New teacher PIN (4–8 digits)');
+  final next = await _askPin(context, title: 'New Teachers PIN (4–8 digits)');
   if (next == null) return;
   if (!TeacherPin.isValidFormat(next)) {
     messenger.showSnackBar(
@@ -188,9 +188,19 @@ Future<void> showTeacherPinSettings(BuildContext context, WidgetRef ref) async {
   // Whoever just set it is the teacher; don't lock them out mid-session.
   ref.read(teacherUnlockedProvider.notifier).state = true;
   messenger.showSnackBar(
-    const SnackBar(content: Text('Teacher PIN set.')),
+    const SnackBar(content: Text('Teachers PIN set.')),
   );
 }
+
+/// Digits only, at most 8 — every PIN field.
+final kPinInputFormatters = <TextInputFormatter>[
+  FilteringTextInputFormatter.digitsOnly,
+  LengthLimitingTextInputFormatter(8),
+];
+
+/// Asks for a PIN under [title]; null when cancelled.
+Future<String?> askTeacherPin(BuildContext context, {required String title}) =>
+    _askPin(context, title: title);
 
 Future<String?> _askPin(BuildContext context, {required String title}) async {
   final controller = TextEditingController();
@@ -203,10 +213,7 @@ Future<String?> _askPin(BuildContext context, {required String title}) async {
         autofocus: true,
         obscureText: true,
         keyboardType: TextInputType.number,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(8),
-        ],
+        inputFormatters: kPinInputFormatters,
         onSubmitted: (v) => Navigator.pop(ctx, v),
       ),
       actions: [

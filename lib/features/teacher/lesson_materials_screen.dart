@@ -11,6 +11,7 @@ import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/custom_subject_service.dart';
 import '../../services/notes/note_pdf_store.dart';
+import '../../services/notes/note_text_indexer.dart';
 import '../../services/offline_storage_service.dart';
 import '../../services/resource_import_service.dart';
 import '../../services/resource_text_extractor.dart';
@@ -18,6 +19,7 @@ import '../../shared/widgets/studio_page.dart';
 import '../notes/note_pdf_screen.dart';
 import 'class_providers.dart';
 import 'resource_labels.dart';
+import 'teacher_profiles.dart';
 
 /// Where a teacher creates subjects and adds the material they teach from.
 ///
@@ -25,12 +27,22 @@ import 'resource_labels.dart';
 /// engine, the chunking, and the retrieval index are never named — see
 /// [ResourceLabels], which holds every string on this screen and is asserted
 /// against [kForbiddenTechnicalTerms] in the tests.
+///
+/// A teacher sees and changes only the subjects they created.
 class LessonMaterialsScreen extends ConsumerWidget {
   const LessonMaterialsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final subjectsAsync = ref.watch(customSubjectsProvider);
+    final me = ref.watch(activeTeacherIdProvider);
+    final subjectsAsync = ref
+        .watch(customSubjectsProvider)
+        .whenData(
+          (all) => [
+            for (final s in all)
+              if (s.classGroupUuid == null && s.ownerTeacherId == me) s,
+          ],
+        );
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -104,7 +116,7 @@ class LessonMaterialsScreen extends ConsumerWidget {
 
     final result = await ref
         .read(customSubjectServiceProvider)
-        .create(name: name);
+        .create(name: name, ownerTeacherId: ref.read(activeTeacherIdProvider));
     if (!context.mounted) return;
 
     if (!result.ok) {
@@ -133,6 +145,7 @@ class _SubjectTile extends ConsumerWidget {
     final shares =
         ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
         const {};
+    final reading = ref.watch(noteReadingProvider);
     // Where this subject's notes may go: classes this device owns, plus
     // classes it co-teaches *this* subject in.
     final classes = <({String uuid, String label})>[
@@ -181,8 +194,19 @@ class _SubjectTile extends ConsumerWidget {
                     leading: const Icon(Icons.description_outlined, size: 20),
                     title: Text(r.resourceTitle),
                     subtitle: Text(
-                      '${ResourceLabels.termLabel(context, r.termMarker)} · '
-                      '${_sharedWith(context, shares[r.resourceTitle], classNames)}',
+                      [
+                        ResourceLabels.termLabel(context, r.termMarker),
+                        _sharedWith(context, shares[r.resourceTitle], classNames),
+                        ?_status(
+                          context,
+                          r,
+                          reading[NoteTextIndexer.noteKey(
+                            subject.subjectId,
+                            r.resourceTitle,
+                          )],
+                          hasPdf: pdfs.containsKey(r.resourceTitle),
+                        ),
+                      ].join(' · '),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -260,7 +284,23 @@ class _SubjectTile extends ConsumerWidget {
     ref.invalidate(subjectByIdProvider(subject.subjectId));
   }
 
+  /// Adds one or more files to this subject. A PDF is saved at once —
+  /// students can open it straight away — and its pages are read in the
+  /// background; other files are quick to read and are read now.
+  /// Whether the signed-in teacher created this subject; tells them when
+  /// not. Every change to the subject or its materials checks this.
+  Future<bool> _mine(BuildContext context, WidgetRef ref) async {
+    final ok = await ref
+        .read(customSubjectServiceProvider)
+        .mayChange(subject.subjectId, ref.read(activeTeacherIdProvider));
+    if (!ok && context.mounted) {
+      _toast(context, tr(context, ResourceLabels.notYours));
+    }
+    return ok;
+  }
+
   Future<void> _addFromFile(BuildContext context, WidgetRef ref) async {
+    if (!await _mine(context, ref) || !context.mounted) return;
     final term = await _askTerm(context);
     if (term == null || !context.mounted) return;
 
@@ -268,49 +308,115 @@ class _SubjectTile extends ConsumerWidget {
       dialogTitle: tr(context, ResourceLabels.uploadFile),
       type: FileType.custom,
       allowedExtensions: kSupportedResourceExtensions,
+      allowMultiple: true,
     );
-    final path = picked?.files.single.path;
-    if (path == null || !context.mounted) return;
+    final paths = [
+      for (final f in picked?.files ?? const <PlatformFile>[])
+        if (f.path != null) f.path!,
+    ];
+    if (paths.isEmpty || !context.mounted) return;
 
+    // A file named like a note already here is added beside it, never
+    // over it.
+    final taken = {
+      for (final r
+          in await ref.read(topicResourcesProvider(subject.subjectId).future))
+        r.resourceTitle.toLowerCase(),
+    };
+    String uniqueTitle(String path) {
+      final base = stripFileExtension(path.split(RegExp(r'[/\\]')).last);
+      var title = base;
+      for (var n = 2; taken.contains(title.toLowerCase()); n++) {
+        title = '$base ($n)';
+      }
+      taken.add(title.toLowerCase());
+      return title;
+    }
+
+    if (!context.mounted) return;
     final progress = ValueNotifier<(int, int)>((0, 0));
+    final file = ValueNotifier<String>('');
     final cancelling = ValueNotifier<bool>(false);
     final navigator = Navigator.of(context, rootNavigator: true);
     unawaited(
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => _ReadingDialog(progress: progress, cancelling: cancelling),
+        builder: (ctx) => _ReadingDialog(
+          progress: progress,
+          file: file,
+          cancelling: cancelling,
+        ),
       ),
     );
 
-    final ImportReport report;
+    final reports = <ImportReport>[];
     try {
-      report = await ref
-          .read(resourceImportServiceProvider)
-          .importFile(
-            path: path,
-            subjectId: subject.subjectId,
-            termMarker: term,
-            onProgress: (done, total) =>
-                progress.value = (done < total ? done + 1 : total, total),
-            isCancelled: () => cancelling.value,
-          );
+      for (var i = 0; i < paths.length; i++) {
+        if (cancelling.value) break;
+        final title = uniqueTitle(paths[i]);
+        if (paths.length > 1 && context.mounted) {
+          file.value = trFill(context, ResourceLabels.fileOfFiles, {
+            'n': '${i + 1}',
+            'total': '${paths.length}',
+            'title': title,
+          });
+        }
+        progress.value = (0, 0);
+        reports.add(
+          await ref
+              .read(resourceImportServiceProvider)
+              .importFile(
+                path: paths[i],
+                subjectId: subject.subjectId,
+                termMarker: term,
+                documentTitle: title,
+                onProgress: (done, total) =>
+                    progress.value = (done < total ? done + 1 : total, total),
+                isCancelled: () => cancelling.value,
+              ),
+        );
+      }
     } finally {
       navigator.pop();
       progress.dispose();
+      file.dispose();
       cancelling.dispose();
     }
+    _refresh(ref);
     if (!context.mounted) return;
 
-    if (!report.ok) {
-      if (report.cancelled) {
-        _toast(context, report.failure ?? '');
-      } else {
-        _showFailure(context, report.failure ?? '');
+    final added = reports.where((r) => r.ok).toList();
+    final failed = reports.where((r) => !r.ok && !r.cancelled).toList();
+    if (failed.isNotEmpty) {
+      _showFailure(
+        context,
+        failed.length == 1 && reports.length == 1
+            ? failed.single.failure ?? ''
+            : [
+                for (final r in failed) '${r.fileName}: ${r.failure ?? ''}',
+              ].join('\n\n'),
+      );
+    }
+    if (added.isEmpty) {
+      if (failed.isEmpty) {
+        final cancelled = reports.where((r) => r.cancelled);
+        if (cancelled.isNotEmpty) {
+          _toast(context, cancelled.first.failure ?? '');
+        }
       }
       return;
     }
-    _refresh(ref);
+    if (added.length > 1) {
+      _toast(
+        context,
+        trFill(context, ResourceLabels.filesAdded, {
+          'count': '${added.length}',
+        }),
+      );
+      return;
+    }
+    final report = added.single;
     // Name the file the teacher added — never how it was split inside.
     final details = [
       if (report.ocrPages > 0)
@@ -332,6 +438,7 @@ class _SubjectTile extends ConsumerWidget {
   }
 
   Future<void> _addTyped(BuildContext context, WidgetRef ref) async {
+    if (!await _mine(context, ref) || !context.mounted) return;
     final titleCtl = TextEditingController();
     final bodyCtl = TextEditingController();
 
@@ -404,6 +511,31 @@ class _SubjectTile extends ConsumerWidget {
     }
     _refresh(ref);
     _toast(context, tr(context, ResourceLabels.noteSaved));
+  }
+
+  /// Pages still being read, questions written, or that nothing could be
+  /// read; null when there is nothing to say.
+  String? _status(
+    BuildContext context,
+    ResourceSummary r,
+    (int, int)? reading, {
+    required bool hasPdf,
+  }) {
+    if (reading != null) {
+      return trFill(context, ResourceLabels.readingPages, {
+        'done': '${reading.$1}',
+        'total': '${reading.$2}',
+      });
+    }
+    if (hasPdf && r.textCount == 0) {
+      return tr(context, ResourceLabels.noReadableText);
+    }
+    if (r.quizCount > 0) {
+      return trFill(context, ResourceLabels.questionsReady, {
+        'count': '${r.quizCount}',
+      });
+    }
+    return null;
   }
 
   String _sharedWith(
@@ -481,7 +613,8 @@ class _SubjectTile extends ConsumerWidget {
         );
       },
     );
-    if (chosen == null) return;
+    if (chosen == null || !context.mounted) return;
+    if (!await _mine(context, ref)) return;
     await ref
         .read(dbProvider)
         .classSyncDao
@@ -503,6 +636,7 @@ class _SubjectTile extends ConsumerWidget {
       tr(context, ResourceLabels.removeResource),
     );
     if (!confirmed || !context.mounted) return;
+    if (!await _mine(context, ref) || !context.mounted) return;
 
     final removed = await ref
         .read(offlineStorageServiceProvider)
@@ -532,8 +666,17 @@ class _SubjectTile extends ConsumerWidget {
     );
     if (!confirmed || !context.mounted) return;
 
-    await ref.read(customSubjectServiceProvider).delete(subject.subjectId);
+    final removed = await ref
+        .read(customSubjectServiceProvider)
+        .delete(
+          subject.subjectId,
+          byTeacherId: ref.read(activeTeacherIdProvider),
+        );
     if (!context.mounted) return;
+    if (!removed) {
+      _toast(context, tr(context, ResourceLabels.notYours));
+      return;
+    }
 
     _refresh(ref);
     _toast(context, tr(context, ResourceLabels.subjectRemoved));
@@ -609,9 +752,16 @@ void _toast(BuildContext context, String message) {
 
 /// Page-by-page progress while a file is read; a scanned book takes minutes.
 class _ReadingDialog extends StatelessWidget {
-  const _ReadingDialog({required this.progress, required this.cancelling});
+  const _ReadingDialog({
+    required this.progress,
+    required this.file,
+    required this.cancelling,
+  });
 
   final ValueNotifier<(int, int)> progress;
+
+  /// "File 2 of 5: …" when several files are added; '' for one.
+  final ValueNotifier<String> file;
   final ValueNotifier<bool> cancelling;
 
   @override
@@ -628,6 +778,15 @@ class _ReadingDialog extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                ValueListenableBuilder<String>(
+                  valueListenable: file,
+                  builder: (context, name, _) => name.isEmpty
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(name),
+                        ),
+                ),
                 LinearProgressIndicator(value: total == 0 ? null : page / total),
                 if (total > 0) ...[
                   const SizedBox(height: 12),

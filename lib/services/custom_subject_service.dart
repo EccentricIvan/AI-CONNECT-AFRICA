@@ -7,6 +7,7 @@ import '../db/daos/topic_resource_dao.dart';
 import '../db/otic_database.dart';
 import '../db/providers/db_provider.dart';
 import 'offline_storage_service.dart';
+import 'resource_text_extractor.dart';
 
 /// Subjects a teacher created, and the bridge that makes them browsable.
 ///
@@ -46,6 +47,9 @@ class CustomSubjectService {
     required String name,
     String icon = 'menu_book',
     String color = '#4F46E5',
+
+    /// The teacher profile creating it; only they may change it later.
+    int? ownerTeacherId,
   }) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
@@ -78,6 +82,7 @@ class CustomSubjectService {
         name: trimmed,
         icon: icon,
         color: color,
+        ownerTeacherId: ownerTeacherId,
       );
       return CustomSubjectResult(subjectId: id);
     } catch (e) {
@@ -107,21 +112,37 @@ class CustomSubjectService {
     }
   }
 
-  Future<void> rename(String subjectId, String name) async {
+  /// Whether [teacherId] may rename or delete [subjectId], or add and change
+  /// its materials: only the teacher who created it, and never a subject
+  /// received from a class.
+  Future<bool> mayChange(String subjectId, int? teacherId) async {
+    final row = await find(subjectId);
+    return row != null &&
+        row.classGroupUuid == null &&
+        row.ownerTeacherId == teacherId;
+  }
+
+  /// False when [byTeacherId] did not create the subject ([mayChange]).
+  Future<bool> rename(String subjectId, String name, {int? byTeacherId}) async {
     final trimmed = name.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) return false;
+    if (!await mayChange(subjectId, byTeacherId)) return false;
     await _db.customSubjectDao.rename(normalizeSubjectId(subjectId), trimmed);
+    return true;
   }
 
   /// Removes a subject **and** everything uploaded into it, in one
   /// transaction — a subject that vanished while its material stayed behind
-  /// would leave rows no screen could ever reach or delete.
-  Future<void> delete(String subjectId) async {
+  /// would leave rows no screen could ever reach or delete. False when
+  /// [byTeacherId] did not create the subject ([mayChange]).
+  Future<bool> delete(String subjectId, {int? byTeacherId}) async {
     final id = normalizeSubjectId(subjectId);
+    if (!await mayChange(id, byTeacherId)) return false;
     await _db.transaction(() async {
       await _db.topicResourceDao.deleteBySubject(id);
       await _db.customSubjectDao.deleteSubject(id);
     });
+    return true;
   }
 
   /// Builds the browsable [Subject] for a custom subject, from its resources.
@@ -153,7 +174,12 @@ Subject buildCustomSubject(
 
   final units = <Unit>[];
   for (final term in termOrder) {
-    final inTerm = resources.where((r) => r.termMarker == term).toList();
+    // A section whose heading was unreadable folds into its document, once.
+    final seen = <String>{};
+    final inTerm = [
+      for (final r in resources.where((r) => r.termMarker == term))
+        if (seen.add(cleanLessonTitle(r.resourceTitle))) r,
+    ];
     if (inTerm.isEmpty) continue;
     units.add(
       Unit(
@@ -161,7 +187,7 @@ Subject buildCustomSubject(
         lessons: [
           for (final r in inTerm)
             Lesson(
-              title: r.resourceTitle,
+              title: cleanLessonTitle(r.resourceTitle),
               // The card and reader show the title; the body is retrieved from
               // topic_resources when the student opens it, so the whole
               // document is not held in memory just to list it.
@@ -179,6 +205,18 @@ Subject buildCustomSubject(
     color: row.color,
     units: units,
   );
+}
+
+/// [title] ("Document — Section") without a section part that came out of
+/// the PDF as unreadable symbols. Notes stored before headings were checked
+/// still carry those.
+String cleanLessonTitle(String title) {
+  final cut = title.lastIndexOf(' — ');
+  if (cut < 0) return title;
+  final section = dropUnreadableLines(title.substring(cut + 3)).trim();
+  return looksLikeTitleText(section)
+      ? '${title.substring(0, cut)} — $section'
+      : title.substring(0, cut);
 }
 
 /// Result of a create attempt.

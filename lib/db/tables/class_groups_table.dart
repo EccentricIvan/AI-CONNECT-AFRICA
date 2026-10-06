@@ -75,4 +75,9 @@ class ClassGroups extends Table {
   /// a standby has since replaced, and is refused before it can drop or
   /// replace anything. Null means 0 (no takeover seen yet).
   IntColumn get hostEpoch => integer().nullable()();
+
+  /// The teacher profile (`teacher_profiles.id`) that created this class;
+  /// only they may rename, delete or share into it. Null on a joined class.
+  /// Local only, never synced.
+  IntColumn get ownerTeacherId => integer().nullable()();
 }

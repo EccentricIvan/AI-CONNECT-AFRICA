@@ -108,11 +108,11 @@ own prompt. Don't confuse it with the Teacher *role*/dashboard, which stays.
 - Admins: device/user/update management, no learning features. There is no
   separate Admin screen any more: it became **Teachers** (`/teachers`,
   `lib/features/teachers/teachers_screen.dart`), which lists the school's
-  teacher devices (this one, its co-teachers, the classes it co-teaches, its
-  standbys), links the teacher tools, and keeps the old admin parts (school,
+  devices that teachers use (this one, its co-teachers, the classes it
+  co-teaches, its standbys), links the teacher tools, and keeps the old admin parts (school,
   learner delete, reset, packages, updates). `/admin` redirects there.
-  It is PIN-gated but not role-gated, so student devices can still manage
-  their learners.
+  It is gated by the Teachers PIN only, so every device can manage its
+  learners. It is also where teachers sign in (see Teacher profiles).
 
 ### Shared devices, classes and the teacher PIN
 
@@ -133,9 +133,40 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
   `students.class_group_id`. A learner is in at most one; a stream is a
   separate row, e.g. "S2 East". Progress rollups are computed on read from
   `topic_progress` and never stored. Subjects stay device-wide.
-- **Teacher PIN** (`teacher_pin.dart`) gates `/teacher*`, `/teachers` and `/admin*`. It
-  stores only a salted hash, and with no PIN set nothing is gated. It keeps
+- **No teacher device.** Every device can do teacher duties; what a person
+  can do comes from their role and PINs, not from the device. The teacher
+  is the app's manager (subjects, materials, classes, learners, sync,
+  updates). Removed 2026-10-06 at the user's request: the old "one teacher
+  device per school" gate. Every device may host classes, join others'
+  classes (never its own), co-teach and be a standby; don't reintroduce a
+  device-type gate. `sync_identity.device_role` is kept as a record only,
+  and `/teacher-setup` and `/student-device` redirect to Teachers.
+  Lesson materials lists and deletes only this device's own notes
+  (`class_group_uuid IS NULL`), never ones received for the same subject.
+- **Teachers PIN** (`teacher_pin.dart`) is one PIN every teacher on the
+  device knows. It gates `/teacher*`, `/teachers` and `/admin*`. It stores
+  only a salted hash, and with no PIN set nothing is gated. It keeps
   learners out; it is not real security.
+- **Teacher profiles (schema 22).** Several teachers share a device. On
+  Teachers each one signs in with their own PIN, or adds a profile (name +
+  PIN) (`teacher_profiles.dart`, `teacher_profiles` table).
+  - `/teacher*` (the teacher tools) needs a teacher signed in
+    (`activeTeacherProvider`, in memory only) and otherwise goes to
+    Teachers. Signing out happens with every learner switch and reset.
+  - Classes/streams (`class_groups`), subjects (`custom_subjects`) and
+    co-taught classes (`co_teaching_classes`) carry `owner_teacher_id`.
+    Only the creator can rename or delete them, add or remove materials,
+    or share materials into them (`ClassGroupDao.mayChange`,
+    `CustomSubjectService.mayChange`). The teacher tools list only the
+    signed-in teacher's own.
+  - The first profile on a device claims everything made before profiles
+    existed (`TeacherProfileService.claimUnowned`). A takeover
+    (`promoteToHostNode`) or co-teacher join gives its rows to the
+    teacher signed in.
+  - Ownership is local: it is never synced or signed. All of the device's
+    shared classes are still served under the one device key.
+  - Subject ids are device-wide, so two teachers can't both have a
+    subject with the same name.
 
 ### Teacher notes → tutor (offline knowledge base)
 
@@ -163,7 +194,14 @@ the fallback for files PDFium can't open.
   - Linux: the system `tesseract`, if it's installed.
 - OCR text passes the same `looksLikeRealText` gate, so garbage is dropped.
   The teacher is told how many pages were scanned, marked or unreadable.
-  Cancel stores nothing.
+  Cancel stores nothing (for a PDF read before it is saved; see below).
+- **Uploads never wait on reading.** Teachers add several files at once
+  to an existing subject (a clashing name gets " (2)"). A PDF that can be
+  kept is saved and listed at once (marker row only), so it opens straight
+  away; `NoteTextIndexer` (`lib/services/notes/note_text_indexer.dart`)
+  then reads its pages in the background, 10 per batch, saving progress
+  after each batch and resuming at launch. PDFs over 40 MB or that PDFium
+  can't open are still read before saving.
 - **Diagrams:** the tutor can't see pictures. A caption line ("Figure 3.2
   …") or a picture region (ink that no text covers) becomes a marker
   paragraph, e.g. `[DIAGRAM: Figure 3.2 The heart | page 14 of the PDF
@@ -184,7 +222,7 @@ the fallback for files PDFium can't open.
 **Original PDFs (kept, viewable, synced).** Reversed 2026-10-01 at the user's
 request: the tutor uses the notes as a source of truth, so people must be
 able to read them as uploaded.
-- At the end of a successful import (never on cancel or failure),
+- At upload, before any page is read (never on cancel or failure),
   `NotePdfStore` (`lib/services/notes/note_pdf_store.dart`) stores the file
   as `<app support>/otic_note_pdfs/<sha256>.pdf`, up to 40 MB.
 - It also writes one **marker row** in the note: `topic_key = '~pdf-original'`,
@@ -193,8 +231,22 @@ able to read them as uploaded.
     digest covers it. It is shared and unshared, relayed verbatim by
     classmates, deleted, and carried in a failover ledger exactly like the
     note.
-  - The `~` keeps it out of `MIN(topic_key)`. FTS search and
-    `chunksForSubject` exclude it.
+  - The `~` keeps it out of `MIN(topic_key)`. FTS search, `chunksForSubject`
+    and the notes text exclude **every** `~` row (`kRecordTopicPrefix`).
+- **Quiz questions** are `~quiz` rows of the same note (`[QUIZ: page=N] {json}`,
+  topic inside the JSON), written per **topic** (section heading) from the
+  note's stored text by `NoteQuizBuilder` as it arrives — up to 8 per topic,
+  the last topic waiting until reading ends (resumed at launch, own notes
+  only, retried — never skipped — when the engine fails).
+  - Each question is checked before it's kept
+    (`NotesQuizGenerator.checkedQuestion`): options shuffled, the key must be
+    supported by the passage, and the model, shown only the passage, must
+    pick the same answer. Otherwise it's dropped.
+  - They sync, share and delete with the note; Quiz shows them instantly,
+    by topic (`NoteQuizStore`).
+  - Finished rounds are saved per learner and topic in `quiz_results`
+    (schema 21, `quiz_scores.dart`) and shown under Quiz scores in
+    Achievements.
 - **Bytes** come from `api/v4/sync/file` (`ClassShareServer._noteFile`).
   - It serves a file only if its marker is in a channel the requester may
     pull.
@@ -234,20 +286,20 @@ loosen any of these rules:
   its learner's name and taps Accept/Decline (`JoinRequestsCard`). Decline
   or no answer hands over nothing.
 
-- **School.** It's set in Teachers → School on the teacher's device. A student
-  device adopts it at its first join and refuses classes from any other
+- **School.** It's set in Teachers → School on the device the teacher uses. A
+  joining device adopts it at its first join and refuses classes from any other
   school.
 - **Joining.** The teacher's Class sync screen (Teacher → Class sync,
   PIN-gated) shows a join code (30 min, locked after 20 wrong tries). The
   student types it on **Class sync** in the main menu (`/class-sync`,
   `ClassSyncScreen`), deliberately outside `/teacher*` so no PIN is needed.
   Either side can be any Android phone or Windows/Linux PC.
-  - The teacher's device is found by UDP broadcast + mDNS. Phone hotspots
+  - The sharing device is found by UDP broadcast + mDNS. Phone hotspots
     often block both, so the teacher screen also shows its IP address and
     the student screen accepts it typed in (`sync_address.dart`).
   - The code never crosses the network. A PBKDF2-stretched proof does. One
     random code per sharing session (`Random.secure`), 30 minutes.
-  - The reply gives the device the class key and pins the teacher device's
+  - The reply gives the device the class key and pins the sharing device's
     Ed25519 public key. The class is created locally with the teacher's
     `groupUuid`.
 - **Serving.** `ClassSyncDao.sharedChunks` is the only rule. A chunk is
@@ -294,8 +346,8 @@ loosen any of these rules:
 - **Shared devices.** Tutor retrieval sees this device's own notes plus
   received notes for the **active learner's** class only
   (`TopicResourceDao._visibleTo`).
-- **Co-teachers (schema 19).** A class's root teacher device can invite
-  other teacher devices as co-teachers for specific subjects
+- **Co-teachers (schema 19).** A class's root (host) device can invite
+  other teachers' devices as co-teachers for specific subjects
   (`api/v4/coteacher/join`, own code + Accept; `CoTeacherDao`).
   - Allocation is **disjoint**: one signer per (class, subject), enforced
     at invite time.
@@ -315,7 +367,7 @@ loosen any of these rules:
   - A delegated class lives in `co_teaching_classes`, never in
     `class_groups`.
 - **Host failover (schema 20).** A standby can take over as the root
-  teacher device (`P2PFailoverService`, `lib/collaboration/sync/p2p_failover_service.dart`).
+  (host) device (`P2PFailoverService`, `lib/collaboration/sync/p2p_failover_service.dart`).
   - The teacher sets a failover passphrase (≥12 chars). A standby pairs
     with a code + Accept (`api/v4/failover/pair`), then pulls the host
     ledger (`api/v4/failover/ledger`, requests signed by the standby's
@@ -323,7 +375,7 @@ loosen any of these rules:
   - The ledger holds the root **signing seed**, classes + keys, served
     versions, roster/co-teachers, subjects, shares and the shared notes,
     AES-GCM sealed under a PBKDF2 (600k) passphrase key — never a class key.
-    The root private key therefore leaves the teacher's device, protected
+    The root private key therefore leaves the host device, protected
     only by the passphrase.
   - `promoteToHostNode` opens it offline and becomes root under the same
     key at `hostGeneration + 1`. Served/roster versions are lifted to
@@ -331,9 +383,11 @@ loosen any of these rules:
     nothing; root handshakes carry `host_epoch`, and a student refuses a
     lower one (`class_groups.host_epoch`), so a returning old device can't
     drop notes.
-  - Refused on student devices and on devices serving their own classes.
+  - Refused on devices serving their own classes, and (when the key
+    changes) on devices that joined classes as a student — their key names
+    them in progress reports.
     Not carried: `member_reports` (re-sent next sync) and the standby list.
-  - Screens: the host side is the "Standby teacher device" card on Teacher →
+  - Screens: the host side is the "Standby device" card on Teacher →
     Class sync (passphrase, pair code, standby list, save backup to a file);
     the standby side is `/teacher/standby` (`standby_screen.dart`: pair,
     back up while open, take over from the held backup or a file).

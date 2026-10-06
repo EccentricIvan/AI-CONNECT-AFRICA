@@ -243,6 +243,8 @@ void main() {
     await prefs.setBool('lesson_done_s${aId}_chemistry_0_0', true);
     await prefs.setBool('lesson_done_s${bId}_chemistry_0_0', true);
     await prefs.setBool('lesson_done_chemistry_0_0', true); // legacy shared key
+    await prefs.setString('pdf_hl_s${aId}_doc', '[]');
+    await prefs.setString('pdf_hl_s${bId}_doc', '[]');
 
     await wiper.wipeStudent(aId);
 
@@ -272,6 +274,12 @@ void main() {
       prefs.getBool('lesson_done_s${bId}_chemistry_0_0'),
       isTrue,
       reason: "another learner's own scoped checkmark must survive",
+    );
+    expect(prefs.getString('pdf_hl_s${aId}_doc'), isNull);
+    expect(
+      prefs.getString('pdf_hl_s${bId}_doc'),
+      isNotNull,
+      reason: "another learner's PDF highlights must survive",
     );
     expect(
       prefs.getBool('lesson_done_chemistry_0_0'),
@@ -380,6 +388,7 @@ void main() {
     await prefs.setString('student_name', 'Amina');
     await prefs.setBool('lesson_done_s${aId}_chemistry_0_0', true);
     await prefs.setBool('lesson_done_chemistry_0_0', true);
+    await prefs.setString('pdf_hl_s${aId}_doc', '[]');
 
     await wiper.wipeAll();
 
@@ -408,6 +417,7 @@ void main() {
       isNull,
       reason: 'no student remains for the legacy shared key to apply to',
     );
+    expect(prefs.getString('pdf_hl_s${aId}_doc'), isNull);
   });
 
   test('onboarding after wipeAll inserts a fresh profile instead of editing '
@@ -499,6 +509,8 @@ void main() {
       // (standby) — the school's teacher identity, not a learner's.
       'failover_standbys',
       'host_ledgers',
+      // Teachers who sign in on this device — not learners.
+      'teacher_profiles',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

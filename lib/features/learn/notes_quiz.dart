@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -7,7 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../curriculum/curriculum_models.dart';
+import '../../db/providers/db_provider.dart';
 import '../../services/custom_subject_service.dart';
+import '../../services/notes/note_quiz_builder.dart';
+import '../../services/notes/quiz_scores.dart';
 import 'subject_notes.dart';
 
 /// Multiple-choice questions written from the teacher's own notes — one
@@ -45,10 +49,20 @@ class NotesQuizGenerator {
   Future<QuizQuestion?> fromPassage(
     String passage, {
     required String subject,
+  }) async => (await tryPassage(passage, subject: subject)).question;
+
+  /// Like [fromPassage], but says when the engine itself failed — it
+  /// answers with a stock sentence instead of throwing — so a caller that
+  /// records progress can retry that passage instead of skipping it.
+  Future<({QuizQuestion? question, bool engineFailed})> tryPassage(
+    String passage, {
+    required String subject,
+    String? topic,
   }) async {
-    final clipped = passage.length > 900 ? passage.substring(0, 900) : passage;
+    final clipped = _clip(passage);
+    final about = topic == null || topic.isEmpty ? '' : ', topic "$topic"';
     final prompt =
-        '''You are a teacher writing a quiz for students of $subject.
+        '''You are a teacher writing a quiz for students of $subject$about.
 Read the passage from the class notes, then write ONE multiple-choice question that can be answered using only this passage.
 
 Passage:
@@ -69,12 +83,121 @@ Rules:
         maxTokens: 320,
         temperature: 0.3,
       );
-      return parse(raw);
+      return (question: parse(raw), engineFailed: isEngineFallback(raw));
     } catch (e) {
       debugPrint('Notes quiz question failed: $e');
-      return null;
+      return (question: null, engineFailed: true);
     }
   }
+
+  /// A question from [passage] that has passed the checks below, so the
+  /// answer it is marked by is the one the class notes give:
+  ///
+  /// - the options are shuffled (a small model puts the right answer first
+  ///   far too often);
+  /// - the keyed answer must be found in the passage at least as well as
+  ///   any wrong option ([groundedInPassage]);
+  /// - the model, shown only the passage and the question, must pick the
+  ///   keyed option again ([answersFromPassage]).
+  ///
+  /// A question failing a check is dropped (`question` null). [engineFailed]
+  /// as in [tryPassage].
+  Future<({QuizQuestion? question, bool engineFailed})> checkedQuestion(
+    String passage, {
+    required String subject,
+    String? topic,
+    math.Random? random,
+  }) async {
+    final r = await tryPassage(passage, subject: subject, topic: topic);
+    final q = r.question;
+    if (q == null) return r;
+    final shuffled = shuffleOptions(q, random ?? math.Random());
+    if (!groundedInPassage(shuffled, passage)) {
+      return (question: null, engineFailed: false);
+    }
+    final check = await answersFromPassage(shuffled, passage);
+    if (check.engineFailed) return (question: null, engineFailed: true);
+    return (question: check.agrees ? shuffled : null, engineFailed: false);
+  }
+
+  /// [q] with its options in a random order, still keyed to the same one.
+  static QuizQuestion shuffleOptions(QuizQuestion q, math.Random random) {
+    final order = List<int>.generate(q.options.length, (i) => i)
+      ..shuffle(random);
+    return QuizQuestion(
+      question: q.question,
+      options: [for (final i in order) q.options[i]],
+      correct: order.indexOf(q.correct),
+      explanation: q.explanation,
+    );
+  }
+
+  static Set<String> _words(String text) => {
+    for (final w in text.toLowerCase().split(RegExp(r'[^a-z0-9]+')))
+      if (w.length >= 3 || RegExp(r'^\d+$').hasMatch(w)) w,
+  };
+
+  /// Share of [option]'s words that appear in [passage].
+  static double _support(String option, Set<String> passage) {
+    final words = _words(option);
+    if (words.isEmpty) return 0;
+    return words.where(passage.contains).length / words.length;
+  }
+
+  /// False when a wrong option is clearly better supported by [passage]
+  /// than the keyed answer — the key is likely wrong.
+  static bool groundedInPassage(QuizQuestion q, String passage) {
+    final words = _words(passage);
+    final keyed = _support(q.options[q.correct], words);
+    for (var i = 0; i < q.options.length; i++) {
+      if (i == q.correct) continue;
+      if (_support(q.options[i], words) > keyed + 0.34) return false;
+    }
+    return true;
+  }
+
+  /// Asks the model to answer [q] from [passage] alone; [agrees] when it
+  /// picks the keyed option.
+  Future<({bool agrees, bool engineFailed})> answersFromPassage(
+    QuizQuestion q,
+    String passage,
+  ) async {
+    const letters = ['A', 'B', 'C', 'D'];
+    final prompt =
+        '''Read the class notes, then answer the question using only the notes.
+
+Notes:
+"""
+${_clip(passage)}
+"""
+
+Question: ${q.question}
+${[for (var i = 0; i < q.options.length; i++) '${letters[i]}) ${q.options[i]}'].join('\n')}
+
+Reply with the letter of the correct option only.''';
+    try {
+      final raw = await _engine.generate(
+        prompt: prompt,
+        maxTokens: 6,
+        temperature: 0,
+      );
+      if (isEngineFallback(raw)) return (agrees: false, engineFailed: true);
+      final m = RegExp(r'\b([ABCD])\b').firstMatch(raw.toUpperCase());
+      final picked = m == null ? -1 : letters.indexOf(m[1]!);
+      return (agrees: picked == q.correct, engineFailed: false);
+    } catch (e) {
+      debugPrint('Notes quiz check failed: $e');
+      return (agrees: false, engineFailed: true);
+    }
+  }
+
+  static String _clip(String passage) =>
+      passage.length > 900 ? passage.substring(0, 900) : passage;
+
+  /// The stock sentences the engines answer with when generation failed.
+  static bool isEngineFallback(String raw) =>
+      raw.contains('I hit a brief snag') ||
+      raw.contains('on-device model is unavailable');
 
   /// The question in [raw], or null when it isn't a usable one.
   static QuizQuestion? parse(String raw) {
@@ -115,6 +238,8 @@ Rules:
 class SubjectQuizState {
   const SubjectQuizState({
     this.questions = const [],
+    this.topics = const [],
+    this.topic,
     this.generating = false,
     this.target = 0,
     this.answers = const {},
@@ -122,6 +247,12 @@ class SubjectQuizState {
   });
 
   final List<QuizQuestion> questions;
+
+  /// The topic of each of [questions], index for index ('' for none).
+  final List<String> topics;
+
+  /// The topic this round is on; null for a round over every topic.
+  final String? topic;
   final bool generating;
 
   /// Questions asked for this round.
@@ -139,8 +270,20 @@ class SubjectQuizState {
   bool get finished =>
       !generating && questions.isNotEmpty && answers.length == questions.length;
 
+  /// Topic → (correct, answered) of this round.
+  Map<String, (int, int)> get scoreByTopic {
+    final out = <String, (int, int)>{};
+    for (final e in answers.entries) {
+      final t = e.key < topics.length ? topics[e.key] : '';
+      final (c, n) = out[t] ?? (0, 0);
+      out[t] = (c + (questions[e.key].correct == e.value ? 1 : 0), n + 1);
+    }
+    return out;
+  }
+
   SubjectQuizState copyWith({
     List<QuizQuestion>? questions,
+    List<String>? topics,
     bool? generating,
     int? target,
     Map<int, int>? answers,
@@ -148,6 +291,8 @@ class SubjectQuizState {
     bool clearError = false,
   }) => SubjectQuizState(
     questions: questions ?? this.questions,
+    topics: topics ?? this.topics,
+    topic: topic,
     generating: generating ?? this.generating,
     target: target ?? this.target,
     answers: answers ?? this.answers,
@@ -162,7 +307,40 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
   @override
   SubjectQuizState build(String subjectId) => const SubjectQuizState();
 
-  Future<void> start({int count = 5}) async {
+  /// Questions per round taken from the ones written ahead.
+  static const storedRoundSize = 10;
+
+  /// Shows a round of the questions written ahead from the notes' topics
+  /// (`NoteQuizBuilder`) at once — only [topic]'s when given. False when
+  /// there are none yet.
+  Future<bool> startStored({String? topic}) async {
+    final round = ++_round;
+    try {
+      final classUuid = await ref.read(learnerClassUuidProvider.future);
+      final stored = [
+        for (final q in await ref
+            .read(noteQuizStoreProvider)
+            .questions(arg, classUuid: classUuid))
+          if (topic == null || q.topic == topic) q,
+      ];
+      if (round != _round || stored.isEmpty) return false;
+      stored.shuffle();
+      final pick = stored.take(storedRoundSize).toList();
+      state = SubjectQuizState(
+        questions: [for (final q in pick) q.question],
+        topics: [for (final q in pick) q.topic],
+        topic: topic,
+        target: pick.length,
+      );
+      return true;
+    } catch (e) {
+      debugPrint('Stored quiz unavailable: $e');
+      return false;
+    }
+  }
+
+  Future<void> start({int count = 5, String? topic}) async {
+    if (await startStored(topic: topic)) return;
     final round = ++_round;
     state = SubjectQuizState(generating: true, target: count);
     try {
@@ -175,14 +353,17 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
         final engine = await ref.read(engineLoadedProvider.future);
         final generator = NotesQuizGenerator(engine);
         for (final p in passages) {
-          final q = await generator.fromPassage(
+          final r = await generator.checkedQuestion(
             p,
             subject: subject?.name ?? arg,
           );
           if (round != _round) return;
-          if (q != null) {
+          if (r.question case final q?) {
             questions.add(q);
-            state = state.copyWith(questions: List.of(questions));
+            state = state.copyWith(
+              questions: List.of(questions),
+              topics: List.filled(questions.length, ''),
+            );
           }
         }
       }
@@ -198,6 +379,7 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
       if (round != _round) return;
       state = state.copyWith(
         questions: questions,
+        topics: List.filled(questions.length, ''),
         generating: false,
         error: questions.isEmpty ? 'No questions available' : null,
       );
@@ -209,11 +391,37 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
         error: state.questions.isEmpty ? 'Quiz unavailable' : null,
       );
     }
+    // Every question answered while the round was still being written.
+    if (round == _round && state.finished) unawaited(_record(state));
   }
 
   void answer(int index, int option) {
     if (state.answers.containsKey(index)) return;
     state = state.copyWith(answers: {...state.answers, index: option});
+    if (state.finished) unawaited(_record(state));
+  }
+
+  /// Saves a finished round's score per topic for Achievements. Questions
+  /// with no topic file under the subject's name. Guests have no learner,
+  /// so nothing is saved.
+  Future<void> _record(SubjectQuizState done) async {
+    try {
+      final student = await ref.read(activeStudentProvider.future);
+      if (student == null) return;
+      final name =
+          (await ref.read(subjectByIdProvider(arg).future))?.name ?? arg;
+      final byTopic = <String, (int, int)>{};
+      for (final e in done.scoreByTopic.entries) {
+        final t = e.key.isEmpty ? name : e.key;
+        final (c, n) = byTopic[t] ?? (0, 0);
+        byTopic[t] = (c + e.value.$1, n + e.value.$2);
+      }
+      await ref
+          .read(quizScoresProvider)
+          .record(studentId: student.id, subjectId: arg, byTopic: byTopic);
+    } catch (e) {
+      debugPrint('Quiz score not saved: $e');
+    }
   }
 
   void reset() {
@@ -221,6 +429,22 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
     state = const SubjectQuizState();
   }
 }
+
+/// The topics a learner may take a quiz on in a subject, with how many
+/// questions each has — live, so topics appear as questions are written.
+final subjectQuizTopicsProvider = StreamProvider.autoDispose
+    .family<List<(String, int)>, String>((ref, subjectId) async* {
+      final classUuid = await ref.watch(learnerClassUuidProvider.future);
+      await for (final qs in ref
+          .watch(noteQuizStoreProvider)
+          .watch(subjectId, classUuid: classUuid)) {
+        final counts = <String, int>{};
+        for (final q in qs) {
+          counts[q.topic] = (counts[q.topic] ?? 0) + 1;
+        }
+        yield [for (final e in counts.entries) (e.key, e.value)];
+      }
+    });
 
 final subjectQuizProvider =
     NotifierProvider.family<SubjectQuizNotifier, SubjectQuizState, String>(
