@@ -21,6 +21,39 @@ class AdminIdentity extends Table {
   /// ISO-8601 UTC.
   TextColumn get createdAt => text()();
 
+  /// The Admin's Ed25519 signing seed: every bundle of school records the
+  /// Admin sends is signed with it. Minted on first send.
+  TextColumn get signingSeed => text().nullable()();
+
+  /// Version of the last bundle sent; each send goes one higher.
+  IntColumn get recordsVersion => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// On a device that received the Admin's school records: whose they are
+/// and which version, so only that Admin's newer records are ever taken.
+/// Single row (id 1).
+@DataClassName('AdminRecordsStateRow')
+class AdminRecordsState extends Table {
+  @override
+  String get tableName => 'admin_records_state';
+
+  IntColumn get id => integer()();
+
+  /// The Admin key pinned by the first records this device took.
+  TextColumn get adminPublicKey => text()();
+  IntColumn get version => integer()();
+  TextColumn get schoolId => text()();
+
+  /// ISO-8601 UTC.
+  TextColumn get receivedAt => text()();
+
+  /// The Admin's details sealed under their passphrase, when sent so the
+  /// Admin can take over here; cleared once they do.
+  TextColumn get takeoverJson => text().nullable()();
+
   @override
   Set<Column> get primaryKey => {id};
 }

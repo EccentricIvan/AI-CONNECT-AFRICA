@@ -82,6 +82,7 @@ part 'otic_database.g.dart';
     TeachingAssignments,
     StudentEnrolments,
     NoteOwners,
+    AdminRecordsState,
   ],
   daos: [
     StudentDao,
@@ -114,7 +115,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 24;
+  int get schemaVersion => 25;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -569,6 +570,19 @@ class OticDatabase extends _$OticDatabase {
         }
         await _adoptOwnershipAsAssignments();
         await _createUuidTriggers();
+      }
+      if (from < 25) {
+        // Admin sync: the Admin's signing key and records version, and on
+        // a receiving device whose records it holds.
+        if (!await _columnExists('admin_identity', 'signing_seed')) {
+          await m.addColumn(adminIdentity, adminIdentity.signingSeed);
+        }
+        if (!await _columnExists('admin_identity', 'records_version')) {
+          await m.addColumn(adminIdentity, adminIdentity.recordsVersion);
+        }
+        if (!await _tableExists('admin_records_state')) {
+          await m.createTable(adminRecordsState);
+        }
       }
     },
   );

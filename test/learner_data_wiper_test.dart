@@ -514,6 +514,7 @@ void main() {
       // The Admin's records and who uploaded each note — school data, not
       // any learner's.
       'admin_identity',
+      'admin_records_state',
       'teaching_assignments',
       'note_owners',
     };

@@ -14336,8 +14336,39 @@ class $AdminIdentityTable extends AdminIdentity
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _signingSeedMeta = const VerificationMeta(
+    'signingSeed',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, pinSalt, pinHash, createdAt];
+  late final GeneratedColumn<String> signingSeed = GeneratedColumn<String>(
+    'signing_seed',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordsVersionMeta = const VerificationMeta(
+    'recordsVersion',
+  );
+  @override
+  late final GeneratedColumn<int> recordsVersion = GeneratedColumn<int>(
+    'records_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    pinSalt,
+    pinHash,
+    createdAt,
+    signingSeed,
+    recordsVersion,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -14385,6 +14416,24 @@ class $AdminIdentityTable extends AdminIdentity
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('signing_seed')) {
+      context.handle(
+        _signingSeedMeta,
+        signingSeed.isAcceptableOrUnknown(
+          data['signing_seed']!,
+          _signingSeedMeta,
+        ),
+      );
+    }
+    if (data.containsKey('records_version')) {
+      context.handle(
+        _recordsVersionMeta,
+        recordsVersion.isAcceptableOrUnknown(
+          data['records_version']!,
+          _recordsVersionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -14414,6 +14463,14 @@ class $AdminIdentityTable extends AdminIdentity
         DriftSqlType.string,
         data['${effectivePrefix}created_at'],
       )!,
+      signingSeed: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signing_seed'],
+      ),
+      recordsVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}records_version'],
+      )!,
     );
   }
 
@@ -14434,12 +14491,21 @@ class AdminIdentityRow extends DataClass
 
   /// ISO-8601 UTC.
   final String createdAt;
+
+  /// The Admin's Ed25519 signing seed: every bundle of school records the
+  /// Admin sends is signed with it. Minted on first send.
+  final String? signingSeed;
+
+  /// Version of the last bundle sent; each send goes one higher.
+  final int recordsVersion;
   const AdminIdentityRow({
     required this.id,
     required this.name,
     required this.pinSalt,
     required this.pinHash,
     required this.createdAt,
+    this.signingSeed,
+    required this.recordsVersion,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -14449,6 +14515,10 @@ class AdminIdentityRow extends DataClass
     map['pin_salt'] = Variable<String>(pinSalt);
     map['pin_hash'] = Variable<String>(pinHash);
     map['created_at'] = Variable<String>(createdAt);
+    if (!nullToAbsent || signingSeed != null) {
+      map['signing_seed'] = Variable<String>(signingSeed);
+    }
+    map['records_version'] = Variable<int>(recordsVersion);
     return map;
   }
 
@@ -14459,6 +14529,10 @@ class AdminIdentityRow extends DataClass
       pinSalt: Value(pinSalt),
       pinHash: Value(pinHash),
       createdAt: Value(createdAt),
+      signingSeed: signingSeed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(signingSeed),
+      recordsVersion: Value(recordsVersion),
     );
   }
 
@@ -14473,6 +14547,8 @@ class AdminIdentityRow extends DataClass
       pinSalt: serializer.fromJson<String>(json['pinSalt']),
       pinHash: serializer.fromJson<String>(json['pinHash']),
       createdAt: serializer.fromJson<String>(json['createdAt']),
+      signingSeed: serializer.fromJson<String?>(json['signingSeed']),
+      recordsVersion: serializer.fromJson<int>(json['recordsVersion']),
     );
   }
   @override
@@ -14484,6 +14560,8 @@ class AdminIdentityRow extends DataClass
       'pinSalt': serializer.toJson<String>(pinSalt),
       'pinHash': serializer.toJson<String>(pinHash),
       'createdAt': serializer.toJson<String>(createdAt),
+      'signingSeed': serializer.toJson<String?>(signingSeed),
+      'recordsVersion': serializer.toJson<int>(recordsVersion),
     };
   }
 
@@ -14493,12 +14571,16 @@ class AdminIdentityRow extends DataClass
     String? pinSalt,
     String? pinHash,
     String? createdAt,
+    Value<String?> signingSeed = const Value.absent(),
+    int? recordsVersion,
   }) => AdminIdentityRow(
     id: id ?? this.id,
     name: name ?? this.name,
     pinSalt: pinSalt ?? this.pinSalt,
     pinHash: pinHash ?? this.pinHash,
     createdAt: createdAt ?? this.createdAt,
+    signingSeed: signingSeed.present ? signingSeed.value : this.signingSeed,
+    recordsVersion: recordsVersion ?? this.recordsVersion,
   );
   AdminIdentityRow copyWithCompanion(AdminIdentityCompanion data) {
     return AdminIdentityRow(
@@ -14507,6 +14589,12 @@ class AdminIdentityRow extends DataClass
       pinSalt: data.pinSalt.present ? data.pinSalt.value : this.pinSalt,
       pinHash: data.pinHash.present ? data.pinHash.value : this.pinHash,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      signingSeed: data.signingSeed.present
+          ? data.signingSeed.value
+          : this.signingSeed,
+      recordsVersion: data.recordsVersion.present
+          ? data.recordsVersion.value
+          : this.recordsVersion,
     );
   }
 
@@ -14517,13 +14605,23 @@ class AdminIdentityRow extends DataClass
           ..write('name: $name, ')
           ..write('pinSalt: $pinSalt, ')
           ..write('pinHash: $pinHash, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('signingSeed: $signingSeed, ')
+          ..write('recordsVersion: $recordsVersion')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, pinSalt, pinHash, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    pinSalt,
+    pinHash,
+    createdAt,
+    signingSeed,
+    recordsVersion,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -14532,7 +14630,9 @@ class AdminIdentityRow extends DataClass
           other.name == this.name &&
           other.pinSalt == this.pinSalt &&
           other.pinHash == this.pinHash &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.signingSeed == this.signingSeed &&
+          other.recordsVersion == this.recordsVersion);
 }
 
 class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
@@ -14541,12 +14641,16 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
   final Value<String> pinSalt;
   final Value<String> pinHash;
   final Value<String> createdAt;
+  final Value<String?> signingSeed;
+  final Value<int> recordsVersion;
   const AdminIdentityCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.pinSalt = const Value.absent(),
     this.pinHash = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.signingSeed = const Value.absent(),
+    this.recordsVersion = const Value.absent(),
   });
   AdminIdentityCompanion.insert({
     this.id = const Value.absent(),
@@ -14554,6 +14658,8 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
     required String pinSalt,
     required String pinHash,
     required String createdAt,
+    this.signingSeed = const Value.absent(),
+    this.recordsVersion = const Value.absent(),
   }) : name = Value(name),
        pinSalt = Value(pinSalt),
        pinHash = Value(pinHash),
@@ -14564,6 +14670,8 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
     Expression<String>? pinSalt,
     Expression<String>? pinHash,
     Expression<String>? createdAt,
+    Expression<String>? signingSeed,
+    Expression<int>? recordsVersion,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -14571,6 +14679,8 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
       if (pinSalt != null) 'pin_salt': pinSalt,
       if (pinHash != null) 'pin_hash': pinHash,
       if (createdAt != null) 'created_at': createdAt,
+      if (signingSeed != null) 'signing_seed': signingSeed,
+      if (recordsVersion != null) 'records_version': recordsVersion,
     });
   }
 
@@ -14580,6 +14690,8 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
     Value<String>? pinSalt,
     Value<String>? pinHash,
     Value<String>? createdAt,
+    Value<String?>? signingSeed,
+    Value<int>? recordsVersion,
   }) {
     return AdminIdentityCompanion(
       id: id ?? this.id,
@@ -14587,6 +14699,8 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
       pinSalt: pinSalt ?? this.pinSalt,
       pinHash: pinHash ?? this.pinHash,
       createdAt: createdAt ?? this.createdAt,
+      signingSeed: signingSeed ?? this.signingSeed,
+      recordsVersion: recordsVersion ?? this.recordsVersion,
     );
   }
 
@@ -14608,6 +14722,12 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
     if (createdAt.present) {
       map['created_at'] = Variable<String>(createdAt.value);
     }
+    if (signingSeed.present) {
+      map['signing_seed'] = Variable<String>(signingSeed.value);
+    }
+    if (recordsVersion.present) {
+      map['records_version'] = Variable<int>(recordsVersion.value);
+    }
     return map;
   }
 
@@ -14618,7 +14738,9 @@ class AdminIdentityCompanion extends UpdateCompanion<AdminIdentityRow> {
           ..write('name: $name, ')
           ..write('pinSalt: $pinSalt, ')
           ..write('pinHash: $pinHash, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('signingSeed: $signingSeed, ')
+          ..write('recordsVersion: $recordsVersion')
           ..write(')'))
         .toString();
   }
@@ -15884,6 +16006,429 @@ class NoteOwnersCompanion extends UpdateCompanion<NoteOwner> {
   }
 }
 
+class $AdminRecordsStateTable extends AdminRecordsState
+    with TableInfo<$AdminRecordsStateTable, AdminRecordsStateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AdminRecordsStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _adminPublicKeyMeta = const VerificationMeta(
+    'adminPublicKey',
+  );
+  @override
+  late final GeneratedColumn<String> adminPublicKey = GeneratedColumn<String>(
+    'admin_public_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _schoolIdMeta = const VerificationMeta(
+    'schoolId',
+  );
+  @override
+  late final GeneratedColumn<String> schoolId = GeneratedColumn<String>(
+    'school_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<String> receivedAt = GeneratedColumn<String>(
+    'received_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _takeoverJsonMeta = const VerificationMeta(
+    'takeoverJson',
+  );
+  @override
+  late final GeneratedColumn<String> takeoverJson = GeneratedColumn<String>(
+    'takeover_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    adminPublicKey,
+    version,
+    schoolId,
+    receivedAt,
+    takeoverJson,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'admin_records_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AdminRecordsStateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('admin_public_key')) {
+      context.handle(
+        _adminPublicKeyMeta,
+        adminPublicKey.isAcceptableOrUnknown(
+          data['admin_public_key']!,
+          _adminPublicKeyMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_adminPublicKeyMeta);
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
+    if (data.containsKey('school_id')) {
+      context.handle(
+        _schoolIdMeta,
+        schoolId.isAcceptableOrUnknown(data['school_id']!, _schoolIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_schoolIdMeta);
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receivedAtMeta);
+    }
+    if (data.containsKey('takeover_json')) {
+      context.handle(
+        _takeoverJsonMeta,
+        takeoverJson.isAcceptableOrUnknown(
+          data['takeover_json']!,
+          _takeoverJsonMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AdminRecordsStateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AdminRecordsStateRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      adminPublicKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}admin_public_key'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      schoolId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}school_id'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}received_at'],
+      )!,
+      takeoverJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}takeover_json'],
+      ),
+    );
+  }
+
+  @override
+  $AdminRecordsStateTable createAlias(String alias) {
+    return $AdminRecordsStateTable(attachedDatabase, alias);
+  }
+}
+
+class AdminRecordsStateRow extends DataClass
+    implements Insertable<AdminRecordsStateRow> {
+  final int id;
+
+  /// The Admin key pinned by the first records this device took.
+  final String adminPublicKey;
+  final int version;
+  final String schoolId;
+
+  /// ISO-8601 UTC.
+  final String receivedAt;
+
+  /// The Admin's details sealed under their passphrase, when sent so the
+  /// Admin can take over here; cleared once they do.
+  final String? takeoverJson;
+  const AdminRecordsStateRow({
+    required this.id,
+    required this.adminPublicKey,
+    required this.version,
+    required this.schoolId,
+    required this.receivedAt,
+    this.takeoverJson,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['admin_public_key'] = Variable<String>(adminPublicKey);
+    map['version'] = Variable<int>(version);
+    map['school_id'] = Variable<String>(schoolId);
+    map['received_at'] = Variable<String>(receivedAt);
+    if (!nullToAbsent || takeoverJson != null) {
+      map['takeover_json'] = Variable<String>(takeoverJson);
+    }
+    return map;
+  }
+
+  AdminRecordsStateCompanion toCompanion(bool nullToAbsent) {
+    return AdminRecordsStateCompanion(
+      id: Value(id),
+      adminPublicKey: Value(adminPublicKey),
+      version: Value(version),
+      schoolId: Value(schoolId),
+      receivedAt: Value(receivedAt),
+      takeoverJson: takeoverJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(takeoverJson),
+    );
+  }
+
+  factory AdminRecordsStateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AdminRecordsStateRow(
+      id: serializer.fromJson<int>(json['id']),
+      adminPublicKey: serializer.fromJson<String>(json['adminPublicKey']),
+      version: serializer.fromJson<int>(json['version']),
+      schoolId: serializer.fromJson<String>(json['schoolId']),
+      receivedAt: serializer.fromJson<String>(json['receivedAt']),
+      takeoverJson: serializer.fromJson<String?>(json['takeoverJson']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'adminPublicKey': serializer.toJson<String>(adminPublicKey),
+      'version': serializer.toJson<int>(version),
+      'schoolId': serializer.toJson<String>(schoolId),
+      'receivedAt': serializer.toJson<String>(receivedAt),
+      'takeoverJson': serializer.toJson<String?>(takeoverJson),
+    };
+  }
+
+  AdminRecordsStateRow copyWith({
+    int? id,
+    String? adminPublicKey,
+    int? version,
+    String? schoolId,
+    String? receivedAt,
+    Value<String?> takeoverJson = const Value.absent(),
+  }) => AdminRecordsStateRow(
+    id: id ?? this.id,
+    adminPublicKey: adminPublicKey ?? this.adminPublicKey,
+    version: version ?? this.version,
+    schoolId: schoolId ?? this.schoolId,
+    receivedAt: receivedAt ?? this.receivedAt,
+    takeoverJson: takeoverJson.present ? takeoverJson.value : this.takeoverJson,
+  );
+  AdminRecordsStateRow copyWithCompanion(AdminRecordsStateCompanion data) {
+    return AdminRecordsStateRow(
+      id: data.id.present ? data.id.value : this.id,
+      adminPublicKey: data.adminPublicKey.present
+          ? data.adminPublicKey.value
+          : this.adminPublicKey,
+      version: data.version.present ? data.version.value : this.version,
+      schoolId: data.schoolId.present ? data.schoolId.value : this.schoolId,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+      takeoverJson: data.takeoverJson.present
+          ? data.takeoverJson.value
+          : this.takeoverJson,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AdminRecordsStateRow(')
+          ..write('id: $id, ')
+          ..write('adminPublicKey: $adminPublicKey, ')
+          ..write('version: $version, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('takeoverJson: $takeoverJson')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    adminPublicKey,
+    version,
+    schoolId,
+    receivedAt,
+    takeoverJson,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AdminRecordsStateRow &&
+          other.id == this.id &&
+          other.adminPublicKey == this.adminPublicKey &&
+          other.version == this.version &&
+          other.schoolId == this.schoolId &&
+          other.receivedAt == this.receivedAt &&
+          other.takeoverJson == this.takeoverJson);
+}
+
+class AdminRecordsStateCompanion extends UpdateCompanion<AdminRecordsStateRow> {
+  final Value<int> id;
+  final Value<String> adminPublicKey;
+  final Value<int> version;
+  final Value<String> schoolId;
+  final Value<String> receivedAt;
+  final Value<String?> takeoverJson;
+  const AdminRecordsStateCompanion({
+    this.id = const Value.absent(),
+    this.adminPublicKey = const Value.absent(),
+    this.version = const Value.absent(),
+    this.schoolId = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+    this.takeoverJson = const Value.absent(),
+  });
+  AdminRecordsStateCompanion.insert({
+    this.id = const Value.absent(),
+    required String adminPublicKey,
+    required int version,
+    required String schoolId,
+    required String receivedAt,
+    this.takeoverJson = const Value.absent(),
+  }) : adminPublicKey = Value(adminPublicKey),
+       version = Value(version),
+       schoolId = Value(schoolId),
+       receivedAt = Value(receivedAt);
+  static Insertable<AdminRecordsStateRow> custom({
+    Expression<int>? id,
+    Expression<String>? adminPublicKey,
+    Expression<int>? version,
+    Expression<String>? schoolId,
+    Expression<String>? receivedAt,
+    Expression<String>? takeoverJson,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (adminPublicKey != null) 'admin_public_key': adminPublicKey,
+      if (version != null) 'version': version,
+      if (schoolId != null) 'school_id': schoolId,
+      if (receivedAt != null) 'received_at': receivedAt,
+      if (takeoverJson != null) 'takeover_json': takeoverJson,
+    });
+  }
+
+  AdminRecordsStateCompanion copyWith({
+    Value<int>? id,
+    Value<String>? adminPublicKey,
+    Value<int>? version,
+    Value<String>? schoolId,
+    Value<String>? receivedAt,
+    Value<String?>? takeoverJson,
+  }) {
+    return AdminRecordsStateCompanion(
+      id: id ?? this.id,
+      adminPublicKey: adminPublicKey ?? this.adminPublicKey,
+      version: version ?? this.version,
+      schoolId: schoolId ?? this.schoolId,
+      receivedAt: receivedAt ?? this.receivedAt,
+      takeoverJson: takeoverJson ?? this.takeoverJson,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (adminPublicKey.present) {
+      map['admin_public_key'] = Variable<String>(adminPublicKey.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (schoolId.present) {
+      map['school_id'] = Variable<String>(schoolId.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<String>(receivedAt.value);
+    }
+    if (takeoverJson.present) {
+      map['takeover_json'] = Variable<String>(takeoverJson.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AdminRecordsStateCompanion(')
+          ..write('id: $id, ')
+          ..write('adminPublicKey: $adminPublicKey, ')
+          ..write('version: $version, ')
+          ..write('schoolId: $schoolId, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('takeoverJson: $takeoverJson')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -15936,6 +16481,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $StudentEnrolmentsTable studentEnrolments =
       $StudentEnrolmentsTable(this);
   late final $NoteOwnersTable noteOwners = $NoteOwnersTable(this);
+  late final $AdminRecordsStateTable adminRecordsState =
+      $AdminRecordsStateTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -16065,6 +16612,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     teachingAssignments,
     studentEnrolments,
     noteOwners,
+    adminRecordsState,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -23167,6 +23715,8 @@ typedef $$AdminIdentityTableCreateCompanionBuilder =
       required String pinSalt,
       required String pinHash,
       required String createdAt,
+      Value<String?> signingSeed,
+      Value<int> recordsVersion,
     });
 typedef $$AdminIdentityTableUpdateCompanionBuilder =
     AdminIdentityCompanion Function({
@@ -23175,6 +23725,8 @@ typedef $$AdminIdentityTableUpdateCompanionBuilder =
       Value<String> pinSalt,
       Value<String> pinHash,
       Value<String> createdAt,
+      Value<String?> signingSeed,
+      Value<int> recordsVersion,
     });
 
 class $$AdminIdentityTableFilterComposer
@@ -23208,6 +23760,16 @@ class $$AdminIdentityTableFilterComposer
 
   ColumnFilters<String> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get recordsVersion => $composableBuilder(
+    column: $table.recordsVersion,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -23245,6 +23807,16 @@ class $$AdminIdentityTableOrderingComposer
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get recordsVersion => $composableBuilder(
+    column: $table.recordsVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AdminIdentityTableAnnotationComposer
@@ -23270,6 +23842,16 @@ class $$AdminIdentityTableAnnotationComposer
 
   GeneratedColumn<String> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get signingSeed => $composableBuilder(
+    column: $table.signingSeed,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get recordsVersion => $composableBuilder(
+    column: $table.recordsVersion,
+    builder: (column) => column,
+  );
 }
 
 class $$AdminIdentityTableTableManager
@@ -23312,12 +23894,16 @@ class $$AdminIdentityTableTableManager
                 Value<String> pinSalt = const Value.absent(),
                 Value<String> pinHash = const Value.absent(),
                 Value<String> createdAt = const Value.absent(),
+                Value<String?> signingSeed = const Value.absent(),
+                Value<int> recordsVersion = const Value.absent(),
               }) => AdminIdentityCompanion(
                 id: id,
                 name: name,
                 pinSalt: pinSalt,
                 pinHash: pinHash,
                 createdAt: createdAt,
+                signingSeed: signingSeed,
+                recordsVersion: recordsVersion,
               ),
           createCompanionCallback:
               ({
@@ -23326,12 +23912,16 @@ class $$AdminIdentityTableTableManager
                 required String pinSalt,
                 required String pinHash,
                 required String createdAt,
+                Value<String?> signingSeed = const Value.absent(),
+                Value<int> recordsVersion = const Value.absent(),
               }) => AdminIdentityCompanion.insert(
                 id: id,
                 name: name,
                 pinSalt: pinSalt,
                 pinHash: pinHash,
                 createdAt: createdAt,
+                signingSeed: signingSeed,
+                recordsVersion: recordsVersion,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -24039,6 +24629,238 @@ typedef $$NoteOwnersTableProcessedTableManager =
       NoteOwner,
       PrefetchHooks Function()
     >;
+typedef $$AdminRecordsStateTableCreateCompanionBuilder =
+    AdminRecordsStateCompanion Function({
+      Value<int> id,
+      required String adminPublicKey,
+      required int version,
+      required String schoolId,
+      required String receivedAt,
+      Value<String?> takeoverJson,
+    });
+typedef $$AdminRecordsStateTableUpdateCompanionBuilder =
+    AdminRecordsStateCompanion Function({
+      Value<int> id,
+      Value<String> adminPublicKey,
+      Value<int> version,
+      Value<String> schoolId,
+      Value<String> receivedAt,
+      Value<String?> takeoverJson,
+    });
+
+class $$AdminRecordsStateTableFilterComposer
+    extends Composer<_$OticDatabase, $AdminRecordsStateTable> {
+  $$AdminRecordsStateTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get adminPublicKey => $composableBuilder(
+    column: $table.adminPublicKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get takeoverJson => $composableBuilder(
+    column: $table.takeoverJson,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AdminRecordsStateTableOrderingComposer
+    extends Composer<_$OticDatabase, $AdminRecordsStateTable> {
+  $$AdminRecordsStateTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get adminPublicKey => $composableBuilder(
+    column: $table.adminPublicKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get schoolId => $composableBuilder(
+    column: $table.schoolId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get takeoverJson => $composableBuilder(
+    column: $table.takeoverJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AdminRecordsStateTableAnnotationComposer
+    extends Composer<_$OticDatabase, $AdminRecordsStateTable> {
+  $$AdminRecordsStateTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get adminPublicKey => $composableBuilder(
+    column: $table.adminPublicKey,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<String> get schoolId =>
+      $composableBuilder(column: $table.schoolId, builder: (column) => column);
+
+  GeneratedColumn<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get takeoverJson => $composableBuilder(
+    column: $table.takeoverJson,
+    builder: (column) => column,
+  );
+}
+
+class $$AdminRecordsStateTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $AdminRecordsStateTable,
+          AdminRecordsStateRow,
+          $$AdminRecordsStateTableFilterComposer,
+          $$AdminRecordsStateTableOrderingComposer,
+          $$AdminRecordsStateTableAnnotationComposer,
+          $$AdminRecordsStateTableCreateCompanionBuilder,
+          $$AdminRecordsStateTableUpdateCompanionBuilder,
+          (
+            AdminRecordsStateRow,
+            BaseReferences<
+              _$OticDatabase,
+              $AdminRecordsStateTable,
+              AdminRecordsStateRow
+            >,
+          ),
+          AdminRecordsStateRow,
+          PrefetchHooks Function()
+        > {
+  $$AdminRecordsStateTableTableManager(
+    _$OticDatabase db,
+    $AdminRecordsStateTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AdminRecordsStateTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AdminRecordsStateTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AdminRecordsStateTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> adminPublicKey = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<String> schoolId = const Value.absent(),
+                Value<String> receivedAt = const Value.absent(),
+                Value<String?> takeoverJson = const Value.absent(),
+              }) => AdminRecordsStateCompanion(
+                id: id,
+                adminPublicKey: adminPublicKey,
+                version: version,
+                schoolId: schoolId,
+                receivedAt: receivedAt,
+                takeoverJson: takeoverJson,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String adminPublicKey,
+                required int version,
+                required String schoolId,
+                required String receivedAt,
+                Value<String?> takeoverJson = const Value.absent(),
+              }) => AdminRecordsStateCompanion.insert(
+                id: id,
+                adminPublicKey: adminPublicKey,
+                version: version,
+                schoolId: schoolId,
+                receivedAt: receivedAt,
+                takeoverJson: takeoverJson,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AdminRecordsStateTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $AdminRecordsStateTable,
+      AdminRecordsStateRow,
+      $$AdminRecordsStateTableFilterComposer,
+      $$AdminRecordsStateTableOrderingComposer,
+      $$AdminRecordsStateTableAnnotationComposer,
+      $$AdminRecordsStateTableCreateCompanionBuilder,
+      $$AdminRecordsStateTableUpdateCompanionBuilder,
+      (
+        AdminRecordsStateRow,
+        BaseReferences<
+          _$OticDatabase,
+          $AdminRecordsStateTable,
+          AdminRecordsStateRow
+        >,
+      ),
+      AdminRecordsStateRow,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -24106,4 +24928,6 @@ class $OticDatabaseManager {
       $$StudentEnrolmentsTableTableManager(_db, _db.studentEnrolments);
   $$NoteOwnersTableTableManager get noteOwners =>
       $$NoteOwnersTableTableManager(_db, _db.noteOwners);
+  $$AdminRecordsStateTableTableManager get adminRecordsState =>
+      $$AdminRecordsStateTableTableManager(_db, _db.adminRecordsState);
 }

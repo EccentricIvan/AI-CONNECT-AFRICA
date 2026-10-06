@@ -1,0 +1,494 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart';
+
+import '../../db/otic_database.dart';
+import '../sync/class_crypto.dart';
+import 'admin_records_crypto.dart';
+
+/// Why a bundle of school records was refused, or null when it was taken.
+typedef AdminRecordsError = String;
+
+/// The Admin's school records as one signed bundle, sent one way: from the
+/// device the Admin uses to another device.
+///
+/// - The bundle is the exact JSON text of the records plus the Admin key's
+///   signature over that text. A receiver takes it only if the signature
+///   checks out against the Admin key it already trusts (the first bundle
+///   it ever takes, after the Admin tapped Accept, pins that key) and the
+///   version is newer than the one it holds — so it can't be forged,
+///   edited or rolled back.
+/// - Applying is one transaction and idempotent: the same bundle twice
+///   changes nothing.
+/// - Teachers and learners are added or updated, never deleted: a device
+///   keeps a learner's local progress even if the Admin removed them.
+///   Assignments and enrolments are replaced whole.
+class AdminRecords {
+  AdminRecords(this._db);
+
+  final OticDatabase _db;
+
+  // ── Sending (the Admin's device) ──────────────────────────────────────
+
+  /// This device's Admin row, with a signing key minted on first use.
+  Future<AdminIdentityRow?> _admin() async {
+    final row = await (_db.select(
+      _db.adminIdentity,
+    )..where((t) => t.id.equals(1))).getSingleOrNull();
+    if (row == null || row.signingSeed != null) return row;
+    await (_db.update(_db.adminIdentity)..where((t) => t.id.equals(1))).write(
+      AdminIdentityCompanion(signingSeed: Value(newSigningSeed())),
+    );
+    return (_db.select(
+      _db.adminIdentity,
+    )..where((t) => t.id.equals(1))).getSingle();
+  }
+
+  /// The signed bundle of every school record, at a new version. Null
+  /// unless this device's Admin is set up and the school is set.
+  /// [takeover] (sealed Admin details) lets the Admin take over on the
+  /// receiving device with their passphrase.
+  Future<Map<String, Object?>?> export({Map<String, Object?>? takeover}) =>
+      _db.transaction(() async {
+        final admin = await _admin();
+        final me = await _db.classSyncDao.identity();
+        if (admin == null || admin.signingSeed == null || me.schoolId == null) {
+          return null;
+        }
+        final state = await _state();
+        final version =
+            [admin.recordsVersion, state?.version ?? 0].reduce(
+              (a, b) => a > b ? a : b,
+            ) +
+            1;
+        await (_db.update(_db.adminIdentity)..where((t) => t.id.equals(1)))
+            .write(AdminIdentityCompanion(recordsVersion: Value(version)));
+
+        final teachers = await _db.select(_db.teacherProfiles).get();
+        final teacherUuid = {for (final t in teachers) t.id: t.uuid};
+        final classes = <ClassGroup>[];
+        for (final c in await (_db.select(
+          _db.classGroups,
+        )..where((t) => t.joined.equals(false))).get()) {
+          if (c.groupUuid == null) continue;
+          classes.add(await _db.classSyncDao.ensureClassKey(c));
+        }
+        final learners = await _db.select(_db.students).get();
+        final learnerUuid = {for (final l in learners) l.id: l.uuid};
+
+        final payload = jsonEncode({
+          'format': kAdminRecordsFormat,
+          'school_id': me.schoolId,
+          'school_name': me.schoolName ?? '',
+          'version': version,
+          'issued_at': DateTime.now().toUtc().toIso8601String(),
+          'admin_public_key': await signingPublicKey(admin.signingSeed!),
+          'teachers': [
+            for (final t in teachers)
+              if (t.uuid != null)
+                {
+                  'uuid': t.uuid,
+                  'name': t.name,
+                  'pin_salt': t.pinSalt,
+                  'pin_hash': t.pinHash,
+                },
+          ],
+          'classes': [
+            for (final c in classes)
+              {
+                'uuid': c.groupUuid,
+                'name': c.className,
+                'stream': c.streamName,
+                'class_key': c.classKey,
+              },
+          ],
+          'subjects': [
+            for (final s in await (_db.select(
+              _db.customSubjects,
+            )..where((t) => t.classGroupUuid.isNull())).get())
+              {
+                'id': s.subjectId,
+                'name': s.name,
+                'icon': s.icon,
+                'color': s.color,
+              },
+          ],
+          'assignments': [
+            for (final a in await _db.select(_db.teachingAssignments).get())
+              if (teacherUuid[a.teacherId] != null)
+                {
+                  'uuid': a.uuid,
+                  'teacher_uuid': teacherUuid[a.teacherId],
+                  'class_uuid': a.classGroupUuid,
+                  'subject_id': a.subjectId,
+                  'year': a.academicYear,
+                  'term': a.term,
+                },
+          ],
+          'learners': [
+            for (final l in learners)
+              if (l.uuid != null)
+                {
+                  'uuid': l.uuid,
+                  'name': l.name,
+                  'grade': l.grade,
+                  'language': l.language,
+                  'pin_salt': l.pinSalt,
+                  'pin_hash': l.pinHash,
+                },
+          ],
+          'enrolments': [
+            for (final e in await _db.select(_db.studentEnrolments).get())
+              if (learnerUuid[e.studentId] != null)
+                {
+                  'uuid': e.uuid,
+                  'learner_uuid': learnerUuid[e.studentId],
+                  'class_uuid': e.classGroupUuid,
+                  'year': e.academicYear,
+                  'status': e.status,
+                },
+          ],
+          'takeover': ?takeover,
+        });
+        return {
+          'payload': payload,
+          'sig': await signAdminRecords(admin.signingSeed!, payload),
+        };
+      });
+
+  // ── Receiving ─────────────────────────────────────────────────────────
+
+  Future<AdminRecordsStateRow?> _state() => (_db.select(
+    _db.adminRecordsState,
+  )..where((t) => t.id.equals(1))).getSingleOrNull();
+
+  /// What this device holds from the Admin, or null.
+  Future<AdminRecordsStateRow?> received() => _state();
+
+  /// Checks and applies [bundle]. Null when taken; else why not.
+  Future<AdminRecordsError?> apply(Object? bundle) async {
+    if (bundle is! Map) return 'Not school records';
+    final payload = bundle['payload'], sig = bundle['sig'];
+    if (payload is! String || sig is! String) return 'Not school records';
+    final Map<String, Object?> r;
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map<String, Object?>) return 'Not school records';
+      r = decoded;
+    } catch (_) {
+      return 'Not school records';
+    }
+    final key = r['admin_public_key'], version = r['version'];
+    final schoolId = r['school_id'];
+    if (r['format'] != kAdminRecordsFormat ||
+        key is! String ||
+        version is! int ||
+        schoolId is! String) {
+      return 'Not school records';
+    }
+    if (!await verifyAdminRecords(key, payload, sig)) {
+      return 'The records’ signature doesn’t check out';
+    }
+    final state = await _state();
+    if (state != null && state.adminPublicKey != key) {
+      return 'These records are from a different Admin';
+    }
+    if (state != null && version <= state.version) {
+      return 'This device already has these records or newer';
+    }
+    if (await (_db.select(
+          _db.adminIdentity,
+        )..where((t) => t.id.equals(1))).getSingleOrNull() !=
+        null) {
+      return 'This device is the Admin’s';
+    }
+    final me = await _db.classSyncDao.identity();
+    if (me.schoolId != null && me.schoolId != schoolId) {
+      return 'This device belongs to ${me.schoolName ?? 'another school'}';
+    }
+
+    await _db.transaction(() async {
+      if (me.schoolId == null) {
+        await _db.classSyncDao.adoptSchool(
+          schoolId: schoolId,
+          schoolName: r['school_name'] as String? ?? '',
+        );
+      }
+
+      // Teachers: added or updated by portable id.
+      final teacherId = <String, int>{};
+      for (final t in _maps(r['teachers'])) {
+        final uuid = t['uuid'], name = t['name'];
+        final salt = t['pin_salt'], hash = t['pin_hash'];
+        if (uuid is! String ||
+            name is! String ||
+            salt is! String ||
+            hash is! String) {
+          continue;
+        }
+        final existing = await (_db.select(
+          _db.teacherProfiles,
+        )..where((x) => x.uuid.equals(uuid))).getSingleOrNull();
+        if (existing == null) {
+          teacherId[uuid] = await _db
+              .into(_db.teacherProfiles)
+              .insert(
+                TeacherProfilesCompanion.insert(
+                  name: name,
+                  pinSalt: salt,
+                  pinHash: hash,
+                  createdAt: DateTime.now().toUtc().toIso8601String(),
+                  uuid: Value(uuid),
+                ),
+              );
+        } else {
+          teacherId[uuid] = existing.id;
+          await (_db.update(
+            _db.teacherProfiles,
+          )..where((x) => x.id.equals(existing.id))).write(
+            TeacherProfilesCompanion(
+              name: Value(name),
+              pinSalt: Value(salt),
+              pinHash: Value(hash),
+            ),
+          );
+        }
+      }
+
+      // Classes and streams, with their class keys so either device can
+      // share them.
+      final classId = <String, int>{};
+      for (final c in _maps(r['classes'])) {
+        final uuid = c['uuid'], name = c['name'];
+        if (uuid is! String || name is! String) continue;
+        final stream = c['stream'] as String?;
+        final classKey = c['class_key'] as String?;
+        final existing = await _db.classGroupDao.findByUuid(uuid);
+        if (existing == null) {
+          classId[uuid] = await _db
+              .into(_db.classGroups)
+              .insert(
+                ClassGroupsCompanion.insert(
+                  className: name,
+                  streamName: Value(stream),
+                  groupUuid: Value(uuid),
+                  schoolId: Value(schoolId),
+                  classKey: Value(classKey),
+                ),
+              );
+        } else if (!existing.joined) {
+          classId[uuid] = existing.id;
+          await (_db.update(
+            _db.classGroups,
+          )..where((x) => x.id.equals(existing.id))).write(
+            ClassGroupsCompanion(
+              className: Value(name),
+              streamName: Value(stream),
+              schoolId: Value(schoolId),
+              classKey: existing.classKey == null
+                  ? Value(classKey)
+                  : const Value.absent(),
+            ),
+          );
+        }
+      }
+
+      // Subjects.
+      for (final s in _maps(r['subjects'])) {
+        final id = s['id'], name = s['name'];
+        if (id is! String || name is! String) continue;
+        final values = CustomSubjectsCompanion(
+          name: Value(name),
+          icon: Value(s['icon'] as String? ?? 'menu_book'),
+          color: Value(s['color'] as String? ?? '#4F46E5'),
+          classGroupUuid: const Value(null),
+        );
+        final existing = await _db.customSubjectDao.bySubjectId(id);
+        if (existing == null) {
+          await _db
+              .into(_db.customSubjects)
+              .insert(
+                values.copyWith(
+                  subjectId: Value(id),
+                  createdAt: Value(DateTime.now().toUtc().toIso8601String()),
+                ),
+              );
+        } else {
+          await (_db.update(
+            _db.customSubjects,
+          )..where((x) => x.id.equals(existing.id))).write(values);
+        }
+      }
+
+      // Assignments: replaced whole.
+      await _db.delete(_db.teachingAssignments).go();
+      for (final a in _maps(r['assignments'])) {
+        final uuid = a['uuid'], t = a['teacher_uuid'], c = a['class_uuid'];
+        final subject = a['subject_id'], year = a['year'];
+        if (uuid is! String ||
+            t is! String ||
+            c is! String ||
+            subject is! String ||
+            year is! int ||
+            teacherId[t] == null) {
+          continue;
+        }
+        await _db
+            .into(_db.teachingAssignments)
+            .insert(
+              TeachingAssignmentsCompanion.insert(
+                uuid: uuid,
+                teacherId: teacherId[t]!,
+                classGroupUuid: c,
+                subjectId: subject,
+                academicYear: year,
+                term: Value(a['term'] as int? ?? 0),
+                createdAt: DateTime.now().toUtc().toIso8601String(),
+              ),
+            );
+      }
+
+      // Learners: added or updated by portable id.
+      final learnerId = <String, int>{};
+      for (final l in _maps(r['learners'])) {
+        final uuid = l['uuid'], name = l['name'];
+        if (uuid is! String || name is! String) continue;
+        final values = StudentsCompanion(
+          name: Value(name),
+          grade: Value(l['grade'] as String?),
+          pinSalt: Value(l['pin_salt'] as String?),
+          pinHash: Value(l['pin_hash'] as String?),
+        );
+        final existing = await (_db.select(
+          _db.students,
+        )..where((x) => x.uuid.equals(uuid))).getSingleOrNull();
+        if (existing == null) {
+          learnerId[uuid] = await _db
+              .into(_db.students)
+              .insert(
+                values.copyWith(
+                  uuid: Value(uuid),
+                  language: Value(l['language'] as String? ?? 'en'),
+                ),
+              );
+        } else {
+          learnerId[uuid] = existing.id;
+          await (_db.update(
+            _db.students,
+          )..where((x) => x.id.equals(existing.id))).write(values);
+        }
+      }
+
+      // Enrolments: replaced whole; each learner's class follows their
+      // active one.
+      await _db.delete(_db.studentEnrolments).go();
+      final activeClass = <int, int?>{
+        for (final id in learnerId.values) id: null,
+      };
+      for (final e in _maps(r['enrolments'])) {
+        final uuid = e['uuid'], l = e['learner_uuid'], c = e['class_uuid'];
+        final year = e['year'], status = e['status'];
+        if (uuid is! String ||
+            l is! String ||
+            c is! String ||
+            year is! int ||
+            status is! String ||
+            learnerId[l] == null) {
+          continue;
+        }
+        await _db
+            .into(_db.studentEnrolments)
+            .insert(
+              StudentEnrolmentsCompanion.insert(
+                uuid: uuid,
+                studentId: learnerId[l]!,
+                classGroupUuid: c,
+                academicYear: year,
+                status: Value(status),
+                createdAt: DateTime.now().toUtc().toIso8601String(),
+              ),
+            );
+        if (status == 'active') activeClass[learnerId[l]!] = classId[c];
+      }
+      for (final e in activeClass.entries) {
+        await _db.classGroupDao.assignLearner(e.key, e.value);
+      }
+
+      final takeover = r['takeover'];
+      await _db
+          .into(_db.adminRecordsState)
+          .insertOnConflictUpdate(
+            AdminRecordsStateCompanion.insert(
+              id: const Value(1),
+              adminPublicKey: key,
+              version: version,
+              schoolId: schoolId,
+              receivedAt: DateTime.now().toUtc().toIso8601String(),
+              takeoverJson: Value(
+                takeover is Map ? jsonEncode(takeover) : null,
+              ),
+            ),
+          );
+    });
+    return null;
+  }
+
+  /// Makes this device the Admin's, from the sealed details in the last
+  /// records received. False when there are none or [passphrase] is wrong.
+  Future<bool> takeOver(String passphrase) async {
+    final state = await _state();
+    final sealed = state?.takeoverJson;
+    if (state == null || sealed == null) return false;
+    final decoded = jsonDecode(sealed);
+    if (decoded is! Map<String, Object?>) return false;
+    final admin = await openAdminTakeover(
+      passphrase: passphrase,
+      sealed: decoded,
+    );
+    final seed = admin?['seed'], name = admin?['name'];
+    final salt = admin?['pin_salt'], hash = admin?['pin_hash'];
+    if (seed is! String ||
+        name is! String ||
+        salt is! String ||
+        hash is! String ||
+        await signingPublicKey(seed) != state.adminPublicKey) {
+      return false;
+    }
+    await _db.transaction(() async {
+      await _db
+          .into(_db.adminIdentity)
+          .insertOnConflictUpdate(
+            AdminIdentityCompanion.insert(
+              id: const Value(1),
+              name: name,
+              pinSalt: salt,
+              pinHash: hash,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              signingSeed: Value(seed),
+              recordsVersion: Value(state.version),
+            ),
+          );
+      await (_db.update(_db.adminRecordsState)..where((t) => t.id.equals(1)))
+          .write(const AdminRecordsStateCompanion(takeoverJson: Value(null)));
+    });
+    return true;
+  }
+
+  /// The Admin's details for [sealAdminTakeover].
+  Future<Map<String, Object?>?> takeoverDetails() async {
+    final admin = await _admin();
+    if (admin == null || admin.signingSeed == null) return null;
+    return {
+      'seed': admin.signingSeed,
+      'name': admin.name,
+      'pin_salt': admin.pinSalt,
+      'pin_hash': admin.pinHash,
+    };
+  }
+
+  static Iterable<Map<String, Object?>> _maps(Object? list) => [
+    if (list is List)
+      for (final m in list)
+        if (m is Map<String, Object?>) m,
+  ];
+}

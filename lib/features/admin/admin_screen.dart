@@ -15,6 +15,7 @@ import '../teacher/teacher_pin.dart';
 import '../teacher/teacher_pin_screen.dart';
 import '../teacher/teacher_profiles.dart';
 import 'admin_service.dart';
+import 'admin_sync_widgets.dart';
 
 /// The school's one Admin: set up once, then sign in with the Admin PIN.
 /// Here the Admin keeps the school's records — teachers, classes and
@@ -38,7 +39,17 @@ class AdminScreen extends ConsumerWidget {
         maxWidth: 900,
         child: switch ((setUp, session)) {
           (null, _) => const Center(child: CircularProgressIndicator()),
-          (false, _) => const _SetUp(),
+          (false, _) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const ReceiveRecordsCard(),
+              // One Admin per school: a device holding the school's records
+              // is never set up as a second one.
+              if (ref.watch(adminRecordsStateProvider).valueOrNull == null &&
+                  !ref.watch(adminRecordsStateProvider).isLoading)
+                const _SetUp(),
+            ],
+          ),
           (true, null) => const _SignIn(),
           (true, final s?) => _Records(session: s),
         },
@@ -96,10 +107,11 @@ class _SetUpState extends ConsumerState<_SetUp> {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Set up the Admin', style: TextStyle(fontSize: 18)),
+        const SizedBox(height: 24),
+        const Text('Or set up the Admin', style: TextStyle(fontSize: 18)),
         const SizedBox(height: 16),
         TextField(
           controller: _name,
@@ -275,6 +287,14 @@ class _Records extends ConsumerWidget {
               leading: const Icon(Icons.password_rounded),
               title: const Text('My PIN'),
               onTap: () => _changeMyPin(context, ref),
+            ),
+            ListTile(
+              leading: const Icon(Icons.sync_rounded),
+              title: const Text('Send school records'),
+              subtitle: const Text('To another device, one way'),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(builder: (_) => const SendRecordsPage()),
+              ),
             ),
           ],
         ),

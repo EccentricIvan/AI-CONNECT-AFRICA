@@ -37,8 +37,9 @@ class AdminService {
 
   Future<bool> isSetUp() async => await _row() != null;
 
-  /// Sets up this device's Admin. Refused once one exists: a school has
-  /// one Admin.
+  /// Sets up this device's Admin. Refused once one exists, and on a device
+  /// that holds another Admin's school records: a school has one Admin,
+  /// who takes over there with their passphrase instead.
   Future<AdminSession?> setUp({
     required String name,
     required String pin,
@@ -46,6 +47,12 @@ class AdminService {
     final trimmed = name.trim();
     if (trimmed.isEmpty || !TeacherPin.isValidFormat(pin)) return null;
     if (await isSetUp()) return null;
+    if (await (_db.select(
+          _db.adminRecordsState,
+        )..where((t) => t.id.equals(1))).getSingleOrNull() !=
+        null) {
+      return null;
+    }
     final salt = newPinSalt();
     await _db
         .into(_db.adminIdentity)
