@@ -236,6 +236,28 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _pinSaltMeta = const VerificationMeta(
+    'pinSalt',
+  );
+  @override
+  late final GeneratedColumn<String> pinSalt = GeneratedColumn<String>(
+    'pin_salt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _pinHashMeta = const VerificationMeta(
+    'pinHash',
+  );
+  @override
+  late final GeneratedColumn<String> pinHash = GeneratedColumn<String>(
+    'pin_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -258,6 +280,8 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     createdAt,
     lastActiveAt,
     classGroupId,
+    pinSalt,
+    pinHash,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -426,6 +450,18 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         ),
       );
     }
+    if (data.containsKey('pin_salt')) {
+      context.handle(
+        _pinSaltMeta,
+        pinSalt.isAcceptableOrUnknown(data['pin_salt']!, _pinSaltMeta),
+      );
+    }
+    if (data.containsKey('pin_hash')) {
+      context.handle(
+        _pinHashMeta,
+        pinHash.isAcceptableOrUnknown(data['pin_hash']!, _pinHashMeta),
+      );
+    }
     return context;
   }
 
@@ -515,6 +551,14 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         DriftSqlType.int,
         data['${effectivePrefix}class_group_id'],
       ),
+      pinSalt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pin_salt'],
+      ),
+      pinHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}pin_hash'],
+      ),
     );
   }
 
@@ -550,6 +594,11 @@ class Student extends DataClass implements Insertable<Student> {
   /// The declared FK is not enforced (nothing issues `PRAGMA foreign_keys`),
   /// so deleting a class clears this explicitly — see `ClassGroupDao`.
   final int? classGroupId;
+
+  /// The learner's own PIN (salted SHA-256), asked before the device is
+  /// switched to them. Null when they have none. Never synced.
+  final String? pinSalt;
+  final String? pinHash;
   const Student({
     required this.id,
     required this.name,
@@ -571,6 +620,8 @@ class Student extends DataClass implements Insertable<Student> {
     required this.createdAt,
     required this.lastActiveAt,
     this.classGroupId,
+    this.pinSalt,
+    this.pinHash,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -603,6 +654,12 @@ class Student extends DataClass implements Insertable<Student> {
     if (!nullToAbsent || classGroupId != null) {
       map['class_group_id'] = Variable<int>(classGroupId);
     }
+    if (!nullToAbsent || pinSalt != null) {
+      map['pin_salt'] = Variable<String>(pinSalt);
+    }
+    if (!nullToAbsent || pinHash != null) {
+      map['pin_hash'] = Variable<String>(pinHash);
+    }
     return map;
   }
 
@@ -634,6 +691,12 @@ class Student extends DataClass implements Insertable<Student> {
       classGroupId: classGroupId == null && nullToAbsent
           ? const Value.absent()
           : Value(classGroupId),
+      pinSalt: pinSalt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pinSalt),
+      pinHash: pinHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(pinHash),
     );
   }
 
@@ -671,6 +734,8 @@ class Student extends DataClass implements Insertable<Student> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastActiveAt: serializer.fromJson<DateTime>(json['lastActiveAt']),
       classGroupId: serializer.fromJson<int?>(json['classGroupId']),
+      pinSalt: serializer.fromJson<String?>(json['pinSalt']),
+      pinHash: serializer.fromJson<String?>(json['pinHash']),
     );
   }
   @override
@@ -699,6 +764,8 @@ class Student extends DataClass implements Insertable<Student> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastActiveAt': serializer.toJson<DateTime>(lastActiveAt),
       'classGroupId': serializer.toJson<int?>(classGroupId),
+      'pinSalt': serializer.toJson<String?>(pinSalt),
+      'pinHash': serializer.toJson<String?>(pinHash),
     };
   }
 
@@ -723,6 +790,8 @@ class Student extends DataClass implements Insertable<Student> {
     DateTime? createdAt,
     DateTime? lastActiveAt,
     Value<int?> classGroupId = const Value.absent(),
+    Value<String?> pinSalt = const Value.absent(),
+    Value<String?> pinHash = const Value.absent(),
   }) => Student(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -748,6 +817,8 @@ class Student extends DataClass implements Insertable<Student> {
     createdAt: createdAt ?? this.createdAt,
     lastActiveAt: lastActiveAt ?? this.lastActiveAt,
     classGroupId: classGroupId.present ? classGroupId.value : this.classGroupId,
+    pinSalt: pinSalt.present ? pinSalt.value : this.pinSalt,
+    pinHash: pinHash.present ? pinHash.value : this.pinHash,
   );
   Student copyWithCompanion(StudentsCompanion data) {
     return Student(
@@ -797,6 +868,8 @@ class Student extends DataClass implements Insertable<Student> {
       classGroupId: data.classGroupId.present
           ? data.classGroupId.value
           : this.classGroupId,
+      pinSalt: data.pinSalt.present ? data.pinSalt.value : this.pinSalt,
+      pinHash: data.pinHash.present ? data.pinHash.value : this.pinHash,
     );
   }
 
@@ -822,13 +895,15 @@ class Student extends DataClass implements Insertable<Student> {
           ..write('totalLessonsCompleted: $totalLessonsCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastActiveAt: $lastActiveAt, ')
-          ..write('classGroupId: $classGroupId')
+          ..write('classGroupId: $classGroupId, ')
+          ..write('pinSalt: $pinSalt, ')
+          ..write('pinHash: $pinHash')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     name,
     age,
@@ -849,7 +924,9 @@ class Student extends DataClass implements Insertable<Student> {
     createdAt,
     lastActiveAt,
     classGroupId,
-  );
+    pinSalt,
+    pinHash,
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -873,7 +950,9 @@ class Student extends DataClass implements Insertable<Student> {
           other.totalLessonsCompleted == this.totalLessonsCompleted &&
           other.createdAt == this.createdAt &&
           other.lastActiveAt == this.lastActiveAt &&
-          other.classGroupId == this.classGroupId);
+          other.classGroupId == this.classGroupId &&
+          other.pinSalt == this.pinSalt &&
+          other.pinHash == this.pinHash);
 }
 
 class StudentsCompanion extends UpdateCompanion<Student> {
@@ -897,6 +976,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
   final Value<DateTime> createdAt;
   final Value<DateTime> lastActiveAt;
   final Value<int?> classGroupId;
+  final Value<String?> pinSalt;
+  final Value<String?> pinHash;
   const StudentsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -918,6 +999,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
     this.classGroupId = const Value.absent(),
+    this.pinSalt = const Value.absent(),
+    this.pinHash = const Value.absent(),
   });
   StudentsCompanion.insert({
     this.id = const Value.absent(),
@@ -940,6 +1023,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.createdAt = const Value.absent(),
     this.lastActiveAt = const Value.absent(),
     this.classGroupId = const Value.absent(),
+    this.pinSalt = const Value.absent(),
+    this.pinHash = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Student> custom({
     Expression<int>? id,
@@ -962,6 +1047,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastActiveAt,
     Expression<int>? classGroupId,
+    Expression<String>? pinSalt,
+    Expression<String>? pinHash,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -988,6 +1075,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       if (createdAt != null) 'created_at': createdAt,
       if (lastActiveAt != null) 'last_active_at': lastActiveAt,
       if (classGroupId != null) 'class_group_id': classGroupId,
+      if (pinSalt != null) 'pin_salt': pinSalt,
+      if (pinHash != null) 'pin_hash': pinHash,
     });
   }
 
@@ -1012,6 +1101,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Value<DateTime>? createdAt,
     Value<DateTime>? lastActiveAt,
     Value<int?>? classGroupId,
+    Value<String?>? pinSalt,
+    Value<String?>? pinHash,
   }) {
     return StudentsCompanion(
       id: id ?? this.id,
@@ -1037,6 +1128,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       createdAt: createdAt ?? this.createdAt,
       lastActiveAt: lastActiveAt ?? this.lastActiveAt,
       classGroupId: classGroupId ?? this.classGroupId,
+      pinSalt: pinSalt ?? this.pinSalt,
+      pinHash: pinHash ?? this.pinHash,
     );
   }
 
@@ -1109,6 +1202,12 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     if (classGroupId.present) {
       map['class_group_id'] = Variable<int>(classGroupId.value);
     }
+    if (pinSalt.present) {
+      map['pin_salt'] = Variable<String>(pinSalt.value);
+    }
+    if (pinHash.present) {
+      map['pin_hash'] = Variable<String>(pinHash.value);
+    }
     return map;
   }
 
@@ -1134,7 +1233,9 @@ class StudentsCompanion extends UpdateCompanion<Student> {
           ..write('totalLessonsCompleted: $totalLessonsCompleted, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastActiveAt: $lastActiveAt, ')
-          ..write('classGroupId: $classGroupId')
+          ..write('classGroupId: $classGroupId, ')
+          ..write('pinSalt: $pinSalt, ')
+          ..write('pinHash: $pinHash')
           ..write(')'))
         .toString();
   }
@@ -14282,6 +14383,8 @@ typedef $$StudentsTableCreateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
       Value<int?> classGroupId,
+      Value<String?> pinSalt,
+      Value<String?> pinHash,
     });
 typedef $$StudentsTableUpdateCompanionBuilder =
     StudentsCompanion Function({
@@ -14305,6 +14408,8 @@ typedef $$StudentsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<DateTime> lastActiveAt,
       Value<int?> classGroupId,
+      Value<String?> pinSalt,
+      Value<String?> pinHash,
     });
 
 class $$StudentsTableFilterComposer
@@ -14413,6 +14518,16 @@ class $$StudentsTableFilterComposer
 
   ColumnFilters<int> get classGroupId => $composableBuilder(
     column: $table.classGroupId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pinSalt => $composableBuilder(
+    column: $table.pinSalt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get pinHash => $composableBuilder(
+    column: $table.pinHash,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -14525,6 +14640,16 @@ class $$StudentsTableOrderingComposer
     column: $table.classGroupId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get pinSalt => $composableBuilder(
+    column: $table.pinSalt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get pinHash => $composableBuilder(
+    column: $table.pinHash,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$StudentsTableAnnotationComposer
@@ -14621,6 +14746,12 @@ class $$StudentsTableAnnotationComposer
     column: $table.classGroupId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get pinSalt =>
+      $composableBuilder(column: $table.pinSalt, builder: (column) => column);
+
+  GeneratedColumn<String> get pinHash =>
+      $composableBuilder(column: $table.pinHash, builder: (column) => column);
 }
 
 class $$StudentsTableTableManager
@@ -14671,6 +14802,8 @@ class $$StudentsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
                 Value<int?> classGroupId = const Value.absent(),
+                Value<String?> pinSalt = const Value.absent(),
+                Value<String?> pinHash = const Value.absent(),
               }) => StudentsCompanion(
                 id: id,
                 name: name,
@@ -14692,6 +14825,8 @@ class $$StudentsTableTableManager
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
                 classGroupId: classGroupId,
+                pinSalt: pinSalt,
+                pinHash: pinHash,
               ),
           createCompanionCallback:
               ({
@@ -14715,6 +14850,8 @@ class $$StudentsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> lastActiveAt = const Value.absent(),
                 Value<int?> classGroupId = const Value.absent(),
+                Value<String?> pinSalt = const Value.absent(),
+                Value<String?> pinHash = const Value.absent(),
               }) => StudentsCompanion.insert(
                 id: id,
                 name: name,
@@ -14736,6 +14873,8 @@ class $$StudentsTableTableManager
                 createdAt: createdAt,
                 lastActiveAt: lastActiveAt,
                 classGroupId: classGroupId,
+                pinSalt: pinSalt,
+                pinHash: pinHash,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

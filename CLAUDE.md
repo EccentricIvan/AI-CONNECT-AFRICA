@@ -136,7 +136,12 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
 - **No teacher device.** Every device can do teacher duties; what a person
   can do comes from their role and PINs, not from the device. The teacher
   is the app's manager (subjects, materials, classes, learners, sync,
-  updates). Removed 2026-10-06 at the user's request: the old "one teacher
+  updates). Removed 2026-10-06 at the user's request: the Co-teaching and
+  Standby device screens (routes redirect to `/teacher/sync`; the roster
+  and failover code stay — the roster is the cross-device teaching
+  assignment), package details and the Updates section on Teachers
+  (packages show one "Installed" checkbox), and the name "Class sync" (it
+  is "Sync" in the UI). Also removed: the old "one teacher
   device per school" gate. Every device may host classes, join others'
   classes (never its own), co-teach and be a standby; don't reintroduce a
   device-type gate. `sync_identity.device_role` is kept as a record only,
@@ -167,6 +172,17 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
     shared classes are still served under the one device key.
   - Subject ids are device-wide, so two teachers can't both have a
     subject with the same name.
+- **Learner PIN (schema 23).** A learner may set "My PIN" (Settings →
+  Student Profile; `students.pin_salt`/`pin_hash`, `learner_pin.dart`).
+  Switching the device to them asks for it (`LearnerPickerScreen`). A
+  teacher clears a forgotten one from Teachers → the learner's row.
+- **Roadmap agreed 2026-10-06** (user's P2P/RBAC spec): roles ADMIN (back
+  as a separate role), TEACHER, LEARNER; then TeachingAssignment /
+  StudentEnrollment records (school, year, term, class, stream, subject);
+  per-user peer authorization and device revocation; assignment,
+  submission and grade sync with an operation log (op id, device, user,
+  version; no last-write-wins for grades); encrypted local storage; a
+  security test suite. Stay P2P — never a central server.
 
 ### Teacher notes → tutor (offline knowledge base)
 

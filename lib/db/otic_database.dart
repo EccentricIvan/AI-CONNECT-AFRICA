@@ -109,7 +109,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 23;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -527,6 +527,15 @@ class OticDatabase extends _$OticDatabase {
             coTeachingClasses,
             coTeachingClasses.ownerTeacherId,
           );
+        }
+      }
+      if (from < 23) {
+        // Learners' own PINs. Additive: null means no PIN.
+        if (!await _columnExists('students', 'pin_salt')) {
+          await m.addColumn(students, students.pinSalt);
+        }
+        if (!await _columnExists('students', 'pin_hash')) {
+          await m.addColumn(students, students.pinHash);
         }
       }
     },

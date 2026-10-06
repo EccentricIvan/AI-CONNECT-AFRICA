@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -15,8 +14,7 @@ import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../teacher/class_providers.dart';
-import '../teacher/co_teacher_widgets.dart';
-import '../teacher/failover_widgets.dart';
+import '../learners/learner_pin.dart';
 import '../teacher/teacher_pin.dart';
 import '../teacher/teacher_pin_screen.dart';
 import '../teacher/teacher_profiles.dart';
@@ -35,7 +33,7 @@ class TeachersScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final modelAsync = ref.watch(modelInfoProvider);
+    final packagesAsync = ref.watch(_packagesInstalledProvider);
     final studentsAsync = ref.watch(_allStudentsProvider);
     final packageInfoAsync = ref.watch(packageInfoProvider);
     final pinSetAsync = ref.watch(_pinSetProvider);
@@ -44,7 +42,7 @@ class TeachersScreen extends ConsumerWidget {
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
         title: tr(context, 'Teachers'),
-        subtitle: tr(context, 'Devices, learners and school'),
+        subtitle: tr(context, 'Teachers, learners and school'),
         icon: Icons.groups_rounded,
         iconColor: AppColors.accentBlue,
       ),
@@ -92,34 +90,16 @@ class TeachersScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
 
-            // ── AI Model ─────────────────────────────────────────────────
+            // ── Learning packages ────────────────────────────────────────
             const _SectionTitle('Learning packages'),
-            modelAsync.when(
-              loading: () => const _InfoCard(
-                children: [ListTile(title: Text('Checking packages…'))],
-              ),
-              error: (e, _) => _InfoCard(
-                children: [ListTile(title: Text('Package check failed: $e'))],
-              ),
-              data: (info) => _InfoCard(
-                children: [
-                  _InfoRow(
-                    icon: Icons.memory,
-                    label: 'Classroom assistant',
-                    value: info.isReady ? 'Installed' : 'Not installed',
-                    valueColor: info.isReady
-                        ? AppColors.teachColor
-                        : Colors.orange,
-                  ),
-                  if (info.isReady && info.sizeBytes != null)
-                    _InfoRow(
-                      icon: Icons.sd_storage,
-                      label: 'Package size',
-                      value:
-                          '${(info.sizeBytes! / (1024 * 1024)).toStringAsFixed(0)} MB',
-                    ),
-                ],
-              ),
+            _InfoCard(
+              children: [
+                CheckboxListTile(
+                  value: packagesAsync.valueOrNull ?? false,
+                  onChanged: null,
+                  title: const Text('Installed'),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
 
@@ -148,19 +128,6 @@ class TeachersScreen extends ConsumerWidget {
                           .map((s) => _StudentRow(student: s))
                           .toList(),
                     ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Updates ──────────────────────────────────────────────────
-            const _SectionTitle('Updates'),
-            _InfoCard(
-              children: [
-                const _InfoRow(
-                  icon: Icons.usb,
-                  label: 'Update method',
-                  value: 'USB or school server',
-                ),
-              ],
             ),
             const SizedBox(height: 20),
 
@@ -285,15 +252,36 @@ class _StudentRow extends ConsumerWidget {
         '${student.totalPoints} pts · ${student.streakDays} day streak',
         style: const TextStyle(fontSize: 12),
       ),
-      trailing: IconButton(
-        icon: Icon(
-          Icons.delete_outline,
-          color: pinSet ? Colors.red : Theme.of(context).hintColor,
-          size: 20,
-        ),
-        tooltip: pinSet ? 'Delete' : 'Requires a PIN',
-        onPressed: pinSet ? () => _confirmDelete(context, ref) : null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // A learner who forgot their PIN.
+          if (pinSet && student.pinHash != null)
+            IconButton(
+              icon: const Icon(Icons.lock_reset_rounded, size: 20),
+              tooltip: 'Clear PIN',
+              onPressed: () => _clearPin(context, ref),
+            ),
+          IconButton(
+            icon: Icon(
+              Icons.delete_outline,
+              color: pinSet ? Colors.red : Theme.of(context).hintColor,
+              size: 20,
+            ),
+            tooltip: pinSet ? 'Delete' : 'Requires a PIN',
+            onPressed: pinSet ? () => _confirmDelete(context, ref) : null,
+          ),
+        ],
       ),
+    );
+  }
+
+  Future<void> _clearPin(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref.read(learnerPinServiceProvider).clear(student.id);
+    ref.invalidate(_allStudentsProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text('${student.name}’s PIN cleared.')),
     );
   }
 
@@ -476,12 +464,10 @@ class _InfoRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    this.valueColor,
   });
   final IconData icon;
   final String label;
   final String value;
-  final Color? valueColor;
 
   @override
   Widget build(BuildContext context) {
@@ -497,27 +483,19 @@ class _InfoRow extends StatelessWidget {
         value,
         style: TextStyle(
           fontSize: 12,
-          color: valueColor ?? Theme.of(context).hintColor,
+          color: Theme.of(context).hintColor,
         ),
       ),
     );
   }
 }
 
-/// Every co-teacher of this device's own classes.
-final _allCoTeachersProvider = StreamProvider.autoDispose<List<ClassCoTeacher>>(
-  (ref) {
-    final db = ref.watch(dbProvider);
-    return db.select(db.classCoTeachers).watch();
-  },
-);
-
-/// Standby devices paired with this teacher device (host failover).
-final _standbysProvider = StreamProvider.autoDispose<List<FailoverStandby>>((
-  ref,
-) {
-  final db = ref.watch(dbProvider);
-  return db.select(db.failoverStandbys).watch();
+/// Whether the learning packages (the tutor and the translator) are both
+/// installed. Re-checked each time Teachers opens.
+final _packagesInstalledProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final brain = await ref.watch(modelInfoProvider.future);
+  final translator = await ref.watch(translateModelManagerProvider).checkModel();
+  return brain.isReady && translator.isReady;
 });
 
 /// The teachers who use this device. Signed out: their profiles to sign in
@@ -551,46 +529,21 @@ class _TeacherDevicesCard extends ConsumerWidget {
             trailing: chevron,
             onTap: () => _addTeacher(context, ref),
           ),
+          ListTile(
+            leading: const Icon(Icons.sync_rounded),
+            title: const Text('Sync'),
+            trailing: chevron,
+            onTap: () => context.push('/class-sync'),
+          ),
         ],
       );
     }
 
     final owned =
         ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[];
-    final delegated =
-        ref.watch(delegatedClassesProvider).valueOrNull ??
-        const <CoTeachingClass>[];
-    final standbys =
-        ref.watch(_standbysProvider).valueOrNull ?? const <FailoverStandby>[];
-    final names = subjectNames(ref);
-    final classByUuid = {
-      for (final c in owned)
-        if (c.groupUuid != null) c.groupUuid!: c,
-    };
-    final coTeachers = [
-      for (final t
-          in ref.watch(_allCoTeachersProvider).valueOrNull ??
-              const <ClassCoTeacher>[])
-        if (classByUuid.containsKey(t.classGroupUuid)) t,
-    ];
-    List<String> subjectsOf(String json) {
-      try {
-        return [
-          for (final s in jsonDecode(json) as List)
-            if (s is String) names(s),
-        ];
-      } catch (_) {
-        return const [];
-      }
-    }
-
-    final mine = [
-      if (owned.isNotEmpty)
-        'teaches ${owned.length} ${owned.length == 1 ? 'class' : 'classes'}',
-      if (delegated.isNotEmpty)
-        'co-teaches ${delegated.length} '
-            '${delegated.length == 1 ? 'class' : 'classes'}',
-    ];
+    final mine = owned.isEmpty
+        ? 'No classes'
+        : 'Teaches ${owned.length} ${owned.length == 1 ? 'class' : 'classes'}';
 
     return Column(
       children: [
@@ -599,44 +552,13 @@ class _TeacherDevicesCard extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.verified_user_rounded),
               title: Text(me.name),
-              subtitle: Text(mine.isEmpty ? 'No classes' : mine.join(' · ')),
+              subtitle: Text(mine),
               trailing: TextButton(
                 onPressed: () =>
                     ref.read(activeTeacherProvider.notifier).state = null,
                 child: const Text('Sign out'),
               ),
             ),
-            for (final t in coTeachers)
-              ListTile(
-                leading: const Icon(Icons.school_rounded),
-                title: Text(t.name.isEmpty ? 'Co-teacher' : t.name),
-                subtitle: Text(
-                  'Co-teacher · '
-                  '${classLabel(classByUuid[t.classGroupUuid]!)}'
-                  '${subjectsOf(t.subjectIdsJson).isEmpty ? '' : ': ${subjectsOf(t.subjectIdsJson).join(', ')}'}',
-                ),
-              ),
-            for (final d in delegated)
-              ListTile(
-                leading: const Icon(Icons.group_add_rounded),
-                title: Text('${delegatedClassLabel(d)}’s teacher'),
-                subtitle: Text(
-                  subjectsOf(d.subjectIdsJson).isEmpty
-                      ? 'Revoked'
-                      : 'You co-teach: ${subjectsOf(d.subjectIdsJson).join(', ')}',
-                ),
-              ),
-            for (final s in standbys)
-              ListTile(
-                leading: const Icon(Icons.backup_rounded),
-                title: Text(s.name),
-                subtitle: Text(
-                  s.lastMirroredAt == null
-                      ? 'Standby · no backup yet'
-                      : 'Standby · backed up '
-                            '${failoverTime(s.lastMirroredAt!)}',
-                ),
-              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -649,9 +571,7 @@ class _TeacherDevicesCard extends ConsumerWidget {
                 'Lesson materials',
                 '/teacher/materials',
               ),
-              (Icons.sync_rounded, 'Class sync', '/teacher/sync'),
-              (Icons.group_add_outlined, 'Co-teaching', '/teacher/co-teach'),
-              (Icons.restore_rounded, 'Standby device', '/teacher/standby'),
+              (Icons.sync_rounded, 'Sync', '/teacher/sync'),
             ])
               ListTile(
                 leading: Icon(icon),

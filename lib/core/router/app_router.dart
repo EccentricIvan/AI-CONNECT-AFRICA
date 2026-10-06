@@ -29,8 +29,6 @@ import '../../features/practice/practice_screen.dart';
 import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
-import '../../features/teacher/join_as_co_teacher_screen.dart';
-import '../../features/teacher/standby_screen.dart';
 import '../../features/teacher/teacher_sync_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/teacher/teacher_pin.dart';
@@ -131,14 +129,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/teacher/sync',
             builder: (_, __) => const TeacherSyncScreen(),
           ),
-          GoRoute(
-            path: '/teacher/co-teach',
-            builder: (_, __) => const JoinAsCoTeacherScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/standby',
-            builder: (_, __) => const StandbyScreen(),
-          ),
+          // Co-teaching and standby screens were removed (2026-10-06).
+          GoRoute(path: '/teacher/co-teach', redirect: (_, __) => '/teacher/sync'),
+          GoRoute(path: '/teacher/standby', redirect: (_, __) => '/teacher/sync'),
           GoRoute(
             path: '/learn/subject/:id',
             builder: (_, state) =>

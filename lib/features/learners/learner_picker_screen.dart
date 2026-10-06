@@ -9,7 +9,9 @@ import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../teacher/class_providers.dart';
+import '../teacher/teacher_pin_screen.dart';
 import 'add_learner_dialog.dart';
+import 'learner_pin.dart';
 import 'learner_switcher.dart';
 
 /// "Who's learning?" — hands a shared device to another learner.
@@ -24,8 +26,23 @@ class LearnerPickerScreen extends ConsumerStatefulWidget {
 class _LearnerPickerScreenState extends ConsumerState<LearnerPickerScreen> {
   bool _busy = false;
 
-  Future<void> _switchTo(int id) async {
+  Future<void> _switchTo(int id, {String? name}) async {
     if (_busy) return;
+    final pins = ref.read(learnerPinServiceProvider);
+    if (await pins.isSet(id)) {
+      if (!mounted) return;
+      final pin = await askTeacherPin(context, title: name ?? 'PIN');
+      if (pin == null) return;
+      if (!await pins.verify(id, pin)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('That PIN is not right.')),
+          );
+        }
+        return;
+      }
+    }
+    if (!mounted) return;
     setState(() => _busy = true);
     try {
       await ref.read(learnerSwitcherProvider).switchTo(id);
@@ -108,7 +125,7 @@ class _LearnerPickerScreenState extends ConsumerState<LearnerPickerScreen> {
                         : const Icon(Icons.chevron_right),
                     onTap: s.id == activeId
                         ? () => context.go('/')
-                        : () => _switchTo(s.id),
+                        : () => _switchTo(s.id, name: s.name),
                   ),
                 ),
             ],

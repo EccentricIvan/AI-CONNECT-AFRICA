@@ -48,4 +48,9 @@ class Students extends Table {
   /// so deleting a class clears this explicitly — see `ClassGroupDao`.
   IntColumn get classGroupId =>
       integer().nullable().references(ClassGroups, #id)();
+
+  /// The learner's own PIN (salted SHA-256), asked before the device is
+  /// switched to them. Null when they have none. Never synced.
+  TextColumn get pinSalt => text().nullable()();
+  TextColumn get pinHash => text().nullable()();
 }
