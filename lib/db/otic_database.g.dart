@@ -16429,6 +16429,828 @@ class AdminRecordsStateCompanion extends UpdateCompanion<AdminRecordsStateRow> {
   }
 }
 
+class $AssignmentSubmissionsTable extends AssignmentSubmissions
+    with TableInfo<$AssignmentSubmissionsTable, AssignmentSubmission> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AssignmentSubmissionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _uuidMeta = const VerificationMeta('uuid');
+  @override
+  late final GeneratedColumn<String> uuid = GeneratedColumn<String>(
+    'uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'),
+  );
+  static const VerificationMeta _assignmentIdMeta = const VerificationMeta(
+    'assignmentId',
+  );
+  @override
+  late final GeneratedColumn<String> assignmentId = GeneratedColumn<String>(
+    'assignment_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _studentIdMeta = const VerificationMeta(
+    'studentId',
+  );
+  @override
+  late final GeneratedColumn<int> studentId = GeneratedColumn<int>(
+    'student_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _memberKeyMeta = const VerificationMeta(
+    'memberKey',
+  );
+  @override
+  late final GeneratedColumn<String> memberKey = GeneratedColumn<String>(
+    'member_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _learnerNameMeta = const VerificationMeta(
+    'learnerName',
+  );
+  @override
+  late final GeneratedColumn<String> learnerName = GeneratedColumn<String>(
+    'learner_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _answerMeta = const VerificationMeta('answer');
+  @override
+  late final GeneratedColumn<String> answer = GeneratedColumn<String>(
+    'answer',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<String> createdAt = GeneratedColumn<String>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<String> receivedAt = GeneratedColumn<String>(
+    'received_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gradeMeta = const VerificationMeta('grade');
+  @override
+  late final GeneratedColumn<int> grade = GeneratedColumn<int>(
+    'grade',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _feedbackMeta = const VerificationMeta(
+    'feedback',
+  );
+  @override
+  late final GeneratedColumn<String> feedback = GeneratedColumn<String>(
+    'feedback',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _gradeVersionMeta = const VerificationMeta(
+    'gradeVersion',
+  );
+  @override
+  late final GeneratedColumn<int> gradeVersion = GeneratedColumn<int>(
+    'grade_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _gradedAtMeta = const VerificationMeta(
+    'gradedAt',
+  );
+  @override
+  late final GeneratedColumn<String> gradedAt = GeneratedColumn<String>(
+    'graded_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    uuid,
+    assignmentId,
+    subjectId,
+    studentId,
+    memberKey,
+    learnerName,
+    answer,
+    createdAt,
+    receivedAt,
+    grade,
+    feedback,
+    gradeVersion,
+    gradedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'assignment_submissions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AssignmentSubmission> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('uuid')) {
+      context.handle(
+        _uuidMeta,
+        uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uuidMeta);
+    }
+    if (data.containsKey('assignment_id')) {
+      context.handle(
+        _assignmentIdMeta,
+        assignmentId.isAcceptableOrUnknown(
+          data['assignment_id']!,
+          _assignmentIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_assignmentIdMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('student_id')) {
+      context.handle(
+        _studentIdMeta,
+        studentId.isAcceptableOrUnknown(data['student_id']!, _studentIdMeta),
+      );
+    }
+    if (data.containsKey('member_key')) {
+      context.handle(
+        _memberKeyMeta,
+        memberKey.isAcceptableOrUnknown(data['member_key']!, _memberKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memberKeyMeta);
+    }
+    if (data.containsKey('learner_name')) {
+      context.handle(
+        _learnerNameMeta,
+        learnerName.isAcceptableOrUnknown(
+          data['learner_name']!,
+          _learnerNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_learnerNameMeta);
+    }
+    if (data.containsKey('answer')) {
+      context.handle(
+        _answerMeta,
+        answer.isAcceptableOrUnknown(data['answer']!, _answerMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_answerMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    }
+    if (data.containsKey('grade')) {
+      context.handle(
+        _gradeMeta,
+        grade.isAcceptableOrUnknown(data['grade']!, _gradeMeta),
+      );
+    }
+    if (data.containsKey('feedback')) {
+      context.handle(
+        _feedbackMeta,
+        feedback.isAcceptableOrUnknown(data['feedback']!, _feedbackMeta),
+      );
+    }
+    if (data.containsKey('grade_version')) {
+      context.handle(
+        _gradeVersionMeta,
+        gradeVersion.isAcceptableOrUnknown(
+          data['grade_version']!,
+          _gradeVersionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('graded_at')) {
+      context.handle(
+        _gradedAtMeta,
+        gradedAt.isAcceptableOrUnknown(data['graded_at']!, _gradedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  AssignmentSubmission map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AssignmentSubmission(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      uuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uuid'],
+      )!,
+      assignmentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}assignment_id'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      studentId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}student_id'],
+      ),
+      memberKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}member_key'],
+      )!,
+      learnerName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}learner_name'],
+      )!,
+      answer: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}answer'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_at'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}received_at'],
+      ),
+      grade: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grade'],
+      ),
+      feedback: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}feedback'],
+      ),
+      gradeVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}grade_version'],
+      )!,
+      gradedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}graded_at'],
+      ),
+    );
+  }
+
+  @override
+  $AssignmentSubmissionsTable createAlias(String alias) {
+    return $AssignmentSubmissionsTable(attachedDatabase, alias);
+  }
+}
+
+class AssignmentSubmission extends DataClass
+    implements Insertable<AssignmentSubmission> {
+  final int id;
+
+  /// Stable operation id, minted on the learner's device.
+  final String uuid;
+
+  /// The assignment's id (inside its `~assignment` note row).
+  final String assignmentId;
+  final String subjectId;
+
+  /// On the learner's device: `students.id`. Null on the teacher's device,
+  /// where the learner is known by [memberKey] and [learnerName].
+  final int? studentId;
+
+  /// The learner as their device reports them (`deviceKey/studentId`).
+  final String memberKey;
+  final String learnerName;
+  final String answer;
+
+  /// ISO-8601 UTC: made on the learner's device (its clock).
+  final String createdAt;
+
+  /// ISO-8601 UTC: reached the teacher's device. Null until then.
+  final String? receivedAt;
+  final int? grade;
+  final String? feedback;
+  final int gradeVersion;
+
+  /// ISO-8601 UTC.
+  final String? gradedAt;
+  const AssignmentSubmission({
+    required this.id,
+    required this.uuid,
+    required this.assignmentId,
+    required this.subjectId,
+    this.studentId,
+    required this.memberKey,
+    required this.learnerName,
+    required this.answer,
+    required this.createdAt,
+    this.receivedAt,
+    this.grade,
+    this.feedback,
+    required this.gradeVersion,
+    this.gradedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['uuid'] = Variable<String>(uuid);
+    map['assignment_id'] = Variable<String>(assignmentId);
+    map['subject_id'] = Variable<String>(subjectId);
+    if (!nullToAbsent || studentId != null) {
+      map['student_id'] = Variable<int>(studentId);
+    }
+    map['member_key'] = Variable<String>(memberKey);
+    map['learner_name'] = Variable<String>(learnerName);
+    map['answer'] = Variable<String>(answer);
+    map['created_at'] = Variable<String>(createdAt);
+    if (!nullToAbsent || receivedAt != null) {
+      map['received_at'] = Variable<String>(receivedAt);
+    }
+    if (!nullToAbsent || grade != null) {
+      map['grade'] = Variable<int>(grade);
+    }
+    if (!nullToAbsent || feedback != null) {
+      map['feedback'] = Variable<String>(feedback);
+    }
+    map['grade_version'] = Variable<int>(gradeVersion);
+    if (!nullToAbsent || gradedAt != null) {
+      map['graded_at'] = Variable<String>(gradedAt);
+    }
+    return map;
+  }
+
+  AssignmentSubmissionsCompanion toCompanion(bool nullToAbsent) {
+    return AssignmentSubmissionsCompanion(
+      id: Value(id),
+      uuid: Value(uuid),
+      assignmentId: Value(assignmentId),
+      subjectId: Value(subjectId),
+      studentId: studentId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(studentId),
+      memberKey: Value(memberKey),
+      learnerName: Value(learnerName),
+      answer: Value(answer),
+      createdAt: Value(createdAt),
+      receivedAt: receivedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(receivedAt),
+      grade: grade == null && nullToAbsent
+          ? const Value.absent()
+          : Value(grade),
+      feedback: feedback == null && nullToAbsent
+          ? const Value.absent()
+          : Value(feedback),
+      gradeVersion: Value(gradeVersion),
+      gradedAt: gradedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(gradedAt),
+    );
+  }
+
+  factory AssignmentSubmission.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AssignmentSubmission(
+      id: serializer.fromJson<int>(json['id']),
+      uuid: serializer.fromJson<String>(json['uuid']),
+      assignmentId: serializer.fromJson<String>(json['assignmentId']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      studentId: serializer.fromJson<int?>(json['studentId']),
+      memberKey: serializer.fromJson<String>(json['memberKey']),
+      learnerName: serializer.fromJson<String>(json['learnerName']),
+      answer: serializer.fromJson<String>(json['answer']),
+      createdAt: serializer.fromJson<String>(json['createdAt']),
+      receivedAt: serializer.fromJson<String?>(json['receivedAt']),
+      grade: serializer.fromJson<int?>(json['grade']),
+      feedback: serializer.fromJson<String?>(json['feedback']),
+      gradeVersion: serializer.fromJson<int>(json['gradeVersion']),
+      gradedAt: serializer.fromJson<String?>(json['gradedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'uuid': serializer.toJson<String>(uuid),
+      'assignmentId': serializer.toJson<String>(assignmentId),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'studentId': serializer.toJson<int?>(studentId),
+      'memberKey': serializer.toJson<String>(memberKey),
+      'learnerName': serializer.toJson<String>(learnerName),
+      'answer': serializer.toJson<String>(answer),
+      'createdAt': serializer.toJson<String>(createdAt),
+      'receivedAt': serializer.toJson<String?>(receivedAt),
+      'grade': serializer.toJson<int?>(grade),
+      'feedback': serializer.toJson<String?>(feedback),
+      'gradeVersion': serializer.toJson<int>(gradeVersion),
+      'gradedAt': serializer.toJson<String?>(gradedAt),
+    };
+  }
+
+  AssignmentSubmission copyWith({
+    int? id,
+    String? uuid,
+    String? assignmentId,
+    String? subjectId,
+    Value<int?> studentId = const Value.absent(),
+    String? memberKey,
+    String? learnerName,
+    String? answer,
+    String? createdAt,
+    Value<String?> receivedAt = const Value.absent(),
+    Value<int?> grade = const Value.absent(),
+    Value<String?> feedback = const Value.absent(),
+    int? gradeVersion,
+    Value<String?> gradedAt = const Value.absent(),
+  }) => AssignmentSubmission(
+    id: id ?? this.id,
+    uuid: uuid ?? this.uuid,
+    assignmentId: assignmentId ?? this.assignmentId,
+    subjectId: subjectId ?? this.subjectId,
+    studentId: studentId.present ? studentId.value : this.studentId,
+    memberKey: memberKey ?? this.memberKey,
+    learnerName: learnerName ?? this.learnerName,
+    answer: answer ?? this.answer,
+    createdAt: createdAt ?? this.createdAt,
+    receivedAt: receivedAt.present ? receivedAt.value : this.receivedAt,
+    grade: grade.present ? grade.value : this.grade,
+    feedback: feedback.present ? feedback.value : this.feedback,
+    gradeVersion: gradeVersion ?? this.gradeVersion,
+    gradedAt: gradedAt.present ? gradedAt.value : this.gradedAt,
+  );
+  AssignmentSubmission copyWithCompanion(AssignmentSubmissionsCompanion data) {
+    return AssignmentSubmission(
+      id: data.id.present ? data.id.value : this.id,
+      uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      assignmentId: data.assignmentId.present
+          ? data.assignmentId.value
+          : this.assignmentId,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      studentId: data.studentId.present ? data.studentId.value : this.studentId,
+      memberKey: data.memberKey.present ? data.memberKey.value : this.memberKey,
+      learnerName: data.learnerName.present
+          ? data.learnerName.value
+          : this.learnerName,
+      answer: data.answer.present ? data.answer.value : this.answer,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+      grade: data.grade.present ? data.grade.value : this.grade,
+      feedback: data.feedback.present ? data.feedback.value : this.feedback,
+      gradeVersion: data.gradeVersion.present
+          ? data.gradeVersion.value
+          : this.gradeVersion,
+      gradedAt: data.gradedAt.present ? data.gradedAt.value : this.gradedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssignmentSubmission(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('assignmentId: $assignmentId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('studentId: $studentId, ')
+          ..write('memberKey: $memberKey, ')
+          ..write('learnerName: $learnerName, ')
+          ..write('answer: $answer, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('grade: $grade, ')
+          ..write('feedback: $feedback, ')
+          ..write('gradeVersion: $gradeVersion, ')
+          ..write('gradedAt: $gradedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    uuid,
+    assignmentId,
+    subjectId,
+    studentId,
+    memberKey,
+    learnerName,
+    answer,
+    createdAt,
+    receivedAt,
+    grade,
+    feedback,
+    gradeVersion,
+    gradedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AssignmentSubmission &&
+          other.id == this.id &&
+          other.uuid == this.uuid &&
+          other.assignmentId == this.assignmentId &&
+          other.subjectId == this.subjectId &&
+          other.studentId == this.studentId &&
+          other.memberKey == this.memberKey &&
+          other.learnerName == this.learnerName &&
+          other.answer == this.answer &&
+          other.createdAt == this.createdAt &&
+          other.receivedAt == this.receivedAt &&
+          other.grade == this.grade &&
+          other.feedback == this.feedback &&
+          other.gradeVersion == this.gradeVersion &&
+          other.gradedAt == this.gradedAt);
+}
+
+class AssignmentSubmissionsCompanion
+    extends UpdateCompanion<AssignmentSubmission> {
+  final Value<int> id;
+  final Value<String> uuid;
+  final Value<String> assignmentId;
+  final Value<String> subjectId;
+  final Value<int?> studentId;
+  final Value<String> memberKey;
+  final Value<String> learnerName;
+  final Value<String> answer;
+  final Value<String> createdAt;
+  final Value<String?> receivedAt;
+  final Value<int?> grade;
+  final Value<String?> feedback;
+  final Value<int> gradeVersion;
+  final Value<String?> gradedAt;
+  const AssignmentSubmissionsCompanion({
+    this.id = const Value.absent(),
+    this.uuid = const Value.absent(),
+    this.assignmentId = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.studentId = const Value.absent(),
+    this.memberKey = const Value.absent(),
+    this.learnerName = const Value.absent(),
+    this.answer = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+    this.grade = const Value.absent(),
+    this.feedback = const Value.absent(),
+    this.gradeVersion = const Value.absent(),
+    this.gradedAt = const Value.absent(),
+  });
+  AssignmentSubmissionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String uuid,
+    required String assignmentId,
+    required String subjectId,
+    this.studentId = const Value.absent(),
+    required String memberKey,
+    required String learnerName,
+    required String answer,
+    required String createdAt,
+    this.receivedAt = const Value.absent(),
+    this.grade = const Value.absent(),
+    this.feedback = const Value.absent(),
+    this.gradeVersion = const Value.absent(),
+    this.gradedAt = const Value.absent(),
+  }) : uuid = Value(uuid),
+       assignmentId = Value(assignmentId),
+       subjectId = Value(subjectId),
+       memberKey = Value(memberKey),
+       learnerName = Value(learnerName),
+       answer = Value(answer),
+       createdAt = Value(createdAt);
+  static Insertable<AssignmentSubmission> custom({
+    Expression<int>? id,
+    Expression<String>? uuid,
+    Expression<String>? assignmentId,
+    Expression<String>? subjectId,
+    Expression<int>? studentId,
+    Expression<String>? memberKey,
+    Expression<String>? learnerName,
+    Expression<String>? answer,
+    Expression<String>? createdAt,
+    Expression<String>? receivedAt,
+    Expression<int>? grade,
+    Expression<String>? feedback,
+    Expression<int>? gradeVersion,
+    Expression<String>? gradedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (uuid != null) 'uuid': uuid,
+      if (assignmentId != null) 'assignment_id': assignmentId,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (studentId != null) 'student_id': studentId,
+      if (memberKey != null) 'member_key': memberKey,
+      if (learnerName != null) 'learner_name': learnerName,
+      if (answer != null) 'answer': answer,
+      if (createdAt != null) 'created_at': createdAt,
+      if (receivedAt != null) 'received_at': receivedAt,
+      if (grade != null) 'grade': grade,
+      if (feedback != null) 'feedback': feedback,
+      if (gradeVersion != null) 'grade_version': gradeVersion,
+      if (gradedAt != null) 'graded_at': gradedAt,
+    });
+  }
+
+  AssignmentSubmissionsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? uuid,
+    Value<String>? assignmentId,
+    Value<String>? subjectId,
+    Value<int?>? studentId,
+    Value<String>? memberKey,
+    Value<String>? learnerName,
+    Value<String>? answer,
+    Value<String>? createdAt,
+    Value<String?>? receivedAt,
+    Value<int?>? grade,
+    Value<String?>? feedback,
+    Value<int>? gradeVersion,
+    Value<String?>? gradedAt,
+  }) {
+    return AssignmentSubmissionsCompanion(
+      id: id ?? this.id,
+      uuid: uuid ?? this.uuid,
+      assignmentId: assignmentId ?? this.assignmentId,
+      subjectId: subjectId ?? this.subjectId,
+      studentId: studentId ?? this.studentId,
+      memberKey: memberKey ?? this.memberKey,
+      learnerName: learnerName ?? this.learnerName,
+      answer: answer ?? this.answer,
+      createdAt: createdAt ?? this.createdAt,
+      receivedAt: receivedAt ?? this.receivedAt,
+      grade: grade ?? this.grade,
+      feedback: feedback ?? this.feedback,
+      gradeVersion: gradeVersion ?? this.gradeVersion,
+      gradedAt: gradedAt ?? this.gradedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (uuid.present) {
+      map['uuid'] = Variable<String>(uuid.value);
+    }
+    if (assignmentId.present) {
+      map['assignment_id'] = Variable<String>(assignmentId.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (studentId.present) {
+      map['student_id'] = Variable<int>(studentId.value);
+    }
+    if (memberKey.present) {
+      map['member_key'] = Variable<String>(memberKey.value);
+    }
+    if (learnerName.present) {
+      map['learner_name'] = Variable<String>(learnerName.value);
+    }
+    if (answer.present) {
+      map['answer'] = Variable<String>(answer.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<String>(createdAt.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<String>(receivedAt.value);
+    }
+    if (grade.present) {
+      map['grade'] = Variable<int>(grade.value);
+    }
+    if (feedback.present) {
+      map['feedback'] = Variable<String>(feedback.value);
+    }
+    if (gradeVersion.present) {
+      map['grade_version'] = Variable<int>(gradeVersion.value);
+    }
+    if (gradedAt.present) {
+      map['graded_at'] = Variable<String>(gradedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AssignmentSubmissionsCompanion(')
+          ..write('id: $id, ')
+          ..write('uuid: $uuid, ')
+          ..write('assignmentId: $assignmentId, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('studentId: $studentId, ')
+          ..write('memberKey: $memberKey, ')
+          ..write('learnerName: $learnerName, ')
+          ..write('answer: $answer, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('grade: $grade, ')
+          ..write('feedback: $feedback, ')
+          ..write('gradeVersion: $gradeVersion, ')
+          ..write('gradedAt: $gradedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -16483,6 +17305,8 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $NoteOwnersTable noteOwners = $NoteOwnersTable(this);
   late final $AdminRecordsStateTable adminRecordsState =
       $AdminRecordsStateTable(this);
+  late final $AssignmentSubmissionsTable assignmentSubmissions =
+      $AssignmentSubmissionsTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -16551,6 +17375,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     'idx_student_enrolments_student',
     'CREATE INDEX idx_student_enrolments_student ON student_enrolments (student_id)',
   );
+  late final Index idxSubmissionsAssignment = Index(
+    'idx_submissions_assignment',
+    'CREATE INDEX idx_submissions_assignment ON assignment_submissions (assignment_id)',
+  );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
   late final PathDao pathDao = PathDao(this as OticDatabase);
@@ -16613,6 +17441,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     studentEnrolments,
     noteOwners,
     adminRecordsState,
+    assignmentSubmissions,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -16630,6 +17459,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxQuizResultsStudent,
     idxTeachingAssignmentsTeacher,
     idxStudentEnrolmentsStudent,
+    idxSubmissionsAssignment,
   ];
 }
 
@@ -24861,6 +25691,398 @@ typedef $$AdminRecordsStateTableProcessedTableManager =
       AdminRecordsStateRow,
       PrefetchHooks Function()
     >;
+typedef $$AssignmentSubmissionsTableCreateCompanionBuilder =
+    AssignmentSubmissionsCompanion Function({
+      Value<int> id,
+      required String uuid,
+      required String assignmentId,
+      required String subjectId,
+      Value<int?> studentId,
+      required String memberKey,
+      required String learnerName,
+      required String answer,
+      required String createdAt,
+      Value<String?> receivedAt,
+      Value<int?> grade,
+      Value<String?> feedback,
+      Value<int> gradeVersion,
+      Value<String?> gradedAt,
+    });
+typedef $$AssignmentSubmissionsTableUpdateCompanionBuilder =
+    AssignmentSubmissionsCompanion Function({
+      Value<int> id,
+      Value<String> uuid,
+      Value<String> assignmentId,
+      Value<String> subjectId,
+      Value<int?> studentId,
+      Value<String> memberKey,
+      Value<String> learnerName,
+      Value<String> answer,
+      Value<String> createdAt,
+      Value<String?> receivedAt,
+      Value<int?> grade,
+      Value<String?> feedback,
+      Value<int> gradeVersion,
+      Value<String?> gradedAt,
+    });
+
+class $$AssignmentSubmissionsTableFilterComposer
+    extends Composer<_$OticDatabase, $AssignmentSubmissionsTable> {
+  $$AssignmentSubmissionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get assignmentId => $composableBuilder(
+    column: $table.assignmentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get studentId => $composableBuilder(
+    column: $table.studentId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memberKey => $composableBuilder(
+    column: $table.memberKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get learnerName => $composableBuilder(
+    column: $table.learnerName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get grade => $composableBuilder(
+    column: $table.grade,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get feedback => $composableBuilder(
+    column: $table.feedback,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get gradeVersion => $composableBuilder(
+    column: $table.gradeVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get gradedAt => $composableBuilder(
+    column: $table.gradedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AssignmentSubmissionsTableOrderingComposer
+    extends Composer<_$OticDatabase, $AssignmentSubmissionsTable> {
+  $$AssignmentSubmissionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uuid => $composableBuilder(
+    column: $table.uuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get assignmentId => $composableBuilder(
+    column: $table.assignmentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get studentId => $composableBuilder(
+    column: $table.studentId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memberKey => $composableBuilder(
+    column: $table.memberKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get learnerName => $composableBuilder(
+    column: $table.learnerName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get answer => $composableBuilder(
+    column: $table.answer,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get grade => $composableBuilder(
+    column: $table.grade,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get feedback => $composableBuilder(
+    column: $table.feedback,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get gradeVersion => $composableBuilder(
+    column: $table.gradeVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get gradedAt => $composableBuilder(
+    column: $table.gradedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AssignmentSubmissionsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $AssignmentSubmissionsTable> {
+  $$AssignmentSubmissionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get uuid =>
+      $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<String> get assignmentId => $composableBuilder(
+    column: $table.assignmentId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<int> get studentId =>
+      $composableBuilder(column: $table.studentId, builder: (column) => column);
+
+  GeneratedColumn<String> get memberKey =>
+      $composableBuilder(column: $table.memberKey, builder: (column) => column);
+
+  GeneratedColumn<String> get learnerName => $composableBuilder(
+    column: $table.learnerName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get answer =>
+      $composableBuilder(column: $table.answer, builder: (column) => column);
+
+  GeneratedColumn<String> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get grade =>
+      $composableBuilder(column: $table.grade, builder: (column) => column);
+
+  GeneratedColumn<String> get feedback =>
+      $composableBuilder(column: $table.feedback, builder: (column) => column);
+
+  GeneratedColumn<int> get gradeVersion => $composableBuilder(
+    column: $table.gradeVersion,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get gradedAt =>
+      $composableBuilder(column: $table.gradedAt, builder: (column) => column);
+}
+
+class $$AssignmentSubmissionsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $AssignmentSubmissionsTable,
+          AssignmentSubmission,
+          $$AssignmentSubmissionsTableFilterComposer,
+          $$AssignmentSubmissionsTableOrderingComposer,
+          $$AssignmentSubmissionsTableAnnotationComposer,
+          $$AssignmentSubmissionsTableCreateCompanionBuilder,
+          $$AssignmentSubmissionsTableUpdateCompanionBuilder,
+          (
+            AssignmentSubmission,
+            BaseReferences<
+              _$OticDatabase,
+              $AssignmentSubmissionsTable,
+              AssignmentSubmission
+            >,
+          ),
+          AssignmentSubmission,
+          PrefetchHooks Function()
+        > {
+  $$AssignmentSubmissionsTableTableManager(
+    _$OticDatabase db,
+    $AssignmentSubmissionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AssignmentSubmissionsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$AssignmentSubmissionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AssignmentSubmissionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> uuid = const Value.absent(),
+                Value<String> assignmentId = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<int?> studentId = const Value.absent(),
+                Value<String> memberKey = const Value.absent(),
+                Value<String> learnerName = const Value.absent(),
+                Value<String> answer = const Value.absent(),
+                Value<String> createdAt = const Value.absent(),
+                Value<String?> receivedAt = const Value.absent(),
+                Value<int?> grade = const Value.absent(),
+                Value<String?> feedback = const Value.absent(),
+                Value<int> gradeVersion = const Value.absent(),
+                Value<String?> gradedAt = const Value.absent(),
+              }) => AssignmentSubmissionsCompanion(
+                id: id,
+                uuid: uuid,
+                assignmentId: assignmentId,
+                subjectId: subjectId,
+                studentId: studentId,
+                memberKey: memberKey,
+                learnerName: learnerName,
+                answer: answer,
+                createdAt: createdAt,
+                receivedAt: receivedAt,
+                grade: grade,
+                feedback: feedback,
+                gradeVersion: gradeVersion,
+                gradedAt: gradedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String uuid,
+                required String assignmentId,
+                required String subjectId,
+                Value<int?> studentId = const Value.absent(),
+                required String memberKey,
+                required String learnerName,
+                required String answer,
+                required String createdAt,
+                Value<String?> receivedAt = const Value.absent(),
+                Value<int?> grade = const Value.absent(),
+                Value<String?> feedback = const Value.absent(),
+                Value<int> gradeVersion = const Value.absent(),
+                Value<String?> gradedAt = const Value.absent(),
+              }) => AssignmentSubmissionsCompanion.insert(
+                id: id,
+                uuid: uuid,
+                assignmentId: assignmentId,
+                subjectId: subjectId,
+                studentId: studentId,
+                memberKey: memberKey,
+                learnerName: learnerName,
+                answer: answer,
+                createdAt: createdAt,
+                receivedAt: receivedAt,
+                grade: grade,
+                feedback: feedback,
+                gradeVersion: gradeVersion,
+                gradedAt: gradedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AssignmentSubmissionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $AssignmentSubmissionsTable,
+      AssignmentSubmission,
+      $$AssignmentSubmissionsTableFilterComposer,
+      $$AssignmentSubmissionsTableOrderingComposer,
+      $$AssignmentSubmissionsTableAnnotationComposer,
+      $$AssignmentSubmissionsTableCreateCompanionBuilder,
+      $$AssignmentSubmissionsTableUpdateCompanionBuilder,
+      (
+        AssignmentSubmission,
+        BaseReferences<
+          _$OticDatabase,
+          $AssignmentSubmissionsTable,
+          AssignmentSubmission
+        >,
+      ),
+      AssignmentSubmission,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -24930,4 +26152,6 @@ class $OticDatabaseManager {
       $$NoteOwnersTableTableManager(_db, _db.noteOwners);
   $$AdminRecordsStateTableTableManager get adminRecordsState =>
       $$AdminRecordsStateTableTableManager(_db, _db.adminRecordsState);
+  $$AssignmentSubmissionsTableTableManager get assignmentSubmissions =>
+      $$AssignmentSubmissionsTableTableManager(_db, _db.assignmentSubmissions);
 }

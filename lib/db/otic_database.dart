@@ -23,6 +23,7 @@ import 'daos/translation_cache_dao.dart';
 import 'daos/website_dao.dart';
 import 'tables/app_builder_projects_table.dart';
 import 'tables/admin_tables.dart';
+import 'tables/assignment_submissions_table.dart';
 import 'tables/assignments_table.dart';
 import 'tables/chat_sessions_table.dart';
 import 'tables/sync_state_table.dart';
@@ -83,6 +84,7 @@ part 'otic_database.g.dart';
     StudentEnrolments,
     NoteOwners,
     AdminRecordsState,
+    AssignmentSubmissions,
   ],
   daos: [
     StudentDao,
@@ -115,7 +117,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 25;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -582,6 +584,15 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _tableExists('admin_records_state')) {
           await m.createTable(adminRecordsState);
+        }
+      }
+      if (from < 26) {
+        // Class assignments: learners' answers and teachers' grades.
+        if (!await _tableExists('assignment_submissions')) {
+          await m.createTable(assignmentSubmissions);
+        }
+        if (!await _indexExists('idx_submissions_assignment')) {
+          await m.create(idxSubmissionsAssignment);
         }
       }
     },

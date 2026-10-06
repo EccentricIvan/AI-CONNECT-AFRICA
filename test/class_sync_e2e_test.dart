@@ -7,6 +7,7 @@ import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart
 import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
+import 'package:ai_connect_africa/services/assignments/class_assignments.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/notes/note_pdf_store.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
@@ -692,6 +693,58 @@ void main() {
       expect(await _received(db), isNotEmpty, reason: 'received note stays');
       await db.topicResourceDao.deleteBySubject('carpentry');
       expect(await _received(db), isNotEmpty, reason: 'received note stays');
+    });
+
+    test('an assignment reaches the class; the answer reaches the teacher; '
+        'the grade comes back to that learner only', () async {
+      final assignments = ClassAssignments(teacher);
+      final title = (await assignments.create(
+        subjectId: 'chemistry',
+        title: 'Acids',
+        instructions: 'Name two acids.',
+        maxPoints: 10,
+      ))!;
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: title,
+        classUuids: {east.groupUuid!},
+      );
+
+      final (db, m) = await student();
+      final g = await join(m, east);
+      final amina = await db
+          .into(db.students)
+          .insert(StudentsCompanion.insert(name: 'Amina'));
+      await db.classGroupDao.assignLearner(amina, g.id);
+      await m.syncClass(teacher: endpoint, group: g);
+
+      final learnerSide = ClassAssignments(db);
+      final seen = await learnerSide.visible(g.groupUuid);
+      expect(seen.single.title, 'Acids');
+      final me = (await db.studentDao.getStudentById(amina))!;
+      await learnerSide.submit(
+        student: me,
+        assignment: seen.single,
+        answer: 'Hydrochloric and sulphuric acid.',
+        memberKey: 'local/$amina',
+      );
+      await m.syncClass(teacher: endpoint, group: g);
+
+      final received = await teacher.select(teacher.assignmentSubmissions).get();
+      expect(received.single.answer, 'Hydrochloric and sulphuric acid.');
+      expect(received.single.receivedAt, isNotNull);
+      await assignments.grade(received.single.uuid, 9, 'Good');
+
+      await m.syncClass(teacher: endpoint, group: g);
+      final mine = await db.select(db.assignmentSubmissions).get();
+      expect(mine.single.grade, 9);
+      expect(mine.single.feedback, 'Good');
+      expect(mine.single.createdAt, received.single.createdAt,
+          reason: 'when it was made, apart from when it synced');
+
+      // Syncing again changes nothing.
+      await m.syncClass(teacher: endpoint, group: g);
+      expect((await teacher.select(teacher.assignmentSubmissions).get()).length, 1);
     });
 
     test('a class’s students are offered only the subjects taught to it',

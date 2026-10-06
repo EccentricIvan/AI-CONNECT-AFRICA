@@ -251,6 +251,11 @@ class _TeacherDevicesCard extends ConsumerWidget {
                 'Lesson materials',
                 '/teacher/materials',
               ),
+              (
+                Icons.assignment_turned_in_outlined,
+                'Assignments',
+                '/teacher/assignments',
+              ),
               (Icons.sync_rounded, 'Sync', '/teacher/sync'),
             ])
               ListTile(

@@ -10,6 +10,7 @@ import '../../app.dart';
 import '../../db/providers/db_provider.dart';
 import '../../features/achievements/achievements_screen.dart';
 import '../../features/admin/admin_screen.dart';
+import '../../features/assignments/assignments_screens.dart';
 import '../../features/notes/my_notes_screen.dart';
 import '../../features/notes/note_pdf_screen.dart';
 import '../../features/teachers/teachers_screen.dart';
@@ -228,6 +229,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/admin',
             builder: (_, __) => const AdminScreen(),
+          ),
+          GoRoute(
+            path: '/assignments',
+            builder: (_, __) => const AssignmentsScreen(),
+          ),
+          GoRoute(
+            path: '/teacher/assignments',
+            builder: (_, __) => const GradeAssignmentsScreen(),
           ),
           GoRoute(
             path: '/settings',

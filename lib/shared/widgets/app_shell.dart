@@ -107,6 +107,12 @@ class AppShell extends ConsumerWidget {
       '/my-notes',
     ),
     _NavDest(
+      'Assignments',
+      Icons.assignment_outlined,
+      Icons.assignment_rounded,
+      '/assignments',
+    ),
+    _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,
       Icons.emoji_events_rounded,

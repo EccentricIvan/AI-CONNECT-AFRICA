@@ -21,6 +21,7 @@ import 'class_providers.dart';
 import 'resource_labels.dart';
 import 'teacher_profiles.dart';
 import 'teaching_scope.dart';
+import '../assignments/assignments_screens.dart';
 
 /// Where a teacher creates subjects and adds the material they teach from.
 ///
@@ -226,6 +227,11 @@ class _SubjectTile extends ConsumerWidget {
                   icon: const Icon(Icons.edit_note, size: 18),
                   label: Text(tr(context, ResourceLabels.typeNotes)),
                 ),
+                OutlinedButton.icon(
+                  onPressed: () => _addAssignment(context, ref),
+                  icon: const Icon(Icons.assignment_add, size: 18),
+                  label: Text(tr(context, 'New assignment')),
+                ),
               ],
             ),
           ),
@@ -416,6 +422,15 @@ class _SubjectTile extends ConsumerWidget {
         ...details,
       ].join(' · '),
     );
+  }
+
+  /// An assignment travels like a note: share it with classes to send it.
+  Future<void> _addAssignment(BuildContext context, WidgetRef ref) async {
+    if (!await _mine(context, ref) || !context.mounted) return;
+    final title = await showNewAssignmentDialog(context, ref, subject.subjectId);
+    if (title == null) return;
+    await _own(ref, title);
+    _refresh(ref);
   }
 
   Future<void> _addTyped(BuildContext context, WidgetRef ref) async {

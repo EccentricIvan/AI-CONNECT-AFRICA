@@ -9,6 +9,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
+import '../../services/assignments/class_assignments.dart';
 import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
 import 'failover_crypto.dart';
@@ -932,7 +933,24 @@ class ClassShareServer {
         if (ProgressReport.fromJson(r) case final report?) report,
     ];
     await _db.classSyncDao.saveMemberReports(served.groupUuid, reports);
-    return {'saved': reports.length};
+    // Each learner's answers to this device's assignments, and back the
+    // grades of exactly those answers — never anyone else's.
+    final assignments = ClassAssignments(_db);
+    final grades = <GradePayload>[];
+    for (final r in reports) {
+      grades.addAll(
+        await assignments.receive(
+          classUuid: served.groupUuid,
+          memberKey: r.memberKey,
+          learnerName: r.name,
+          submissions: r.submissions,
+        ),
+      );
+    }
+    return {
+      'saved': reports.length,
+      'grades': [for (final g in grades) g.toJson()],
+    };
   }
 
   Future<Map<String, Object?>?> _channel(
