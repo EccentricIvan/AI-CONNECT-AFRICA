@@ -59,6 +59,9 @@ class TutorPipeline {
   /// retrieves the same note doesn't repeat "look at page 14".
   final Set<String> _shownDiagrams = {};
 
+  /// Teacher notes already named as a source in this topic.
+  final Set<String> _shownSources = {};
+
   /// Process a student message and stream the tutor response.
   /// [onToken] fires with each new token as it arrives.
   /// [safetyNote] is an extra instruction from the emotional safety engine
@@ -88,6 +91,7 @@ class TutorPipeline {
       _activeMatch = null;
       _memory.clear();
       _shownDiagrams.clear();
+    _shownSources.clear();
       await _engine.resetSession();
     } else if (_currentTopic.isEmpty && topic.isNotEmpty) {
       _currentTopic = topic;
@@ -184,6 +188,14 @@ class TutorPipeline {
       text = '$text$extra';
       await emitToken(onToken, extra);
     }
+    // The teacher's notes this answer drew on, so the learner can tell them
+    // from the model's general knowledge. Also kept out of memory.
+    final sources = _sourcesOf(classNotes);
+    if (sources.isNotEmpty) {
+      final extra = "\n\nSource: your teacher's notes — ${sources.join('; ')}";
+      text = '$text$extra';
+      await emitToken(onToken, extra);
+    }
 
     final followUp = _followUpForStage(stage);
     _advanceStage();
@@ -233,6 +245,23 @@ class TutorPipeline {
 
   static String _clip(String text, int max) =>
       text.length > max ? '${text.substring(0, max - 1)}…' : text;
+
+  /// Titles of the teacher's notes that made it into the prompt (the first
+  /// 700 characters — the notes slot), each named once per topic.
+  List<String> _sourcesOf(String notes) {
+    if (notes.trim().isEmpty) return const [];
+    final used = notes.length > 700 ? notes.substring(0, 700) : notes;
+    final out = <String>[];
+    for (final part in used.split('\n\n')) {
+      final firstLine = part.split('\n').first.trim();
+      if (!firstLine.endsWith(':') || firstLine.length < 2) continue;
+      final title = firstLine.substring(0, firstLine.length - 1).trim();
+      if (title.isEmpty || !_shownSources.add(title)) continue;
+      out.add(title);
+      if (out.length == 2) break;
+    }
+    return out;
+  }
 
   /// "See Figure 3.2, page 14 of the PDF…" lines for diagrams in [notes] that
   /// relate to what the student asked, each at most once per topic.
@@ -491,6 +520,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
     _activeMatch = null;
     _clearMath();
     _shownDiagrams.clear();
+    _shownSources.clear();
     _memory.restoreFrom(memory);
     _currentTopic = topic;
     _nextStage = nextStage;
@@ -505,6 +535,7 @@ WEAKNESS: <one short phrase describing something the student is struggling with,
     _awaitingMath = null;
     _practiceMiss = false;
     _shownDiagrams.clear();
+    _shownSources.clear();
     unawaited(_engine.resetSession());
   }
 

@@ -91,4 +91,18 @@ void main() {
     expect(engine.prompts.single, isNot(contains(kDiagramInstruction)));
     expect(reply.text, isNot(contains('Diagram:')));
   });
+
+  test('an answer from the teacher’s notes names them as its source, once '
+      'per topic; one without notes names none', () async {
+    final tutor = TutorPipeline(engine: _Engine(), teacherNotes: (_) async => _notes());
+    final first = await tutor.respond(studentMessage: 'How does the heart pump blood?');
+    expect(first.text,
+        contains("Source: your teacher's notes — Biology Term 1 — Circulation"));
+    final second = await tutor.respond(studentMessage: 'Tell me more about the heart chambers');
+    expect(second.text, isNot(contains('Source:')));
+
+    final plain = TutorPipeline(engine: _Engine(), teacherNotes: (_) async => '');
+    final general = await plain.respond(studentMessage: 'How does the heart pump blood?');
+    expect(general.text, isNot(contains('Source:')));
+  });
 }
