@@ -5,6 +5,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' show ModelType;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/pdf/diagram_detector.dart';
 import '../inference/cpu_support.dart';
+import '../inference/memory_support.dart';
 import '../inference/engine_scheduler.dart';
 import '../inference/inference_engine.dart';
 import '../inference/litert_lm_engine.dart';
@@ -243,6 +244,15 @@ final dualModelRuntimeProvider = FutureProvider<DualModelRuntime>((ref) async {
     if (!androidUsesLiteRt && !cpuSupportsLlamaCpp) {
       debugPrint('BRAIN skipped: this CPU lacks AVX2 (llama.cpp would crash).');
       return demo(DemoReason.unsupportedCpu);
+    }
+
+    final memoryGb = deviceMemoryGb;
+    if (!memoryIsEnough(
+      memoryGb,
+      phone: defaultTargetPlatform == TargetPlatform.android,
+    )) {
+      debugPrint('BRAIN skipped: ${memoryGb?.toStringAsFixed(1)} GB RAM.');
+      return demo(DemoReason.notEnoughMemory);
     }
 
     final reasoner = createBrainEngine();
