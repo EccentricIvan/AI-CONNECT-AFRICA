@@ -105,14 +105,14 @@ own prompt. Don't confuse it with the Teacher *role*/dashboard, which stays.
 - Guests: no saved state, no certificates, demonstration only
 - Students: full learning features, memory, certificates
 - Teachers: read student data, create groups/quizzes, cannot modify platform
-- Admins: device/user/update management, no learning features. There is no
-  separate Admin screen any more: it became **Teachers** (`/teachers`,
-  `lib/features/teachers/teachers_screen.dart`), which lists the school's
-  devices that teachers use (this one, its co-teachers, the classes it
-  co-teaches, its standbys), links the teacher tools, and keeps the old admin parts (school,
-  learner delete, reset, packages, updates). `/admin` redirects there.
-  It is gated by the Teachers PIN only, so every device can manage its
-  learners. It is also where teachers sign in (see Teacher profiles).
+- Admins: the school's records, no learning features. Admin came back as a
+  separate role on 2026-10-06 (it had been folded into Teachers on
+  2026-10-01). One Admin per school, on whichever device they use — see
+  **Admin and teaching assignments** below. `/admin` is the Admin section
+  (`lib/features/admin/`), behind the Admin's own PIN, not the Teachers PIN.
+- **Teachers** (`/teachers`, `lib/features/teachers/teachers_screen.dart`)
+  is where teachers sign in, plus their tools and the device/packages
+  info. It is gated by the Teachers PIN only, not by a profile.
 
 ### Shared devices, classes and the teacher PIN
 
@@ -152,37 +152,66 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
   device knows. It gates `/teacher*`, `/teachers` and `/admin*`. It stores
   only a salted hash, and with no PIN set nothing is gated. It keeps
   learners out; it is not real security.
-- **Teacher profiles (schema 22).** Several teachers share a device. On
-  Teachers each one signs in with their own PIN, or adds a profile (name +
-  PIN) (`teacher_profiles.dart`, `teacher_profiles` table).
+- **Teacher profiles (schema 22).** Several teachers share a device; the
+  Admin adds them (`AdminService.addTeacher`), and each signs in on
+  Teachers with their own PIN (`teacher_profiles.dart`).
   - `/teacher*` (the teacher tools) needs a teacher signed in
     (`activeTeacherProvider`, in memory only) and otherwise goes to
-    Teachers. Signing out happens with every learner switch and reset.
-  - Classes/streams (`class_groups`), subjects (`custom_subjects`) and
-    co-taught classes (`co_teaching_classes`) carry `owner_teacher_id`.
-    Only the creator can rename or delete them, add or remove materials,
-    or share materials into them (`ClassGroupDao.mayChange`,
-    `CustomSubjectService.mayChange`). The teacher tools list only the
-    signed-in teacher's own.
-  - The first profile on a device claims everything made before profiles
-    existed (`TeacherProfileService.claimUnowned`). A takeover
-    (`promoteToHostNode`) or co-teacher join gives its rows to the
-    teacher signed in.
-  - Ownership is local: it is never synced or signed. All of the device's
-    shared classes are still served under the one device key.
-  - Subject ids are device-wide, so two teachers can't both have a
-    subject with the same name.
+    Teachers. Signing out happens with every learner switch and reset, and
+    `kSessionLife` (60 min) after signing in. The Admin session works the
+    same way.
+  - The `owner_teacher_id` columns from schema 22 are no longer used for
+    permissions; teaching assignments are (below).
 - **Learner PIN (schema 23).** A learner may set "My PIN" (Settings →
   Student Profile; `students.pin_salt`/`pin_hash`, `learner_pin.dart`).
   Switching the device to them asks for it (`LearnerPickerScreen`). A
   teacher clears a forgotten one from Teachers → the learner's row.
-- **Roadmap agreed 2026-10-06** (user's P2P/RBAC spec): roles ADMIN (back
-  as a separate role), TEACHER, LEARNER; then TeachingAssignment /
-  StudentEnrollment records (school, year, term, class, stream, subject);
-  per-user peer authorization and device revocation; assignment,
-  submission and grade sync with an operation log (op id, device, user,
-  version; no last-write-wins for grades); encrypted local storage; a
-  security test suite. Stay P2P — never a central server.
+- **Admin and teaching assignments (schemas 24–25).** Every device runs
+  the same app; there is no school server.
+  - Only the Admin creates or changes teachers, classes/streams, subjects,
+    teaching assignments (teacher × class/stream × subject × year/term),
+    learners and enrolments (learner × class/stream × year; re-enrolling
+    withdraws the old one, never deletes it). Every change needs an
+    `AdminSession`, which only the Admin PIN yields (`AdminService`).
+  - A teacher's reach follows from their assignments (`TeachingScope`):
+    they upload only to subjects they teach, change and share only the
+    notes they uploaded (`note_owners`), share only into classes they
+    teach that subject to, and see only learners of those classes. Shares
+    no assignment covers are dropped (`pruneShares`) whenever assignments
+    change, so Sync stops serving them.
+  - Schema 24 turned the old ownership into assignments, enrolments and
+    note owners, so existing teachers kept their access. Learners and
+    teachers have portable `uuid`s (set by a trigger on insert).
+  - **Admin sync** (`lib/collaboration/admin/`) is one way: from the
+    Admin's device to one the Admin picks (it types the code + address the
+    Admin shows; the Admin taps Accept). The whole set of records is
+    signed with the Admin key; a receiver pins that key on its first
+    records and takes only higher versions; applying is one idempotent
+    transaction. Teachers and learners are added or updated, never
+    deleted; assignments and enrolments are replaced whole. With a 12+
+    character passphrase the Admin's details travel sealed (PBKDF2 600k)
+    so the Admin can take over there. A device holding records is never
+    set up as a second Admin.
+  - A device whose learners all came from the Admin and where nobody has
+    picked themselves yet opens "Who's learning?".
+- **Class assignments (schema 26).** A teacher adds one in Lesson
+  materials; it is a `~assignment` row of a note, so it is signed and goes
+  only to the classes the teacher shares it with. Learners answer on
+  Assignments; answers ride their progress report to the teacher on Sync,
+  and the reply carries back the grades of exactly those answers
+  (`class_assignments.dart`). Answers are written once with a stable id
+  (a new answer is a new row; created vs received times kept apart);
+  grades change only with a higher version; answers to an assignment not
+  shared with that class are refused.
+- **Roadmap agreed 2026-10-06** (user's P2P/RBAC spec). Done: Admin role,
+  teaching assignments and enrolments, one-way Admin sync, assignment
+  submission and grade sync, session expiry, tutor sources, the memory
+  check before loading the AI. Not done yet: per-learner (not per-device)
+  peer authorization, device registration and revocation, encrypted local
+  storage (SQLCipher + OS secure storage), per-teacher signing keys for
+  Sync (today a class's learners trust the hosting device's key), archiving
+  materials, and measurements on minimum hardware. Stay P2P — never a
+  central server.
 
 ### Teacher notes → tutor (offline knowledge base)
 
