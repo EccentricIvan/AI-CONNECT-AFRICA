@@ -10,7 +10,9 @@ import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learners/add_learner_dialog.dart';
 import 'class_providers.dart';
+import 'resource_labels.dart';
 import 'teacher_pin_screen.dart';
+import 'teacher_profiles.dart';
 
 String _shortWhen(DateTime dt) {
   final local = dt.toLocal();
@@ -67,18 +69,23 @@ class _TeacherDashboardScreenState
   @override
   Widget build(BuildContext context) {
     final learnersAsync = ref.watch(allLearnersProvider);
+    // The signed-in teacher's own classes; every class still labels its
+    // learners.
     final classes =
+        ref.watch(myClassGroupsProvider).valueOrNull ?? const <ClassGroup>[];
+    final allClasses =
         ref.watch(classGroupsProvider).valueOrNull ?? const <ClassGroup>[];
     final stats =
         ref.watch(learnerStatsProvider).valueOrNull ??
         const <int, LearnerStats>{};
-    final classById = {for (final c in classes) c.id: c};
+    final classById = {for (final c in allClasses) c.id: c};
+    final mine = {for (final c in classes) c.id};
 
     // A class deleted or renamed elsewhere must not leave the filter holding
     // a stale row.
     final _Filter filter = switch (_filter) {
       _InClass(:final group) =>
-        classById[group.id] == null
+        !mine.contains(group.id)
             ? const _AllLearners()
             : _InClass(classById[group.id]!),
       final other => other,
@@ -255,10 +262,12 @@ class _TeacherDashboardScreenState
     if (saved != true || className.isEmpty) return;
 
     final dao = ref.read(dbProvider).classGroupDao;
+    final me = ref.read(activeTeacherIdProvider);
     if (existing == null) {
       final id = await dao.createClass(
         className: className,
         streamName: streamName,
+        ownerTeacherId: me,
       );
       if (!mounted) return;
       setState(
@@ -269,16 +278,25 @@ class _TeacherDashboardScreenState
             streamName: streamName.isEmpty ? null : streamName,
             createdAt: DateTime.now(),
             joined: false,
+            ownerTeacherId: me,
           ),
         ),
       );
     } else {
-      await dao.renameClass(
+      final renamed = await dao.renameClass(
         existing.id,
         className: className,
         streamName: streamName,
+        byTeacherId: me,
       );
+      if (!renamed && mounted) _notYours();
     }
+  }
+
+  void _notYours() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text(ResourceLabels.notYours)),
+    );
   }
 
   Future<void> _deleteClass(BuildContext context, ClassGroup group) async {
@@ -303,8 +321,13 @@ class _TeacherDashboardScreenState
       ),
     );
     if (ok != true) return;
-    await ref.read(dbProvider).classGroupDao.deleteClass(group.id);
-    if (mounted) setState(() => _filter = const _AllLearners());
+    final deleted = await ref
+        .read(dbProvider)
+        .classGroupDao
+        .deleteClass(group.id, byTeacherId: ref.read(activeTeacherIdProvider));
+    if (!mounted) return;
+    if (!deleted) return _notYours();
+    setState(() => _filter = const _AllLearners());
   }
 
   Future<void> _moveLearner(

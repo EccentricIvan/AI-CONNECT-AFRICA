@@ -45,7 +45,7 @@ class ResourceLabels {
   static const subjectRemoved = 'Subject removed';
 
   // ── Uploading ────────────────────────────────────────────────────────
-  static const uploadFile = 'Upload a file';
+  static const uploadFile = 'Upload files';
   static const typeNotes = 'Type notes instead';
   static const uploadHint =
       'PDF (scanned too), Word, or a text file. Everything stays on this device.';
@@ -58,6 +58,12 @@ class ResourceLabels {
   static const pagesScanned = '{count} scanned pages read';
   static const diagramsMarked = '{count} diagrams marked for students to look at';
   static const pagesUnreadable = "{count} pages couldn't be read";
+  static const filesAdded = 'Added {count} files';
+  static const fileOfFiles = 'File {n} of {total}: {title}';
+  static const readingPages = 'Reading {done}/{total}';
+  static const questionsReady = '{count} questions';
+  static const noReadableText = 'No readable text';
+  static const notYours = 'Only the teacher who created this can change it';
 
   // ── Supporting copy ──────────────────────────────────────────────────
   static const noteTitle = 'Note title';

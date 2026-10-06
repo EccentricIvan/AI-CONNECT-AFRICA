@@ -44,4 +44,8 @@ class CoTeachingClasses extends Table {
   TextColumn get rosterJson => text()();
 
   DateTimeColumn get joinedAt => dateTime().withDefault(currentDateAndTime)();
+
+  /// The teacher profile that joined as co-teacher; only they share into
+  /// it. Local only, never synced.
+  IntColumn get ownerTeacherId => integer().nullable()();
 }

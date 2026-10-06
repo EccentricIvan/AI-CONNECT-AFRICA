@@ -20,6 +20,7 @@ import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import 'failover_widgets.dart';
+import 'teacher_profiles.dart';
 
 /// The standby side of host failover: pair this device as the teacher
 /// device's standby, keep its backup fresh, and — if the teacher device is
@@ -278,7 +279,11 @@ class _StandbyScreenState extends ConsumerState<StandbyScreen> {
     setState(() => _busy = true);
     try {
       _service.stopMirroring();
-      final r = await _service.promoteToHostNode(pass, ledger);
+      final r = await _service.promoteToHostNode(
+        pass,
+        ledger,
+        ownerTeacherId: ref.read(activeTeacherIdProvider),
+      );
       if (!mounted) return;
       if (!r.ok) {
         _message(r.error!);

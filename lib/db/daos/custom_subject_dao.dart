@@ -32,6 +32,7 @@ class CustomSubjectDao extends DatabaseAccessor<OticDatabase>
     required String icon,
     required String color,
     DateTime? createdAt,
+    int? ownerTeacherId,
   }) {
     return into(customSubjects).insert(
       CustomSubjectsCompanion.insert(
@@ -40,6 +41,7 @@ class CustomSubjectDao extends DatabaseAccessor<OticDatabase>
         icon: Value(icon),
         color: Value(color),
         createdAt: (createdAt ?? DateTime.now()).toUtc().toIso8601String(),
+        ownerTeacherId: Value(ownerTeacherId),
       ),
     );
   }

@@ -39,4 +39,9 @@ class CustomSubjects extends Table {
   /// the [ClassGroups.groupUuid] of the class whose teacher offered it — the
   /// teacher's subject list arrives on every sync and replaces these rows.
   TextColumn get classGroupUuid => text().nullable()();
+
+  /// The teacher profile (`teacher_profiles.id`) that created this subject;
+  /// only they may rename or delete it, or add materials to it. Null on a
+  /// received subject. Local only, never synced.
+  IntColumn get ownerTeacherId => integer().nullable()();
 }

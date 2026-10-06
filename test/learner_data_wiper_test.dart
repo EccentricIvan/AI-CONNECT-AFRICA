@@ -509,6 +509,8 @@ void main() {
       // (standby) — the school's teacher identity, not a learner's.
       'failover_standbys',
       'host_ledgers',
+      // Teachers who sign in on this device — not learners.
+      'teacher_profiles',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

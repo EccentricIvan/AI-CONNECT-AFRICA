@@ -175,11 +175,29 @@ class _SubjectQuizTabState extends ConsumerState<SubjectQuizTab> {
       chatProvider.select((c) => c.valueOrNull?.isGenerating ?? false),
     );
 
+    final topics =
+        ref.watch(subjectQuizTopicsProvider(subjectId)).valueOrNull ??
+        const <(String, int)>[];
+    final topicChips = topics.isEmpty
+        ? null
+        : _TopicChips(
+            topics: topics,
+            selected: quiz.topic,
+            onSelected: (t) => notifier.startStored(topic: t),
+          );
+
     if (quiz.questions.isEmpty && !quiz.generating) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (topicChips != null) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: topicChips,
+              ),
+              const SizedBox(height: 16),
+            ],
             Icon(Icons.quiz_outlined, size: 48, color: ac.textSecondary),
             const SizedBox(height: 12),
             if (quiz.error != null) ...[
@@ -204,6 +222,7 @@ class _SubjectQuizTabState extends ConsumerState<SubjectQuizTab> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
         children: [
+          if (topicChips != null) ...[topicChips, const SizedBox(height: 12)],
           Row(
             children: [
               Text(
@@ -244,9 +263,48 @@ class _SubjectQuizTabState extends ConsumerState<SubjectQuizTab> {
           if (quiz.finished) ...[
             const SizedBox(height: 8),
             FilledButton.icon(
-              onPressed: chatBusy ? null : () => notifier.start(),
+              onPressed: chatBusy
+                  ? null
+                  : () => notifier.start(topic: quiz.topic),
               icon: const Icon(Icons.refresh_rounded),
               label: Text(tr(context, 'New quiz')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "All topics" and one chip per topic with stored questions.
+class _TopicChips extends StatelessWidget {
+  const _TopicChips({
+    required this.topics,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<(String, int)> topics;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          ChoiceChip(
+            label: Text(tr(context, 'All topics')),
+            selected: selected == null,
+            onSelected: (_) => onSelected(null),
+          ),
+          for (final (topic, count) in topics) ...[
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: Text('$topic ($count)'),
+              selected: selected == topic,
+              onSelected: (_) => onSelected(topic),
             ),
           ],
         ],

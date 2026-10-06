@@ -142,21 +142,25 @@ Future<String> readablePageText(
   }
 }
 
-/// Reads every page: embedded text when the page has real text, OCR when it's
-/// a scan, and a diagram marker where a picture or caption is. Nothing is
-/// stored here, so cancelling leaves no trace.
+/// Reads every page (or pages [firstPage]..[lastPage]): embedded text
+/// when the page has real text, OCR when it's a scan, and a diagram marker
+/// where a picture or caption is. Nothing is stored here, so cancelling
+/// leaves no trace.
 Future<PdfExtraction> extractPdfPages(
   PdfPageSource source, {
   required String documentTitle,
   OcrEngine? ocr,
   void Function(int done, int total)? onProgress,
   bool Function()? isCancelled,
+  int firstPage = 1,
+  int? lastPage,
 }) async {
   final total = source.pageCount;
+  final last = math.min(lastPage ?? total, total);
   final pages = <String>[];
   var ocrPages = 0, unreadable = 0, diagrams = 0;
 
-  for (var n = 1; n <= total; n++) {
+  for (var n = math.max(firstPage, 1); n <= last; n++) {
     if (isCancelled?.call() ?? false) {
       return PdfExtraction(
         text: '',
@@ -236,7 +240,7 @@ Future<PdfExtraction> extractPdfPages(
       unreadable++;
     }
   }
-  onProgress?.call(total, total);
+  onProgress?.call(last, total);
 
   return PdfExtraction(
     text: normalizeExtractedText(pages.join('\n\n')),

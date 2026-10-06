@@ -8,8 +8,6 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../ai_core/tutor/programming_topic.dart';
 import '../../app.dart';
 import '../../db/providers/db_provider.dart';
-import '../../db/tables/sync_identity_table.dart' show kRoleTeacher;
-import '../../features/teacher/teacher_device_screens.dart';
 import '../../features/achievements/achievements_screen.dart';
 import '../../features/notes/my_notes_screen.dart';
 import '../../features/notes/note_pdf_screen.dart';
@@ -37,6 +35,7 @@ import '../../features/teacher/teacher_sync_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/teacher/teacher_pin.dart';
 import '../../features/teacher/teacher_pin_screen.dart';
+import '../../features/teacher/teacher_profiles.dart';
 import '../../features/site_builder/site_chat_builder_screen.dart';
 import '../../features/web_dev_lab/web_dev_lab_screen.dart';
 import '../../screens/package_fetch_screen.dart';
@@ -56,18 +55,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final onboarding = await _onboardingRedirect(ref);
       if (onboarding != null) return onboarding;
 
-      // Teacher and Admin areas sit behind the teacher PIN, when one is set.
+      // Teachers sits behind the Teachers PIN, when one is set…
       if (!isTeacherRoute(state.uri.path)) return null;
-      // …and the teacher section only opens on the teacher's device.
-      final byRole = teacherRoleRedirect(
-        state.uri,
-        role: kIsWeb ? kRoleTeacher : await _deviceRole(ref),
-      );
-      if (byRole != null) return byRole;
-      return teacherGateRedirect(
+      final gate = teacherGateRedirect(
         state.uri,
         unlocked: ref.read(teacherUnlockedProvider),
         pinSet: await ref.read(teacherPinProvider).isSet(),
+      );
+      if (gate != null) return gate;
+      // …and the teacher tools need a teacher signed in, on any device.
+      return teacherProfileRedirect(
+        state.uri,
+        signedIn: kIsWeb || ref.read(activeTeacherProvider) != null,
       );
     },
     routes: [
@@ -202,21 +201,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/class-sync',
             builder: (_, __) => const ClassSyncScreen(),
           ),
-          GoRoute(
-            path: '/teacher-setup',
-            builder: (_, state) {
-              final to = state.uri.queryParameters['to'] ?? '/teacher';
-              return TeacherDeviceSetupScreen(
-                destination: isTeacherRoute(Uri.parse(to).path)
-                    ? to
-                    : '/teacher',
-              );
-            },
-          ),
-          GoRoute(
-            path: '/student-device',
-            builder: (_, __) => const StudentDeviceScreen(),
-          ),
+          // Removed: every device can teach.
+          GoRoute(path: '/teacher-setup', redirect: (_, __) => '/teachers'),
+          GoRoute(path: '/student-device', redirect: (_, __) => '/teachers'),
           GoRoute(
             path: '/certificates',
             builder: (_, __) => const CertificatesScreen(),
@@ -272,16 +259,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-
-/// This device's role, or null when undecided or unreadable.
-Future<String?> _deviceRole(Ref ref) async {
-  try {
-    return await ref.read(dbProvider).classSyncDao.deviceRole();
-  } catch (e) {
-    debugPrint('device role unavailable: $e');
-    return null;
-  }
-}
 
 /// Where to send someone who has not finished onboarding, or null.
 Future<String?> _onboardingRedirect(Ref ref) async {

@@ -7,6 +7,7 @@ import '../../db/providers/db_provider.dart';
 import '../../l10n/language_provider.dart';
 import '../learn/notes_quiz.dart';
 import '../teacher/teacher_pin.dart';
+import '../teacher/teacher_profiles.dart';
 
 /// Hands a shared device from one learner to another.
 ///
@@ -32,6 +33,7 @@ class LearnerSwitcher {
     _ref.invalidate(subjectQuizProvider);
     // The device is being handed to a learner: the teacher area locks again.
     _ref.read(teacherUnlockedProvider.notifier).state = false;
+    _ref.read(activeTeacherProvider.notifier).state = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kActiveStudentIdKey, student.id);

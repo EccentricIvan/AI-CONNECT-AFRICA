@@ -16,6 +16,7 @@ import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/studio_page.dart';
 import 'class_providers.dart';
 import 'co_teacher_widgets.dart';
+import 'teacher_profiles.dart';
 
 /// A teacher device joining another teacher's class as a co-teacher — with
 /// an invite code that teacher made for specific subjects — and the list of
@@ -121,6 +122,7 @@ class _JoinAsCoTeacherScreenState extends ConsumerState<JoinAsCoTeacherScreen> {
         roots: _endpoints,
         typedCode: _code.text,
         name: _name.text.trim(),
+        ownerTeacherId: ref.read(activeTeacherIdProvider),
       );
       if (!mounted) return;
       _message(

@@ -7,74 +7,95 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../ai_core/inference/inference_engine.dart';
 import '../../ai_core/providers/ai_provider.dart';
+import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../features/learn/notes_quiz.dart';
+import '../../features/learn/subject_notes.dart';
 import '../custom_subject_service.dart';
-import '../ocr/ocr_engine.dart';
-import '../pdf/pdf_page_extractor.dart';
-import 'note_pdf_store.dart';
+import '../offline_storage_service.dart';
+import '../pdf/diagram_detector.dart';
 import 'note_quiz_store.dart';
+import 'note_text_indexer.dart';
 
-/// Pages shorter than this are headings or captions, not worth a question.
-const _minPageChars = 120;
+/// Passages shorter than this are headings or captions, not worth a question.
+const _minPassageChars = 120;
 
-/// Writes one quiz question per page of each of this device's note PDFs,
-/// in the background, as soon as the PDF is uploaded — so a learner who
-/// opens Quiz gets questions instantly instead of waiting on the model.
+/// Text per question: a topic gets one question per this many characters,
+/// between 1 and [_maxPerTopic].
+const _charsPerQuestion = 2500;
+const _maxPerTopic = 8;
+
+/// Writes quiz questions for each topic (section heading) of this device's
+/// notes, in the background, as soon as the text is there — so a learner
+/// who opens Quiz gets questions instantly instead of waiting on the model.
 ///
-/// - Only this device's own PDFs: a received note is signed by its teacher
+/// - Works from the note's stored text, so it never reads a PDF twice; a
+///   PDF's text arrives from [NoteTextIndexer] a batch at a time, and while
+///   it is still being read the last topic waits (it may still grow).
+/// - Every question is checked against its passage before it is kept
+///   ([NotesQuizGenerator.checkedQuestion]), so it is marked by the answer
+///   the notes give.
+/// - Only this device's own notes: a received note is signed by its teacher
 ///   and can't take new rows. Students get the questions on sync.
-/// - Reads the kept PDF page by page (embedded text, OCR for scans) and
-///   saves the next page to do after each one, so closing the app loses at
-///   most one page; [resumePending] carries on at the next launch, and also
-///   covers PDFs uploaded before this existed.
-/// - Waits while the chat is answering. Both share the one brain, which
-///   runs one request at a time, so a chat message sent mid-question waits
-///   for that question to finish.
+/// - Saves each finished passage, so closing the app loses at most one
+///   question; [resumePending] carries on at the next launch.
+/// - Waits while the chat is answering. Both share the one brain.
 /// - When the engine fails (it answers with a stock sentence rather than
-///   throwing) the page is retried later, never skipped.
+///   throwing) the passage is retried later, never skipped.
 class NoteQuizBuilder {
   NoteQuizBuilder(this._ref);
 
   final Ref _ref;
-  final _queue = Queue<NotePdf>();
+  final _queue = Queue<(String, String)>();
   bool _running = false;
+
+  /// The note [_build] is working on, and notes queued again meanwhile:
+  /// more text arrived (or a new upload reset it), so it is built again.
+  (String, String)? _building;
+  final _again = <(String, String)>{};
   Timer? _retry;
 
   static const retryAfter = Duration(minutes: 2);
 
-  static String progressKey(NotePdf p) =>
-      'note_quiz_next:${p.subjectId}|${p.documentTitle}|${p.sha256}';
+  static String doneKey(String subjectId, String documentTitle) =>
+      'note_quiz_topics:$subjectId|$documentTitle';
 
-  /// Queues [pdf]. [fresh] (a new upload) drops its earlier questions and
-  /// starts again from page 1.
-  Future<void> enqueue(NotePdf pdf, {bool fresh = false}) async {
-    if (pdf.classGroupUuid != null) return;
-    if (fresh) {
-      await _ref
-          .read(dbProvider)
-          .topicResourceDao
-          .deleteQuizRows(
-            subjectId: pdf.subjectId,
-            documentTitle: pdf.documentTitle,
-          );
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(progressKey(pdf), 1);
-    }
-    if (!_queue.any((q) => progressKey(q) == progressKey(pdf))) {
-      _queue.add(pdf);
-    }
+  /// Queues the note [documentTitle] of [subjectId]. [fresh] (a new upload)
+  /// drops its earlier questions and starts again.
+  Future<void> enqueue(
+    String subjectId,
+    String documentTitle, {
+    bool fresh = false,
+  }) async {
+    final note = (subjectId, documentTitle);
+    // Before the reset, so a build in progress writes nothing after it.
+    if (note == _building) _again.add(note);
+    if (fresh) await _reset(subjectId, documentTitle);
+    if (!_queue.contains(note)) _queue.add(note);
     unawaited(_pump());
   }
 
-  /// Queues every own PDF that still has pages without a question.
+  Future<void> _reset(String subjectId, String documentTitle) async {
+    await _ref
+        .read(dbProvider)
+        .topicResourceDao
+        .deleteQuizRows(subjectId: subjectId, documentTitle: documentTitle);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(doneKey(subjectId, documentTitle));
+  }
+
+  /// Queues every own note with text. Notes whose questions were written
+  /// per page, before topics, get per-topic ones instead.
   Future<void> resumePending() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final pdfs = await _ref.read(notePdfStoreProvider).recorded(ownOnly: true);
-      for (final p in pdfs) {
-        final next = prefs.getInt(progressKey(p)) ?? 1;
-        if (p.pages == 0 || next <= p.pages) await enqueue(p);
+      final notes = await _ref
+          .read(dbProvider)
+          .topicResourceDao
+          .ownNotesWithText();
+      for (final (subject, title) in notes) {
+        final fresh = prefs.getStringList(doneKey(subject, title)) == null;
+        await enqueue(subject, title, fresh: fresh);
       }
     } catch (e) {
       debugPrint('Note quiz resume failed: $e');
@@ -86,7 +107,15 @@ class NoteQuizBuilder {
     _running = true;
     try {
       while (_queue.isNotEmpty) {
-        final ok = await _build(_queue.first);
+        final note = _queue.first;
+        _building = note;
+        final bool ok;
+        try {
+          ok = await _build(note.$1, note.$2);
+        } finally {
+          _building = null;
+        }
+        if (_again.remove(note) && ok) continue;
         if (!ok) {
           _retry?.cancel();
           _retry = Timer(retryAfter, () => unawaited(_pump()));
@@ -99,8 +128,36 @@ class NoteQuizBuilder {
     }
   }
 
-  /// False when the engine is unavailable and [pdf] must be tried again.
-  Future<bool> _build(NotePdf pdf) async {
+  /// False when the engine is unavailable and the note must be tried again.
+  Future<bool> _build(String subjectId, String documentTitle) async {
+    final db = _ref.read(dbProvider);
+    final rows = await db.topicResourceDao.ownNoteText(
+      subjectId: subjectId,
+      documentTitle: documentTitle,
+    );
+    if (rows.isEmpty) return true;
+    final topics = noteTopics(rows, documentTitle);
+    final reading = _ref
+        .read(noteTextIndexerProvider)
+        .isReading(subjectId, documentTitle);
+    final prefs = await SharedPreferences.getInstance();
+    final key = doneKey(subjectId, documentTitle);
+    final done = {...?prefs.getStringList(key)};
+    // Recorded even with nothing to ask, so resume knows this note is
+    // on topics.
+    if (prefs.getStringList(key) == null) await prefs.setStringList(key, []);
+
+    final work = <(NoteTopic, int, String)>[];
+    for (var t = 0; t < topics.length; t++) {
+      if (reading && t == topics.length - 1) break;
+      final passages = topicPassages(topics[t].text);
+      for (var i = 0; i < passages.length; i++) {
+        final id = '${topics[t].key}#$i';
+        if (!done.contains(id)) work.add((topics[t], i, passages[i]));
+      }
+    }
+    if (work.isEmpty) return true;
+
     final InferenceEngine brain;
     try {
       brain = await _ref.read(engineLoadedProvider.future);
@@ -110,87 +167,67 @@ class NoteQuizBuilder {
     }
     if (brain.isDemo || !brain.isReady) return false;
 
-    final store = _ref.read(notePdfStoreProvider);
-    final file = await store.fileFor(pdf.sha256);
-    if (file == null) return true;
-
-    final db = _ref.read(dbProvider);
-    final prefs = await SharedPreferences.getInstance();
-    final key = progressKey(pdf);
     final generator = NotesQuizGenerator(brain);
-    var subject = pdf.subjectId;
+    var subject = subjectId;
     try {
       subject =
-          (await _ref.read(subjectByIdProvider(pdf.subjectId).future))?.name ??
+          (await _ref.read(subjectByIdProvider(subjectId).future))?.name ??
           subject;
     } catch (_) {}
-    OcrEngine? ocr;
-    try {
-      ocr = await _ref.read(ocrEngineProvider.future);
-    } catch (_) {}
+    final term = rows.first.termMarker;
 
-    final PdfPageSource source;
-    try {
-      source = await PdfrxPageSource.open(
-        await file.readAsBytes(),
-        name: 'quiz-${pdf.sha256}',
+    final note = (subjectId, documentTitle);
+    for (final (topic, i, passage) in work) {
+      if (_again.contains(note)) return true;
+      if (!await _stillThere(db, subjectId, documentTitle)) return true;
+      await _chatIdle();
+      final started = DateTime.now();
+      final r = await generator.checkedQuestion(
+        readableNoteText(passage),
+        subject: subject,
+        topic: topic.title,
       );
-    } catch (e) {
-      debugPrint('Note quiz: could not open "${pdf.documentTitle}": $e');
-      return true;
-    }
-    try {
-      final pages = source.pageCount;
-      for (var page = prefs.getInt(key) ?? 1; page <= pages; page++) {
-        if (!await _stillRecorded(store, pdf)) return true;
-        final text = await readablePageText(source, page, ocr: ocr);
-        if (text.length >= _minPageChars) {
-          await _chatIdle();
-          final started = DateTime.now();
-          final r = await generator.tryPassage(text, subject: subject);
-          if (r.engineFailed) return false;
-          final q = r.question;
-          if (q != null && await _stillRecorded(store, pdf)) {
-            await db.topicResourceDao.insertQuizRow(
-              subjectId: pdf.subjectId,
-              documentTitle: pdf.documentTitle,
-              content: NoteQuizStore.format(q, page),
-              termMarker: await _termOf(pdf),
-            );
-          }
-          debugPrint(
-            'Note quiz: "${pdf.documentTitle}" page $page/$pages '
-            '${q == null ? 'no question' : 'saved'} in '
-            '${DateTime.now().difference(started).inMilliseconds} ms',
-          );
-        }
-        await prefs.setInt(key, page + 1);
+      if (r.engineFailed) return false;
+      if (_again.contains(note)) return true;
+      final q = r.question;
+      if (q != null && await _stillThere(db, subjectId, documentTitle)) {
+        await db.topicResourceDao.insertQuizRow(
+          subjectId: subjectId,
+          documentTitle: documentTitle,
+          content: NoteQuizStore.format(
+            q,
+            _pageOf(passage),
+            topic: topic.title,
+          ),
+          termMarker: term,
+        );
+        _ref.invalidate(topicResourcesProvider(subjectId));
       }
-      return true;
-    } finally {
-      await source.close();
+      done.add('${topic.key}#$i');
+      await prefs.setStringList(key, done.toList());
+      debugPrint(
+        'Note quiz: "$documentTitle" / ${topic.title} #$i '
+        '${q == null ? 'dropped' : 'saved'} in '
+        '${DateTime.now().difference(started).inMilliseconds} ms',
+      );
     }
+    return true;
   }
 
-  /// False once the note was deleted or re-uploaded as another file.
-  Future<bool> _stillRecorded(NotePdfStore store, NotePdf pdf) async {
-    final own = await store.recorded(subjectId: pdf.subjectId, ownOnly: true);
-    return own.any(
-      (p) => p.sha256 == pdf.sha256 && p.documentTitle == pdf.documentTitle,
-    );
-  }
-
-  /// The term of the note's PDF marker, so its questions file with it.
-  Future<int> _termOf(NotePdf pdf) async {
-    final db = _ref.read(dbProvider);
+  /// False once the note was deleted.
+  Future<bool> _stillThere(
+    OticDatabase db,
+    String subjectId,
+    String documentTitle,
+  ) async {
     final row =
         await (db.select(db.topicResources)
-              ..where((t) => t.subjectId.equals(pdf.subjectId))
-              ..where((t) => t.documentTitle.equals(pdf.documentTitle))
+              ..where((t) => t.subjectId.equals(subjectId))
+              ..where((t) => t.documentTitle.equals(documentTitle))
               ..where((t) => t.classGroupUuid.isNull())
               ..limit(1))
             .getSingleOrNull();
-    return row?.termMarker ?? 0;
+    return row != null;
   }
 
   /// Returns once the chat has not been answering for a few seconds.
@@ -209,6 +246,80 @@ class NoteQuizBuilder {
   }
 
   void dispose() => _retry?.cancel();
+}
+
+/// One topic of a note: its section rows' text, in order.
+class NoteTopic {
+  const NoteTopic({required this.key, required this.title, required this.text});
+
+  /// The rows' `topic_key`.
+  final String key;
+
+  /// The section heading as the teacher wrote it (the note's title for a
+  /// note without headings).
+  final String title;
+  final String text;
+}
+
+/// [rows] (one note's text rows) grouped by topic, in the order they
+/// first appear.
+List<NoteTopic> noteTopics(List<TopicResource> rows, String documentTitle) {
+  final order = <String>[];
+  final titles = <String, String>{};
+  final texts = <String, StringBuffer>{};
+  final prefix = '$documentTitle — ';
+  for (final r in rows) {
+    if (!texts.containsKey(r.topicKey)) {
+      order.add(r.topicKey);
+      texts[r.topicKey] = StringBuffer();
+      titles[r.topicKey] = r.resourceTitle.startsWith(prefix)
+          ? r.resourceTitle.substring(prefix.length)
+          : r.resourceTitle;
+    }
+    texts[r.topicKey]!
+      ..write(r.contentChunk)
+      ..write('\n\n');
+  }
+  return [
+    for (final k in order)
+      NoteTopic(key: k, title: titles[k]!, text: texts[k].toString().trim()),
+  ];
+}
+
+/// The passages of a topic's [text] to ask about: one per
+/// [_charsPerQuestion] characters (at most [_maxPerTopic]), spread evenly
+/// over the topic, each about 900 characters cut at paragraph breaks.
+List<String> topicPassages(String text) {
+  final windows = <String>[];
+  final buf = StringBuffer();
+  for (final para in text.split(RegExp(r'\n\s*\n'))) {
+    final p = para.trim();
+    if (p.isEmpty) continue;
+    if (buf.isNotEmpty && buf.length + p.length > 900) {
+      windows.add(buf.toString());
+      buf.clear();
+    }
+    if (buf.isNotEmpty) buf.write('\n\n');
+    buf.write(p);
+  }
+  if (buf.isNotEmpty) windows.add(buf.toString());
+  final usable = [
+    for (final w in windows)
+      if (readableNoteText(w).length >= _minPassageChars) w,
+  ];
+  if (usable.isEmpty) return const [];
+  final want = (text.length / _charsPerQuestion).ceil().clamp(1, _maxPerTopic);
+  if (usable.length <= want) return usable;
+  return [
+    for (var i = 0; i < want; i++)
+      usable[(i * (usable.length - 1) / (want == 1 ? 1 : want - 1)).round()],
+  ];
+}
+
+/// The PDF page a passage is from, when a diagram marker in it says; else 0.
+int _pageOf(String passage) {
+  final markers = DiagramMarker.parseAll(passage);
+  return markers.isEmpty ? 0 : markers.first.page;
 }
 
 final noteQuizBuilderProvider = Provider<NoteQuizBuilder>((ref) {

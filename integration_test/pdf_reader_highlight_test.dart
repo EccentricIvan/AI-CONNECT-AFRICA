@@ -169,7 +169,7 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     final saved = loadPdfHighlights(prefs, pdfHighlightKey(null, sha));
     // ignore: avoid_print
-    print('Saved highlights: ${[for (final h in saved) '"${h.text}" p${h.page}']}');
+    print('Saved highlights: ${[for (final h in saved) '"${h.text}" p${h.page} ${h.rects}']}');
     expect(saved, hasLength(1));
     expect(saved.single.page, 1);
     expect(saved.single.text, isNotEmpty);
@@ -199,7 +199,14 @@ void main() {
     expect(find.text('No highlights'), findsOneWidget);
     expect(prefs.getString(pdfHighlightKey(null, sha)), isNull);
 
-    await tester.runAsync(() => copy.delete());
+    // Close the reader first: Windows won't delete a file PDFium holds open.
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      try {
+        await copy.delete();
+      } catch (_) {}
+    });
   });
 }
 
@@ -207,7 +214,13 @@ void main() {
 Offset _firstWordPosition(PdfViewerController controller, PdfPageText text) {
   final page = controller.document.pages.first;
   final pageRect = controller.layout.pageLayouts.first;
-  final i = text.fullText.indexOf(RegExp(r'[A-Za-z]{3,}'));
+  // A visible body word; the first word can be hidden text behind a banner.
+  final want = Platform.environment['PDF_READER_TEST_WORD'] ?? 'Curriculum';
+  var i = text.fullText.indexOf(want);
+  if (i < 0) i = text.fullText.indexOf(RegExp(r'[A-Za-z]{3,}'));
+  // ignore: avoid_print
+  print('Selecting at char $i: rect ${text.charRects[i < 0 ? 0 : i]}, '
+      'page ${page.width}x${page.height}, layout $pageRect');
   final r = text.charRects[i < 0 ? 0 : i]
       .toRect(page: page, scaledPageSize: pageRect.size);
   return pageRect.topLeft + r.center;

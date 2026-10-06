@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/daos/class_group_dao.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import 'teacher_profiles.dart';
 
 /// Every class/stream, alphabetical.
 final classGroupsProvider = StreamProvider<List<ClassGroup>>((ref) {
@@ -51,10 +52,33 @@ final enrolledSubjectsProvider = StreamProvider.family<Set<String>, int>((
   return ref.watch(dbProvider).classSyncDao.watchEnrolled(studentId);
 });
 
-/// Classes this device created — the only ones it may share notes with.
+/// Classes the signed-in teacher created — the only ones they may change
+/// or share notes with.
 final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) {
   if (kIsWeb) return Stream.value(const []);
-  return ref.watch(dbProvider).classSyncDao.watchOwnedClasses();
+  final me = ref.watch(activeTeacherIdProvider);
+  return ref
+      .watch(dbProvider)
+      .classSyncDao
+      .watchOwnedClasses()
+      .map((all) => [for (final c in all) if (c.ownerTeacherId == me) c]);
+});
+
+/// The signed-in teacher's classes/streams, alphabetical — whether or not
+/// they have been shared yet.
+final myClassGroupsProvider = StreamProvider<List<ClassGroup>>((ref) {
+  if (kIsWeb) return Stream.value(const []);
+  final me = ref.watch(activeTeacherIdProvider);
+  return ref
+      .watch(dbProvider)
+      .classGroupDao
+      .watchAllClasses()
+      .map(
+        (all) => [
+          for (final c in all)
+            if (!c.joined && c.ownerTeacherId == me) c,
+        ],
+      );
 });
 
 /// Root device: co-teachers of one class, by name.
@@ -64,10 +88,15 @@ final coTeachersProvider =
       return ref.watch(dbProvider).coTeacherDao.watchCoTeachers(classUuid);
     });
 
-/// Co-teacher device: classes this device serves as a delegate.
+/// Classes the signed-in teacher co-teaches (joined as co-teacher).
 final delegatedClassesProvider = StreamProvider<List<CoTeachingClass>>((ref) {
   if (kIsWeb) return Stream.value(const []);
-  return ref.watch(dbProvider).coTeacherDao.watchDelegatedClasses();
+  final me = ref.watch(activeTeacherIdProvider);
+  return ref
+      .watch(dbProvider)
+      .coTeacherDao
+      .watchDelegatedClasses()
+      .map((all) => [for (final c in all) if (c.ownerTeacherId == me) c]);
 });
 
 /// A delegated class's allocated subject ids.

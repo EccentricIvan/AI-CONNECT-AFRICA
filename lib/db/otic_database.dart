@@ -34,9 +34,11 @@ import 'tables/failover_tables.dart';
 import 'tables/learner_subjects_table.dart';
 import 'tables/learning_paths_table.dart';
 import 'tables/member_reports_table.dart';
+import 'tables/quiz_results_table.dart';
 import 'tables/resource_shares_table.dart';
 import 'tables/served_channels_table.dart';
 import 'tables/sync_identity_table.dart';
+import 'tables/teacher_profiles_table.dart';
 import 'tables/session_summaries_table.dart';
 import 'tables/student_projects_table.dart';
 import 'tables/students_table.dart';
@@ -73,6 +75,8 @@ part 'otic_database.g.dart';
     CoTeachingClasses,
     FailoverStandbys,
     HostLedgers,
+    QuizResults,
+    TeacherProfiles,
   ],
   daos: [
     StudentDao,
@@ -105,7 +109,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 20;
+  int get schemaVersion => 22;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -492,6 +496,37 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _tableExists('host_ledgers')) {
           await m.createTable(hostLedgers);
+        }
+      }
+      if (from < 21) {
+        // Learners' quiz scores per note topic, for Achievements.
+        // Additive: nothing earlier reads or writes it.
+        if (!await _tableExists('quiz_results')) {
+          await m.createTable(quizResults);
+        }
+        if (!await _indexExists('idx_quiz_results_student')) {
+          await m.create(idxQuizResultsStudent);
+        }
+      }
+      if (from < 22) {
+        // Teacher profiles, and who created each class, stream and subject.
+        // Additive: the first profile created claims what has no owner.
+        if (!await _tableExists('teacher_profiles')) {
+          await m.createTable(teacherProfiles);
+        }
+        if (!await _columnExists('class_groups', 'owner_teacher_id')) {
+          await m.addColumn(classGroups, classGroups.ownerTeacherId);
+        }
+        if (await _tableExists('custom_subjects') &&
+            !await _columnExists('custom_subjects', 'owner_teacher_id')) {
+          await m.addColumn(customSubjects, customSubjects.ownerTeacherId);
+        }
+        if (await _tableExists('co_teaching_classes') &&
+            !await _columnExists('co_teaching_classes', 'owner_teacher_id')) {
+          await m.addColumn(
+            coTeachingClasses,
+            coTeachingClasses.ownerTeacherId,
+          );
         }
       }
     },

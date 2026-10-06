@@ -19,6 +19,7 @@ import '../teacher/co_teacher_widgets.dart';
 import '../teacher/failover_widgets.dart';
 import '../teacher/teacher_pin.dart';
 import '../teacher/teacher_pin_screen.dart';
+import '../teacher/teacher_profiles.dart';
 
 /// Teachers — the school's teacher devices and everything that manages this
 /// one: the teacher tools, the school, learner profiles, learning packages
@@ -244,6 +245,7 @@ class TeachersScreen extends ConsumerWidget {
       // and the device hands back to a learner, so the teacher area locks.
       ref.read(chatProvider.notifier).reset();
       ref.read(teacherUnlockedProvider.notifier).state = false;
+      ref.read(activeTeacherProvider.notifier).state = null;
     });
   }
 }
@@ -355,6 +357,7 @@ class _StudentRow extends ConsumerWidget {
         // was the last learner, so onboarding is the only correct landing.
         router.go('/onboarding');
         ref.read(teacherUnlockedProvider.notifier).state = false;
+        ref.read(activeTeacherProvider.notifier).state = null;
       } else {
         // resolveActiveStudent's fallback (most-recently-active) would
         // otherwise silently turn the device into some other learner
@@ -517,45 +520,37 @@ final _standbysProvider = StreamProvider.autoDispose<List<FailoverStandby>>((
   return db.select(db.failoverStandbys).watch();
 });
 
-/// The school's teacher devices as this device knows them — itself, the
-/// co-teachers of its classes, the classes it co-teaches, its standbys —
-/// and the teacher tools.
+/// The teachers who use this device. Signed out: their profiles to sign in
+/// to, and adding one. Signed in: what that teacher teaches, the devices
+/// their classes work with, and the teacher tools.
 class _TeacherDevicesCard extends ConsumerWidget {
   const _TeacherDevicesCard();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(deviceRoleProvider).valueOrNull;
+    final me = ref.watch(activeTeacherProvider);
     final hint = Theme.of(context).hintColor;
     final chevron = Icon(Icons.chevron_right, color: hint);
 
-    final classSync = ListTile(
-      leading: const Icon(Icons.sync_rounded),
-      title: const Text('Class sync'),
-      trailing: chevron,
-      onTap: () => context.push('/class-sync'),
-    );
-    if (role == 'student') {
+    if (me == null) {
+      final profiles =
+          ref.watch(teacherProfilesProvider).valueOrNull ??
+          const <TeacherProfile>[];
       return _InfoCard(
         children: [
-          const ListTile(
-            leading: Icon(Icons.person_rounded),
-            title: Text('Student device'),
-          ),
-          classSync,
-        ],
-      );
-    }
-    if (role != 'teacher') {
-      return _InfoCard(
-        children: [
+          for (final t in profiles)
+            ListTile(
+              leading: const Icon(Icons.person_rounded),
+              title: Text(t.name),
+              trailing: chevron,
+              onTap: () => _signIn(context, ref, t),
+            ),
           ListTile(
-            leading: const Icon(Icons.school_outlined),
-            title: const Text('Set up as a teacher device'),
+            leading: const Icon(Icons.person_add_alt_1_rounded),
+            title: const Text('Add teacher'),
             trailing: chevron,
-            onTap: () => context.go('/teacher'),
+            onTap: () => _addTeacher(context, ref),
           ),
-          classSync,
         ],
       );
     }
@@ -565,9 +560,6 @@ class _TeacherDevicesCard extends ConsumerWidget {
     final delegated =
         ref.watch(delegatedClassesProvider).valueOrNull ??
         const <CoTeachingClass>[];
-    final coTeachers =
-        ref.watch(_allCoTeachersProvider).valueOrNull ??
-        const <ClassCoTeacher>[];
     final standbys =
         ref.watch(_standbysProvider).valueOrNull ?? const <FailoverStandby>[];
     final names = subjectNames(ref);
@@ -575,6 +567,12 @@ class _TeacherDevicesCard extends ConsumerWidget {
       for (final c in owned)
         if (c.groupUuid != null) c.groupUuid!: c,
     };
+    final coTeachers = [
+      for (final t
+          in ref.watch(_allCoTeachersProvider).valueOrNull ??
+              const <ClassCoTeacher>[])
+        if (classByUuid.containsKey(t.classGroupUuid)) t,
+    ];
     List<String> subjectsOf(String json) {
       try {
         return [
@@ -600,14 +598,13 @@ class _TeacherDevicesCard extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.verified_user_rounded),
-              title: const Text('This device'),
-              subtitle: Text(
-                mine.isEmpty
-                    ? 'No classes'
-                    : mine.join(' · '),
+              title: Text(me.name),
+              subtitle: Text(mine.isEmpty ? 'No classes' : mine.join(' · ')),
+              trailing: TextButton(
+                onPressed: () =>
+                    ref.read(activeTeacherProvider.notifier).state = null,
+                child: const Text('Sign out'),
               ),
-              trailing: chevron,
-              onTap: () => context.push('/teacher'),
             ),
             for (final t in coTeachers)
               ListTile(
@@ -615,7 +612,7 @@ class _TeacherDevicesCard extends ConsumerWidget {
                 title: Text(t.name.isEmpty ? 'Co-teacher' : t.name),
                 subtitle: Text(
                   'Co-teacher · '
-                  '${classByUuid[t.classGroupUuid] == null ? 'a class' : classLabel(classByUuid[t.classGroupUuid]!)}'
+                  '${classLabel(classByUuid[t.classGroupUuid]!)}'
                   '${subjectsOf(t.subjectIdsJson).isEmpty ? '' : ': ${subjectsOf(t.subjectIdsJson).join(', ')}'}',
                 ),
               ),
@@ -663,14 +660,147 @@ class _TeacherDevicesCard extends ConsumerWidget {
                 onTap: () => context.push(path),
               ),
             ListTile(
+              leading: const Icon(Icons.password_rounded),
+              title: const Text('My PIN'),
+              trailing: chevron,
+              onTap: () => _changeMyPin(context, ref, me),
+            ),
+            ListTile(
               leading: const Icon(Icons.lock_outline_rounded),
-              title: const Text('PIN'),
+              title: const Text('Teachers PIN'),
               trailing: chevron,
               onTap: () => showTeacherPinSettings(context, ref),
             ),
           ],
         ),
       ],
+    );
+  }
+
+  Future<void> _signIn(
+    BuildContext context,
+    WidgetRef ref,
+    TeacherProfile teacher,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final pin = await askTeacherPin(context, title: teacher.name);
+    if (pin == null) return;
+    final signedIn = await ref
+        .read(teacherProfileServiceProvider)
+        .signIn(teacher.id, pin);
+    if (signedIn == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('That PIN is not right.')),
+      );
+      return;
+    }
+    ref.read(activeTeacherProvider.notifier).state = signedIn;
+  }
+
+  /// Adds a profile. With no Teachers PIN yet, it is set first: profiles
+  /// sit behind the PIN every teacher knows, so a learner can't make one.
+  Future<void> _addTeacher(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final teachersPin = ref.read(teacherPinProvider);
+    if (!await teachersPin.isSet()) {
+      if (!context.mounted) return;
+      await showTeacherPinSettings(context, ref);
+      if (!await teachersPin.isSet() || !context.mounted) return;
+    }
+    final name = TextEditingController();
+    final pin = TextEditingController();
+    final again = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add teacher'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              TextField(
+                controller: pin,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: kPinInputFormatters,
+                decoration: const InputDecoration(
+                  labelText: 'PIN (4–8 digits)',
+                ),
+              ),
+              TextField(
+                controller: again,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: kPinInputFormatters,
+                decoration: const InputDecoration(labelText: 'PIN again'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    final (n, p, a) = (name.text, pin.text.trim(), again.text.trim());
+    name.dispose();
+    pin.dispose();
+    again.dispose();
+    if (ok != true) return;
+    if (p != a) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('The two PINs did not match.')),
+      );
+      return;
+    }
+    final r = await ref
+        .read(teacherProfileServiceProvider)
+        .create(name: n, pin: p);
+    if (r.profile == null) {
+      messenger.showSnackBar(SnackBar(content: Text(r.error ?? '')));
+      return;
+    }
+    ref.read(activeTeacherProvider.notifier).state = r.profile;
+  }
+
+  Future<void> _changeMyPin(
+    BuildContext context,
+    WidgetRef ref,
+    TeacherProfile me,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final current = await askTeacherPin(context, title: 'Current PIN');
+    if (current == null || !context.mounted) return;
+    final next = await askTeacherPin(context, title: 'New PIN (4–8 digits)');
+    if (next == null || !context.mounted) return;
+    final again = await askTeacherPin(context, title: 'New PIN again');
+    if (again == null) return;
+    if (again != next) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('The two PINs did not match.')),
+      );
+      return;
+    }
+    final changed = await ref
+        .read(teacherProfileServiceProvider)
+        .changePin(me.id, current, next);
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(changed ? 'PIN changed.' : 'That PIN is not right.'),
+      ),
     );
   }
 }
