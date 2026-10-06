@@ -107,6 +107,12 @@ class AppShell extends ConsumerWidget {
       '/my-notes',
     ),
     _NavDest(
+      'Assignments',
+      Icons.assignment_outlined,
+      Icons.assignment_rounded,
+      '/assignments',
+    ),
+    _NavDest(
       'Achievements',
       Icons.emoji_events_outlined,
       Icons.emoji_events_rounded,
@@ -117,6 +123,12 @@ class AppShell extends ConsumerWidget {
       Icons.groups_outlined,
       Icons.groups_rounded,
       '/teachers',
+    ),
+    _NavDest(
+      'Admin',
+      Icons.admin_panel_settings_outlined,
+      Icons.admin_panel_settings_rounded,
+      '/admin',
     ),
   ];
 

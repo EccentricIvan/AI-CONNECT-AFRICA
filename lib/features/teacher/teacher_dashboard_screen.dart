@@ -8,11 +8,8 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
-import '../learners/add_learner_dialog.dart';
 import 'class_providers.dart';
-import 'resource_labels.dart';
 import 'teacher_pin_screen.dart';
-import 'teacher_profiles.dart';
 
 String _shortWhen(DateTime dt) {
   final local = dt.toLocal();
@@ -29,16 +26,12 @@ sealed class _Filter {
   bool includes(Student s);
 }
 
+/// The learners of every class this teacher teaches.
 class _AllLearners extends _Filter {
-  const _AllLearners();
+  const _AllLearners([this.classIds = const {}]);
+  final Set<int> classIds;
   @override
-  bool includes(Student s) => true;
-}
-
-class _Unassigned extends _Filter {
-  const _Unassigned();
-  @override
-  bool includes(Student s) => s.classGroupId == null;
+  bool includes(Student s) => classIds.contains(s.classGroupId);
 }
 
 class _InClass extends _Filter {
@@ -84,11 +77,9 @@ class _TeacherDashboardScreenState
     // A class deleted or renamed elsewhere must not leave the filter holding
     // a stale row.
     final _Filter filter = switch (_filter) {
-      _InClass(:final group) =>
-        !mine.contains(group.id)
-            ? const _AllLearners()
-            : _InClass(classById[group.id]!),
-      final other => other,
+      _InClass(:final group) when mine.contains(group.id) =>
+        _InClass(classById[group.id]!),
+      _ => _AllLearners(mine),
     };
 
     return Scaffold(
@@ -124,15 +115,6 @@ class _TeacherDashboardScreenState
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => showAddLearnerDialog(
-          context,
-          ref,
-          initialClassGroupId: filter is _InClass ? filter.group.id : null,
-        ),
-        icon: const Icon(Icons.person_add_alt_1_rounded),
-        label: const Text('Add learner'),
-      ),
       body: MaxWidth(
         maxWidth: 900,
         child: learnersAsync.when(
@@ -150,13 +132,11 @@ class _TeacherDashboardScreenState
                   classes: classes,
                   selected: filter,
                   onSelected: (f) => setState(() => _filter = f),
-                  onCreate: () => _editClass(context),
                 ),
                 const SizedBox(height: 14),
                 _ClassSummary(
                   title: switch (filter) {
-                    _AllLearners() => 'All learners',
-                    _Unassigned() => 'Not in a class',
+                    _AllLearners() => 'All my learners',
                     _InClass(:final group) => classLabel(group),
                   },
                   learners: shown,
@@ -170,28 +150,12 @@ class _TeacherDashboardScreenState
                       icon: const Icon(Icons.library_add_rounded, size: 18),
                       label: const Text('Subjects & materials'),
                     ),
-                    if (filter is _InClass) ...[
-                      TextButton.icon(
-                        onPressed: () =>
-                            _editClass(context, existing: filter.group),
-                        icon: const Icon(Icons.edit_rounded, size: 18),
-                        label: const Text('Rename'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _deleteClass(context, filter.group),
-                        icon: const Icon(Icons.delete_outline, size: 18),
-                        label: const Text('Delete class'),
-                      ),
-                    ],
                   ],
                 ),
                 const SizedBox(height: 14),
                 if (shown.isEmpty)
                   _EmptyLearners(
-                    message: learners.isEmpty
-                        ? 'No learners yet. Use "Add learner" to enrol your class.'
-                        : 'No learners here yet. Use "Add learner", or move a '
-                              'learner in from "All learners".',
+                    message: 'No learners',
                   )
                 else
                   for (final s in shown)
@@ -201,7 +165,6 @@ class _TeacherDashboardScreenState
                       group: classById[s.classGroupId],
                       now: now,
                       onOpen: () => context.push('/teacher/${s.id}'),
-                      onMove: () => _moveLearner(context, s, classes),
                     ),
               ],
             );
@@ -211,154 +174,6 @@ class _TeacherDashboardScreenState
     );
   }
 
-  Future<void> _editClass(BuildContext context, {ClassGroup? existing}) async {
-    final name = TextEditingController(text: existing?.className ?? '');
-    final stream = TextEditingController(text: existing?.streamName ?? '');
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existing == null ? 'New class' : 'Rename class'),
-        content: SizedBox(
-          width: 380,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Class',
-                  hintText: 'e.g. S2 or Primary 5',
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: stream,
-                decoration: const InputDecoration(
-                  labelText: 'Stream (optional)',
-                  hintText: 'e.g. East, Blue, A',
-                  helperText: 'One class per stream: S2 East, S2 West',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(existing == null ? 'Create' : 'Save'),
-          ),
-        ],
-      ),
-    );
-    final className = name.text.trim();
-    final streamName = stream.text.trim();
-    name.dispose();
-    stream.dispose();
-    if (saved != true || className.isEmpty) return;
-
-    final dao = ref.read(dbProvider).classGroupDao;
-    final me = ref.read(activeTeacherIdProvider);
-    if (existing == null) {
-      final id = await dao.createClass(
-        className: className,
-        streamName: streamName,
-        ownerTeacherId: me,
-      );
-      if (!mounted) return;
-      setState(
-        () => _filter = _InClass(
-          ClassGroup(
-            id: id,
-            className: className,
-            streamName: streamName.isEmpty ? null : streamName,
-            createdAt: DateTime.now(),
-            joined: false,
-            ownerTeacherId: me,
-          ),
-        ),
-      );
-    } else {
-      final renamed = await dao.renameClass(
-        existing.id,
-        className: className,
-        streamName: streamName,
-        byTeacherId: me,
-      );
-      if (!renamed && mounted) _notYours();
-    }
-  }
-
-  void _notYours() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text(ResourceLabels.notYours)),
-    );
-  }
-
-  Future<void> _deleteClass(BuildContext context, ClassGroup group) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete ${classLabel(group)}?'),
-        content: const Text(
-          'Learners in this class are kept, with all their progress. '
-          'They just stop belonging to a class.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete class'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final deleted = await ref
-        .read(dbProvider)
-        .classGroupDao
-        .deleteClass(group.id, byTeacherId: ref.read(activeTeacherIdProvider));
-    if (!mounted) return;
-    if (!deleted) return _notYours();
-    setState(() => _filter = const _AllLearners());
-  }
-
-  Future<void> _moveLearner(
-    BuildContext context,
-    Student learner,
-    List<ClassGroup> classes,
-  ) async {
-    // A record so "no class" (null id) is distinguishable from "cancelled".
-    final choice = await showDialog<({int? id})>(
-      context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text('Move ${learner.name} to…'),
-        children: [
-          for (final c in classes)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, (id: c.id)),
-              child: Text(classLabel(c)),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(ctx, (id: null)),
-            child: const Text('No class'),
-          ),
-        ],
-      ),
-    );
-    if (choice == null) return;
-    await ref
-        .read(dbProvider)
-        .classGroupDao
-        .assignLearner(learner.id, choice.id);
-  }
 }
 
 class _ClassChips extends StatelessWidget {
@@ -366,17 +181,14 @@ class _ClassChips extends StatelessWidget {
     required this.classes,
     required this.selected,
     required this.onSelected,
-    required this.onCreate,
   });
 
   final List<ClassGroup> classes;
   final _Filter selected;
   final ValueChanged<_Filter> onSelected;
-  final VoidCallback onCreate;
 
   bool _isSelected(_Filter f) => switch ((f, selected)) {
     (_AllLearners(), _AllLearners()) => true,
-    (_Unassigned(), _Unassigned()) => true,
     (_InClass(group: final a), _InClass(group: final b)) => a.id == b.id,
     _ => false,
   };
@@ -393,14 +205,8 @@ class _ClassChips extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        chip('All learners', const _AllLearners()),
+        chip('All my learners', const _AllLearners()),
         for (final c in classes) chip(classLabel(c), _InClass(c)),
-        if (classes.isNotEmpty) chip('Not in a class', const _Unassigned()),
-        ActionChip(
-          avatar: const Icon(Icons.add, size: 18),
-          label: const Text('New class'),
-          onPressed: onCreate,
-        ),
       ],
     );
   }
@@ -504,7 +310,6 @@ class _LearnerCard extends StatelessWidget {
     required this.group,
     required this.now,
     required this.onOpen,
-    required this.onMove,
   });
 
   final Student learner;
@@ -512,7 +317,6 @@ class _LearnerCard extends StatelessWidget {
   final ClassGroup? group;
   final DateTime now;
   final VoidCallback onOpen;
-  final VoidCallback onMove;
 
   @override
   Widget build(BuildContext context) {
@@ -603,14 +407,6 @@ class _LearnerCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  tooltip: 'Move to class',
-                  icon: Icon(
-                    Icons.drive_file_move_outline,
-                    color: colors.textHint,
-                  ),
-                  onPressed: onMove,
-                ),
               ],
             ),
           ),
@@ -682,11 +478,17 @@ class TeacherStudentDetailScreen extends ConsumerWidget {
     final progressAsync = ref.watch(topicProgressProvider(studentId));
     final colors = AppColors.of(context);
 
+    // Only a learner in a class this teacher teaches.
+    final mine = {
+      for (final c
+          in ref.watch(myClassGroupsProvider).valueOrNull ?? const <ClassGroup>[])
+        c.id,
+    };
     Student? student;
     final list = studentsAsync.valueOrNull;
     if (list != null) {
       for (final s in list) {
-        if (s.id == studentId) {
+        if (s.id == studentId && mine.contains(s.classGroupId)) {
           student = s;
           break;
         }

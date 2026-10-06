@@ -6,6 +6,7 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../l10n/language_provider.dart';
 import '../learn/notes_quiz.dart';
+import '../admin/admin_service.dart';
 import '../teacher/teacher_pin.dart';
 import '../teacher/teacher_profiles.dart';
 
@@ -34,6 +35,7 @@ class LearnerSwitcher {
     // The device is being handed to a learner: the teacher area locks again.
     _ref.read(teacherUnlockedProvider.notifier).state = false;
     _ref.read(activeTeacherProvider.notifier).state = null;
+    _ref.read(adminSessionProvider.notifier).state = null;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kActiveStudentIdKey, student.id);

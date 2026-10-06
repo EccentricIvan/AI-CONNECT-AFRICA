@@ -17,6 +17,7 @@ import '../../l10n/language_provider.dart';
 import '../../services/model_fetch_service.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../learners/learner_pin.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -192,6 +193,19 @@ appBar: StudioAppBar(
                   color: Theme.of(context).hintColor,
                 ),
               ),
+              if (studentAsync.valueOrNull case final student?)
+                ListTile(
+                  leading: Icon(
+                    Icons.password_rounded,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  title: Text(tr(context, 'My PIN')),
+                  onTap: () => showLearnerPinSettings(context, ref, student),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: Theme.of(context).hintColor,
+                  ),
+                ),
             ]),
 
             // ── Streak & Points ───────────────────────────────────────────────

@@ -76,14 +76,12 @@ final teacherPinProvider = Provider((ref) => TeacherPin());
 /// device is handed to a learner (see `LearnerSwitcher`).
 final teacherUnlockedProvider = StateProvider<bool>((ref) => false);
 
-/// Routes behind the PIN.
+/// Routes behind the Teachers PIN. Admin has its own PIN (`AdminScreen`).
 bool isTeacherRoute(String location) =>
     location == '/teacher' ||
     location.startsWith('/teacher/') ||
     location == '/teachers' ||
-    location.startsWith('/teachers/') ||
-    location == '/admin' ||
-    location.startsWith('/admin/');
+    location.startsWith('/teachers/');
 
 /// Where a request for a teacher tool (`/teacher*`) goes when no teacher
 /// is signed in: to Teachers, where they sign in or create a profile.

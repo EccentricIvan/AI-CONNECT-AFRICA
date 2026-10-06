@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../db/otic_database.dart';
+import '../../services/assignments/class_assignments.dart';
 
 /// One learner's progress as their device reports it to the teacher.
 ///
@@ -25,7 +26,13 @@ class ProgressReport {
     required this.strengths,
     required this.weaknesses,
     this.enrolled = const [],
+    this.submissions = const [],
   });
+
+  /// The learner's answers to the teacher's assignments — sent explicitly
+  /// as their work, the one thing they typed that leaves the device.
+  final List<SubmissionPayload> submissions;
+  static const maxSubmissions = 20;
 
   /// Subject ids the learner says they take (a record, not a lock).
   final List<String> enrolled;
@@ -74,6 +81,7 @@ class ProgressReport {
     'strengths': strengths,
     'weaknesses': weaknesses,
     'enrolled': enrolled,
+    'submissions': [for (final s in submissions) s.toJson()],
   };
 
   /// Reads a report from another device. Null when it isn't one. Every
@@ -123,6 +131,11 @@ class ProgressReport {
           for (final id in ids.take(maxEnrolled))
             if (id is String && RegExp(r'^[a-z0-9_]{1,60}$').hasMatch(id)) id,
       ],
+      submissions: [
+        if (json['submissions'] case final List subs)
+          for (final s in subs.take(maxSubmissions))
+            ?SubmissionPayload.fromJson(s),
+      ],
     );
   }
 
@@ -166,6 +179,9 @@ Future<List<ProgressReport>> buildProgressReports(
         enrolled: (await db.classSyncDao.enrolledSubjects(
           s.id,
         )).take(ProgressReport.maxEnrolled).toList(),
+        submissions: group.groupUuid == null
+            ? const []
+            : await ClassAssignments(db).outgoing(s.id, group.groupUuid!),
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import '../../curriculum/curriculum_provider.dart' show CurriculumService;
 import '../../db/otic_database.dart';
+import '../../services/assignments/class_assignments.dart';
 import 'class_crypto.dart';
 import 'class_share_server.dart'
     show
@@ -840,6 +841,12 @@ class SelectiveSyncManager {
             },
           );
           reported = ack['saved'] is int ? ack['saved'] as int : 0;
+          // The teacher's grades for this device's learners' answers.
+          if (ack['grades'] case final List grades) {
+            await ClassAssignments(_db).applyGrades([
+              for (final g in grades.take(200)) ?GradePayload.fromJson(g),
+            ]);
+          }
         }
       } catch (_) {}
     }

@@ -7,7 +7,7 @@ import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart
 import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
-import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
+import 'package:ai_connect_africa/services/assignments/class_assignments.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/notes/note_pdf_store.dart';
 import 'package:ai_connect_africa/services/offline_storage_service.dart';
@@ -695,21 +695,79 @@ void main() {
       expect(await _received(db), isNotEmpty, reason: 'received note stays');
     });
 
-    test('a class’s students are offered only its own teacher’s subjects',
+    test('an assignment reaches the class; the answer reaches the teacher; '
+        'the grade comes back to that learner only', () async {
+      final assignments = ClassAssignments(teacher);
+      final title = (await assignments.create(
+        subjectId: 'chemistry',
+        title: 'Acids',
+        instructions: 'Name two acids.',
+        maxPoints: 10,
+      ))!;
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: title,
+        classUuids: {east.groupUuid!},
+      );
+
+      final (db, m) = await student();
+      final g = await join(m, east);
+      final amina = await db
+          .into(db.students)
+          .insert(StudentsCompanion.insert(name: 'Amina'));
+      await db.classGroupDao.assignLearner(amina, g.id);
+      await m.syncClass(teacher: endpoint, group: g);
+
+      final learnerSide = ClassAssignments(db);
+      final seen = await learnerSide.visible(g.groupUuid);
+      expect(seen.single.title, 'Acids');
+      final me = (await db.studentDao.getStudentById(amina))!;
+      await learnerSide.submit(
+        student: me,
+        assignment: seen.single,
+        answer: 'Hydrochloric and sulphuric acid.',
+        memberKey: 'local/$amina',
+      );
+      await m.syncClass(teacher: endpoint, group: g);
+
+      final received = await teacher.select(teacher.assignmentSubmissions).get();
+      expect(received.single.answer, 'Hydrochloric and sulphuric acid.');
+      expect(received.single.receivedAt, isNotNull);
+      await assignments.grade(received.single.uuid, 9, 'Good');
+
+      await m.syncClass(teacher: endpoint, group: g);
+      final mine = await db.select(db.assignmentSubmissions).get();
+      expect(mine.single.grade, 9);
+      expect(mine.single.feedback, 'Good');
+      expect(mine.single.createdAt, received.single.createdAt,
+          reason: 'when it was made, apart from when it synced');
+
+      // Syncing again changes nothing.
+      await m.syncClass(teacher: endpoint, group: g);
+      expect((await teacher.select(teacher.assignmentSubmissions).get()).length, 1);
+    });
+
+    test('a class’s students are offered only the subjects taught to it',
         () async {
       final subjects = CustomSubjectService(
         teacher,
         OfflineStorageService(teacher),
       );
-      final amina = (await TeacherProfileService(
-        teacher,
-      ).create(name: 'Amina', pin: '1234')).profile!.id;
-      final okello = (await TeacherProfileService(
-        teacher,
-      ).create(name: 'Okello', pin: '9876')).profile!.id;
-      // The first profile took over the classes made before profiles.
-      await subjects.create(name: 'Carpentry', ownerTeacherId: amina);
-      await subjects.create(name: 'Fine Art', ownerTeacherId: okello);
+      await subjects.create(name: 'Carpentry');
+      await subjects.create(name: 'Fine Art');
+      // The Admin assigned a teacher to teach Carpentry to S2 East only.
+      await teacher
+          .into(teacher.teachingAssignments)
+          .insert(
+            TeachingAssignmentsCompanion.insert(
+              uuid: 'a1',
+              teacherId: 1,
+              classGroupUuid: east.groupUuid!,
+              subjectId: 'carpentry',
+              academicYear: 2026,
+              createdAt: '2026-10-06T00:00:00Z',
+            ),
+          );
 
       final (db, m) = await student();
       final g = await join(m, east);

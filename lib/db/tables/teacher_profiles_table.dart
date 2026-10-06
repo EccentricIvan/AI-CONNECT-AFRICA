@@ -20,4 +20,7 @@ class TeacherProfiles extends Table {
 
   /// ISO-8601 UTC.
   TextColumn get createdAt => text()();
+
+  /// Portable id, the same on every device the Admin's records reach.
+  TextColumn get uuid => text().nullable()();
 }

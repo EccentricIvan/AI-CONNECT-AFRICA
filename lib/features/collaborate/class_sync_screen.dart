@@ -320,7 +320,7 @@ class _ClassSyncScreenState extends ConsumerState<ClassSyncScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
-        title: tr(context, 'Class sync'),
+        title: tr(context, 'Sync'),
         subtitle: tr(context, 'Class notes'),
         icon: Icons.sync_rounded,
         iconColor: AppColors.accentTeal,

@@ -9,6 +9,8 @@ import '../../ai_core/tutor/programming_topic.dart';
 import '../../app.dart';
 import '../../db/providers/db_provider.dart';
 import '../../features/achievements/achievements_screen.dart';
+import '../../features/admin/admin_screen.dart';
+import '../../features/assignments/assignments_screens.dart';
 import '../../features/notes/my_notes_screen.dart';
 import '../../features/notes/note_pdf_screen.dart';
 import '../../features/teachers/teachers_screen.dart';
@@ -29,8 +31,6 @@ import '../../features/practice/practice_screen.dart';
 import '../../features/projects/projects_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/teacher/lesson_materials_screen.dart';
-import '../../features/teacher/join_as_co_teacher_screen.dart';
-import '../../features/teacher/standby_screen.dart';
 import '../../features/teacher/teacher_sync_screen.dart';
 import '../../features/teacher/teacher_dashboard_screen.dart';
 import '../../features/teacher/teacher_pin.dart';
@@ -52,7 +52,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       if (state.matchedLocation == '/onboarding') return null;
 
-      final onboarding = await _onboardingRedirect(ref);
+      final onboarding = await _onboardingRedirect(ref, state.uri.path);
       if (onboarding != null) return onboarding;
 
       // Teachers sits behind the Teachers PIN, when one is set…
@@ -131,14 +131,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/teacher/sync',
             builder: (_, __) => const TeacherSyncScreen(),
           ),
-          GoRoute(
-            path: '/teacher/co-teach',
-            builder: (_, __) => const JoinAsCoTeacherScreen(),
-          ),
-          GoRoute(
-            path: '/teacher/standby',
-            builder: (_, __) => const StandbyScreen(),
-          ),
+          // Co-teaching and standby screens were removed (2026-10-06).
+          GoRoute(path: '/teacher/co-teach', redirect: (_, __) => '/teacher/sync'),
+          GoRoute(path: '/teacher/standby', redirect: (_, __) => '/teacher/sync'),
           GoRoute(
             path: '/learn/subject/:id',
             builder: (_, state) =>
@@ -231,8 +226,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/teachers',
             builder: (_, __) => const TeachersScreen(),
           ),
-          // The Admin dashboard became Teachers.
-          GoRoute(path: '/admin', redirect: (_, __) => '/teachers'),
+          GoRoute(
+            path: '/admin',
+            builder: (_, __) => const AdminScreen(),
+          ),
+          GoRoute(
+            path: '/assignments',
+            builder: (_, __) => const AssignmentsScreen(),
+          ),
+          GoRoute(
+            path: '/teacher/assignments',
+            builder: (_, __) => const GradeAssignmentsScreen(),
+          ),
           GoRoute(
             path: '/settings',
             builder: (_, __) => const SettingsScreen(),
@@ -261,7 +266,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 /// Where to send someone who has not finished onboarding, or null.
-Future<String?> _onboardingRedirect(Ref ref) async {
+Future<String?> _onboardingRedirect(Ref ref, String location) async {
   // Fast path: SharedPreferences is written synchronously by onboarding
   // before it navigates away, so a name here means onboarding is done —
   // no need to wait on the (slower, background-written) database.
@@ -271,6 +276,18 @@ Future<String?> _onboardingRedirect(Ref ref) async {
 
   // On web there's no database — SharedPreferences is authoritative.
   if (kIsWeb) return '/onboarding';
+
+  // Learners the Admin added reached this device, but nobody has picked
+  // themselves here yet: ask who is learning rather than opening someone
+  // else's profile. Teachers and the Admin can still work.
+  if (prefs.getInt(kActiveStudentIdKey) == null &&
+      !const ['/learners', '/teachers', '/admin', '/unlock'].contains(location) &&
+      !location.startsWith('/teacher')) {
+    try {
+      final learners = await ref.read(dbProvider).studentDao.getAllStudents();
+      if (learners.isNotEmpty) return '/learners';
+    } catch (_) {}
+  }
 
   try {
     final hasProfile = await ref

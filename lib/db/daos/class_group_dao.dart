@@ -26,33 +26,17 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
           ]))
           .watch();
 
-  /// [ownerTeacherId] is the teacher profile creating it; only they may
-  /// change it later.
-  Future<int> createClass({
-    required String className,
-    String? streamName,
-    int? ownerTeacherId,
-  }) {
+  /// Classes and streams are the Admin's records: only `AdminService`
+  /// creates, renames and deletes them.
+  Future<int> createClass({required String className, String? streamName}) {
     final stream = streamName?.trim();
     return into(classGroups).insert(
       ClassGroupsCompanion.insert(
         className: className.trim(),
         streamName: Value(stream == null || stream.isEmpty ? null : stream),
         groupUuid: Value(newSyncId()),
-        ownerTeacherId: Value(ownerTeacherId),
       ),
     );
-  }
-
-  /// Whether [teacherId] may rename or delete class [id]: only the teacher
-  /// who created it. A class joined as a student has no owner and may be
-  /// left by anyone.
-  Future<bool> mayChange(int id, int? teacherId) async {
-    final row = await (select(
-      classGroups,
-    )..where((t) => t.id.equals(id))).getSingleOrNull();
-    if (row == null) return false;
-    return row.joined || row.ownerTeacherId == teacherId;
   }
 
   /// The class/stream a scoped-sync request named by its portable id.
@@ -80,30 +64,24 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
     }
   }
 
-  /// False when [byTeacherId] did not create the class ([mayChange]).
-  Future<bool> renameClass(
+  Future<void> renameClass(
     int id, {
     required String className,
     String? streamName,
-    int? byTeacherId,
-  }) async {
-    if (!await mayChange(id, byTeacherId)) return false;
+  }) {
     final stream = streamName?.trim();
-    await (update(classGroups)..where((t) => t.id.equals(id))).write(
+    return (update(classGroups)..where((t) => t.id.equals(id))).write(
       ClassGroupsCompanion(
         className: Value(className.trim()),
         streamName: Value(stream == null || stream.isEmpty ? null : stream),
       ),
     );
-    return true;
   }
 
   /// Deletes a class and unassigns its learners — the learners themselves are
   /// kept. The FK on `students.class_group_id` is not enforced, so without the
   /// explicit update they would point at a class that no longer exists.
-  /// False when [byTeacherId] did not create the class ([mayChange]).
-  Future<bool> deleteClass(int id, {int? byTeacherId}) => transaction(() async {
-    if (!await mayChange(id, byTeacherId)) return false;
+  Future<void> deleteClass(int id) => transaction(() async {
     await (update(students)..where((t) => t.classGroupId.equals(id))).write(
       const StudentsCompanion(classGroupId: Value(null)),
     );
@@ -132,7 +110,6 @@ class ClassGroupDao extends DatabaseAccessor<OticDatabase>
       }
     }
     await (delete(classGroups)..where((t) => t.id.equals(id))).go();
-    return true;
   });
 
   /// Moves a learner into [classGroupId], or out of any class when null.

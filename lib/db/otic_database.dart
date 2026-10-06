@@ -22,6 +22,8 @@ import 'daos/topic_resource_dao.dart';
 import 'daos/translation_cache_dao.dart';
 import 'daos/website_dao.dart';
 import 'tables/app_builder_projects_table.dart';
+import 'tables/admin_tables.dart';
+import 'tables/assignment_submissions_table.dart';
 import 'tables/assignments_table.dart';
 import 'tables/chat_sessions_table.dart';
 import 'tables/sync_state_table.dart';
@@ -77,6 +79,12 @@ part 'otic_database.g.dart';
     HostLedgers,
     QuizResults,
     TeacherProfiles,
+    AdminIdentity,
+    TeachingAssignments,
+    StudentEnrolments,
+    NoteOwners,
+    AdminRecordsState,
+    AssignmentSubmissions,
   ],
   daos: [
     StudentDao,
@@ -109,7 +117,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 22;
+  int get schemaVersion => 26;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -118,6 +126,7 @@ class OticDatabase extends _$OticDatabase {
       // Not a drift table (drift has no FTS5 table class), so createAll
       // does not know about it.
       await _createResourceSearchIndex();
+      await _createUuidTriggers();
     },
     onUpgrade: (m, from, to) async {
       if (from < 2) {
@@ -529,6 +538,63 @@ class OticDatabase extends _$OticDatabase {
           );
         }
       }
+      if (from < 23) {
+        // Learners' own PINs. Additive: null means no PIN.
+        if (!await _columnExists('students', 'pin_salt')) {
+          await m.addColumn(students, students.pinSalt);
+        }
+        if (!await _columnExists('students', 'pin_hash')) {
+          await m.addColumn(students, students.pinHash);
+        }
+      }
+      if (from < 24) {
+        // The Admin role: the school's records, teaching assignments,
+        // enrolments, and who uploaded each note.
+        for (final (name, create) in [
+          ('admin_identity', () => m.createTable(adminIdentity)),
+          ('teaching_assignments', () => m.createTable(teachingAssignments)),
+          ('student_enrolments', () => m.createTable(studentEnrolments)),
+          ('note_owners', () => m.createTable(noteOwners)),
+        ]) {
+          if (!await _tableExists(name)) await create();
+        }
+        if (!await _indexExists('idx_teaching_assignments_teacher')) {
+          await m.create(idxTeachingAssignmentsTeacher);
+        }
+        if (!await _indexExists('idx_student_enrolments_student')) {
+          await m.create(idxStudentEnrolmentsStudent);
+        }
+        if (!await _columnExists('teacher_profiles', 'uuid')) {
+          await m.addColumn(teacherProfiles, teacherProfiles.uuid);
+        }
+        if (!await _columnExists('students', 'uuid')) {
+          await m.addColumn(students, students.uuid);
+        }
+        await _adoptOwnershipAsAssignments();
+        await _createUuidTriggers();
+      }
+      if (from < 25) {
+        // Admin sync: the Admin's signing key and records version, and on
+        // a receiving device whose records it holds.
+        if (!await _columnExists('admin_identity', 'signing_seed')) {
+          await m.addColumn(adminIdentity, adminIdentity.signingSeed);
+        }
+        if (!await _columnExists('admin_identity', 'records_version')) {
+          await m.addColumn(adminIdentity, adminIdentity.recordsVersion);
+        }
+        if (!await _tableExists('admin_records_state')) {
+          await m.createTable(adminRecordsState);
+        }
+      }
+      if (from < 26) {
+        // Class assignments: learners' answers and teachers' grades.
+        if (!await _tableExists('assignment_submissions')) {
+          await m.createTable(assignmentSubmissions);
+        }
+        if (!await _indexExists('idx_submissions_assignment')) {
+          await m.create(idxSubmissionsAssignment);
+        }
+      }
     },
   );
 
@@ -568,6 +634,62 @@ class OticDatabase extends _$OticDatabase {
       'UPDATE sync_identity SET device_role = ? WHERE device_role IS NULL',
       [role],
     );
+  }
+
+  /// Schema 24: portable ids for teachers and learners, and today's
+  /// ownership turned into the Admin's records, so every teacher keeps
+  /// exactly what they could change before:
+  ///
+  ///  * a class's creator teaches each subject they created in it;
+  ///  * each learner's class becomes an active enrolment;
+  ///  * each of this device's notes belongs to its subject's creator.
+  ///
+  /// Raw SQL: generated classes would expect today's columns mid-upgrade.
+  Future<void> _adoptOwnershipAsAssignments() async {
+    const id = "lower(hex(randomblob(16)))";
+    final now = DateTime.now().toUtc();
+    final at = now.toIso8601String();
+    await customStatement('UPDATE teacher_profiles SET uuid = $id WHERE uuid IS NULL');
+    await customStatement('UPDATE students SET uuid = $id WHERE uuid IS NULL');
+    await customStatement(
+      'INSERT INTO teaching_assignments '
+      '(uuid, teacher_id, class_group_uuid, subject_id, academic_year, term, created_at) '
+      'SELECT $id, c.owner_teacher_id, c.group_uuid, s.subject_id, ?, 0, ? '
+      'FROM class_groups c JOIN custom_subjects s '
+      '  ON s.owner_teacher_id = c.owner_teacher_id '
+      'WHERE c.joined = 0 AND c.group_uuid IS NOT NULL '
+      '  AND c.owner_teacher_id IS NOT NULL AND s.class_group_uuid IS NULL',
+      [now.year, at],
+    );
+    await customStatement(
+      'INSERT INTO student_enrolments '
+      '(uuid, student_id, class_group_uuid, academic_year, status, created_at) '
+      "SELECT $id, s.id, c.group_uuid, ?, 'active', ? "
+      'FROM students s JOIN class_groups c ON c.id = s.class_group_id '
+      'WHERE c.joined = 0 AND c.group_uuid IS NOT NULL',
+      [now.year, at],
+    );
+    await customStatement(
+      'INSERT OR IGNORE INTO note_owners (subject_id, document_title, teacher_id) '
+      'SELECT DISTINCT t.subject_id, COALESCE(t.document_title, t.resource_title), '
+      '       s.owner_teacher_id '
+      'FROM topic_resources t JOIN custom_subjects s ON s.subject_id = t.subject_id '
+      'WHERE t.class_group_uuid IS NULL AND s.owner_teacher_id IS NOT NULL',
+    );
+  }
+
+  /// Gives every new learner and teacher a portable id, whichever code
+  /// path inserts them.
+  Future<void> _createUuidTriggers() async {
+    for (final table in ['students', 'teacher_profiles']) {
+      await customStatement(
+        'CREATE TRIGGER IF NOT EXISTS ${table}_uuid AFTER INSERT ON $table '
+        'WHEN NEW.uuid IS NULL BEGIN '
+        '  UPDATE $table SET uuid = lower(hex(randomblob(16))) '
+        '  WHERE id = NEW.id; '
+        'END',
+      );
+    }
   }
 
   Future<bool> _tableExists(String name) async {

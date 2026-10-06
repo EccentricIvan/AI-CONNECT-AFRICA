@@ -84,6 +84,7 @@ enum DemoReason {
   ollamaUnavailable,
   loadFailed,
   unsupportedCpu,
+  notEnoughMemory,
   generic,
 }
 
@@ -95,6 +96,8 @@ extension DemoReasonMessage on DemoReason {
         DemoReason.loadFailed => 'Demo answers — assistant could not start',
         DemoReason.unsupportedCpu =>
           'Demo answers — this computer cannot run the offline AI',
+        DemoReason.notEnoughMemory =>
+          'Demo answers — not enough memory for the offline AI',
         DemoReason.generic => 'Demo answers',
       };
 
@@ -110,6 +113,10 @@ extension DemoReasonMessage on DemoReason {
         DemoReason.unsupportedCpu =>
           "This computer's processor is missing AVX2, which the offline AI "
           'needs, so replies are sample text. Lessons, labs and previews still work.',
+        DemoReason.notEnoughMemory =>
+          'The offline AI needs a phone with 4 GB of memory or a computer '
+          'with 8 GB, so replies are sample text. Lessons, labs and previews '
+          'still work.',
         DemoReason.generic =>
           'Showing sample replies until setup is finished.',
       };

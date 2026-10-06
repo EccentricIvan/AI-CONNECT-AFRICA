@@ -9,6 +9,7 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
+import '../../services/assignments/class_assignments.dart';
 import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
 import 'failover_crypto.dart';
@@ -895,16 +896,12 @@ class ClassShareServer {
     return {
       'class_group_uuid': uuid,
       'subjects': manifests,
-      // The subjects this class's teacher made, so students can see and
-      // enroll in them. Only in root's own (signed) reply — never a
+      // The subjects taught to this class, so students can see and enroll
+      // in them. Only in root's own (signed) reply — never a
       // co-teacher's or a classmate's.
       if (role == ShareRole.teacher && !served.isDelegate)
         'catalog': [
-          for (final s in await dao.ownSubjects(
-            ownerTeacherId: (await _db.classGroupDao.findByUuid(
-              uuid,
-            ))?.ownerTeacherId,
-          ))
+          for (final s in await dao.ownSubjects(classUuid: uuid))
             {'id': s.subjectId, 'name': s.name, 'icon': s.icon, 'color': s.color},
         ],
       // Forwarded verbatim, whichever device this reply comes from — its
@@ -936,7 +933,24 @@ class ClassShareServer {
         if (ProgressReport.fromJson(r) case final report?) report,
     ];
     await _db.classSyncDao.saveMemberReports(served.groupUuid, reports);
-    return {'saved': reports.length};
+    // Each learner's answers to this device's assignments, and back the
+    // grades of exactly those answers — never anyone else's.
+    final assignments = ClassAssignments(_db);
+    final grades = <GradePayload>[];
+    for (final r in reports) {
+      grades.addAll(
+        await assignments.receive(
+          classUuid: served.groupUuid,
+          memberKey: r.memberKey,
+          learnerName: r.name,
+          submissions: r.submissions,
+        ),
+      );
+    }
+    return {
+      'saved': reports.length,
+      'grades': [for (final g in grades) g.toJson()],
+    };
   }
 
   Future<Map<String, Object?>?> _channel(

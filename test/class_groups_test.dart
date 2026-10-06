@@ -9,6 +9,7 @@ import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/db/providers/db_provider.dart';
 import 'package:ai_connect_africa/features/teacher/class_providers.dart';
 import 'package:ai_connect_africa/features/teacher/teacher_dashboard_screen.dart';
+import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
 
 void main() {
   late OticDatabase db;
@@ -140,17 +141,46 @@ void main() {
   testWidgets('dashboard filters by class and shows class progress',
       (tester) async {
     late int east;
+    late TeacherProfile teacher;
     await tester.runAsync(() async {
       east = await db.classGroupDao
           .createClass(className: 'S2', streamName: 'East');
       final amina = await learner('Amina', classId: east);
       await learner('Brian');
       await progress(amina, 'Cells', 60, 3);
+      // The Admin assigned this teacher to S2 East.
+      final id = await db.into(db.teacherProfiles).insert(
+            TeacherProfilesCompanion.insert(
+              name: 'Okello',
+              pinSalt: 's',
+              pinHash: 'h',
+              createdAt: '2026-10-06T00:00:00Z',
+            ),
+          );
+      teacher = await (db.select(db.teacherProfiles)
+            ..where((t) => t.id.equals(id)))
+          .getSingle();
+      final group = await (db.select(db.classGroups)
+            ..where((t) => t.id.equals(east)))
+          .getSingle();
+      await db.into(db.teachingAssignments).insert(
+            TeachingAssignmentsCompanion.insert(
+              uuid: 'a1',
+              teacherId: id,
+              classGroupUuid: group.groupUuid!,
+              subjectId: 'biology',
+              academicYear: 2026,
+              createdAt: '2026-10-06T00:00:00Z',
+            ),
+          );
     });
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [dbProvider.overrideWithValue(db)],
+        overrides: [
+          dbProvider.overrideWithValue(db),
+          activeTeacherProvider.overrideWith((ref) => teacher),
+        ],
         child: const MaterialApp(home: TeacherDashboardScreen()),
       ),
     );
@@ -159,7 +189,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Amina'), findsOneWidget);
-    expect(find.text('Brian'), findsOneWidget);
+    expect(find.text('Brian'), findsNothing,
+        reason: 'only learners in classes this teacher teaches');
 
     await tester.tap(find.widgetWithText(ChoiceChip, 'S2 East'));
     await tester.pump();
@@ -168,7 +199,8 @@ void main() {
     expect(find.text('Brian'), findsNothing);
     expect(find.text('60%'), findsWidgets,
         reason: 'class average and the learner bar both show 60%');
-    expect(find.text('Delete class'), findsOneWidget);
+    expect(find.text('Delete class'), findsNothing,
+        reason: 'classes are the Admin’s');
     expect(find.text('Subjects & materials'), findsOneWidget);
 
     // Dispose the tree, then let drift's stream-cleanup timer fire on the

@@ -7,6 +7,7 @@ import '../../db/daos/class_group_dao.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import 'teacher_profiles.dart';
+import 'teaching_scope.dart';
 
 /// Every class/stream, alphabetical.
 final classGroupsProvider = StreamProvider<List<ClassGroup>>((ref) {
@@ -52,34 +53,26 @@ final enrolledSubjectsProvider = StreamProvider.family<Set<String>, int>((
   return ref.watch(dbProvider).classSyncDao.watchEnrolled(studentId);
 });
 
-/// Classes the signed-in teacher created — the only ones they may change
-/// or share notes with.
-final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) {
-  if (kIsWeb) return Stream.value(const []);
-  final me = ref.watch(activeTeacherIdProvider);
-  return ref
+/// Classes/streams the signed-in teacher is assigned to teach (the Admin's
+/// teaching assignments) — the only ones they share notes with and sync.
+final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) async* {
+  if (kIsWeb) {
+    yield const [];
+    return;
+  }
+  final mine = {
+    for (final a in await ref.watch(myAssignmentsProvider.future))
+      a.classGroupUuid,
+  };
+  yield* ref
       .watch(dbProvider)
       .classSyncDao
       .watchOwnedClasses()
-      .map((all) => [for (final c in all) if (c.ownerTeacherId == me) c]);
+      .map((all) => [for (final c in all) if (mine.contains(c.groupUuid)) c]);
 });
 
-/// The signed-in teacher's classes/streams, alphabetical — whether or not
-/// they have been shared yet.
-final myClassGroupsProvider = StreamProvider<List<ClassGroup>>((ref) {
-  if (kIsWeb) return Stream.value(const []);
-  final me = ref.watch(activeTeacherIdProvider);
-  return ref
-      .watch(dbProvider)
-      .classGroupDao
-      .watchAllClasses()
-      .map(
-        (all) => [
-          for (final c in all)
-            if (!c.joined && c.ownerTeacherId == me) c,
-        ],
-      );
-});
+/// The signed-in teacher's classes/streams, alphabetical.
+final myClassGroupsProvider = ownedClassesProvider;
 
 /// Root device: co-teachers of one class, by name.
 final coTeachersProvider =

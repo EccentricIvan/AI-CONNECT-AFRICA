@@ -378,17 +378,25 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
   // ── Subjects the teacher offers ─────────────────────────────────────────
 
   /// Subjects made on this device — the list a class's host sends with
-  /// every sync: only [ownerTeacherId]'s (the class's teacher) when given.
-  Future<List<CustomSubject>> ownSubjects({int? ownerTeacherId}) =>
-      (select(customSubjects)
-            ..where((t) => t.classGroupUuid.isNull())
-            ..where(
-              (t) => ownerTeacherId == null
-                  ? const Constant(true)
-                  : t.ownerTeacherId.equals(ownerTeacherId),
-            )
-            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
-          .get();
+  /// every sync. For [classUuid], only the subjects the Admin assigned a
+  /// teacher to teach that class; every subject while the class has no
+  /// assignments yet.
+  Future<List<CustomSubject>> ownSubjects({String? classUuid}) async {
+    final all =
+        await (select(customSubjects)
+              ..where((t) => t.classGroupUuid.isNull())
+              ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+            .get();
+    if (classUuid == null) return all;
+    final taught = {
+      for (final a in await (select(
+        db.teachingAssignments,
+      )..where((t) => t.classGroupUuid.equals(classUuid))).get())
+        a.subjectId,
+    };
+    if (taught.isEmpty) return all;
+    return [for (final s in all) if (taught.contains(s.subjectId)) s];
+  }
 
   /// Replaces the subjects [classUuid]'s teacher offers with [offered], in
   /// one transaction. A subject this device made itself is never touched,
