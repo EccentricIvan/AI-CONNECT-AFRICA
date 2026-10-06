@@ -9,6 +9,7 @@ import '../../ai_core/tutor/programming_topic.dart';
 import '../../app.dart';
 import '../../db/providers/db_provider.dart';
 import '../../features/achievements/achievements_screen.dart';
+import '../../features/admin/admin_screen.dart';
 import '../../features/notes/my_notes_screen.dart';
 import '../../features/notes/note_pdf_screen.dart';
 import '../../features/teachers/teachers_screen.dart';
@@ -224,8 +225,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/teachers',
             builder: (_, __) => const TeachersScreen(),
           ),
-          // The Admin dashboard became Teachers.
-          GoRoute(path: '/admin', redirect: (_, __) => '/teachers'),
+          GoRoute(
+            path: '/admin',
+            builder: (_, __) => const AdminScreen(),
+          ),
           GoRoute(
             path: '/settings',
             builder: (_, __) => const SettingsScreen(),

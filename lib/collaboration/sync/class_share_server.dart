@@ -895,16 +895,12 @@ class ClassShareServer {
     return {
       'class_group_uuid': uuid,
       'subjects': manifests,
-      // The subjects this class's teacher made, so students can see and
-      // enroll in them. Only in root's own (signed) reply — never a
+      // The subjects taught to this class, so students can see and enroll
+      // in them. Only in root's own (signed) reply — never a
       // co-teacher's or a classmate's.
       if (role == ShareRole.teacher && !served.isDelegate)
         'catalog': [
-          for (final s in await dao.ownSubjects(
-            ownerTeacherId: (await _db.classGroupDao.findByUuid(
-              uuid,
-            ))?.ownerTeacherId,
-          ))
+          for (final s in await dao.ownSubjects(classUuid: uuid))
             {'id': s.subjectId, 'name': s.name, 'icon': s.icon, 'color': s.color},
         ],
       // Forwarded verbatim, whichever device this reply comes from — its

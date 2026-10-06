@@ -511,6 +511,11 @@ void main() {
       'host_ledgers',
       // Teachers who sign in on this device — not learners.
       'teacher_profiles',
+      // The Admin's records and who uploaded each note — school data, not
+      // any learner's.
+      'admin_identity',
+      'teaching_assignments',
+      'note_owners',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

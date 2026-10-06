@@ -161,38 +161,6 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
     ];
   }
 
-  Future<void> _setSchool() async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('School name'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'e.g. Bright Future Academy',
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || name.trim().isEmpty) return;
-    await ref.read(dbProvider).classSyncDao.setSchoolName(name);
-  }
-
   @override
   Widget build(BuildContext context) {
     final classesAsync = ref.watch(ownedClassesProvider);
@@ -240,11 +208,7 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                       ),
                       const SizedBox(width: 12),
                       const Expanded(
-                        child: Text('School not set'),
-                      ),
-                      TextButton(
-                        onPressed: _setSchool,
-                        child: const Text('Set school'),
+                        child: Text('School not set — the Admin sets it'),
                       ),
                     ],
                   ),

@@ -74,6 +74,7 @@ class LearnerDataWiper {
     'chat_sessions',
     'learner_subjects',
     'quiz_results',
+    'student_enrolments',
   };
 
   /// Deletes one learner and everything scoped to them — the rest of a
@@ -227,6 +228,9 @@ class LearnerDataWiper {
     )..where((t) => t.studentId.equals(studentId))).go();
     await (_db.delete(
       _db.quizResults,
+    )..where((t) => t.studentId.equals(studentId))).go();
+    await (_db.delete(
+      _db.studentEnrolments,
     )..where((t) => t.studentId.equals(studentId))).go();
     await _db.studentDao.deleteStudent(studentId);
     return sessionIds;

@@ -53,4 +53,7 @@ class Students extends Table {
   /// switched to them. Null when they have none. Never synced.
   TextColumn get pinSalt => text().nullable()();
   TextColumn get pinHash => text().nullable()();
+
+  /// Portable id, the same on every device the Admin's records reach.
+  TextColumn get uuid => text().nullable()();
 }

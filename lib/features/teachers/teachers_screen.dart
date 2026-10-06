@@ -9,13 +9,10 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../core/app_info_provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
-import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../teacher/class_providers.dart';
-import '../learners/learner_pin.dart';
-import '../teacher/teacher_pin.dart';
 import '../teacher/teacher_pin_screen.dart';
 import '../teacher/teacher_profiles.dart';
 
@@ -34,15 +31,13 @@ class TeachersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final packagesAsync = ref.watch(_packagesInstalledProvider);
-    final studentsAsync = ref.watch(_allStudentsProvider);
     final packageInfoAsync = ref.watch(packageInfoProvider);
-    final pinSetAsync = ref.watch(_pinSetProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: StudioAppBar(
         title: tr(context, 'Teachers'),
-        subtitle: tr(context, 'Teachers, learners and school'),
+        subtitle: tr(context, 'Sign in and teach'),
         icon: Icons.groups_rounded,
         iconColor: AppColors.accentBlue,
       ),
@@ -54,11 +49,6 @@ class TeachersScreen extends ConsumerWidget {
             // ── Teachers ─────────────────────────────────────────────────
             const _SectionTitle('Teachers'),
             const _TeacherDevicesCard(),
-            const SizedBox(height: 20),
-
-            // ── School ───────────────────────────────────────────────────
-            const _SectionTitle('School'),
-            const _SchoolCard(),
             const SizedBox(height: 20),
 
             // ── Device ───────────────────────────────────────────────────
@@ -103,321 +93,11 @@ class TeachersScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 20),
 
-            // ── Users ────────────────────────────────────────────────────
-            const _SectionTitle('Learners on this device'),
-            studentsAsync.when(
-              loading: () => const _InfoCard(
-                children: [ListTile(title: Text('Loading students…'))],
-              ),
-              error: (e, _) =>
-                  _InfoCard(children: [ListTile(title: Text('Error: $e'))]),
-              data: (students) => students.isEmpty
-                  ? _InfoCard(
-                      children: [
-                        ListTile(
-                          leading: Icon(
-                            Icons.person_off,
-                            color: Theme.of(context).hintColor,
-                          ),
-                          title: const Text('No learners'),
-                        ),
-                      ],
-                    )
-                  : _InfoCard(
-                      children: students
-                          .map((s) => _StudentRow(student: s))
-                          .toList(),
-                    ),
-            ),
-            const SizedBox(height: 20),
-
-            // ── Danger zone ──────────────────────────────────────────────
-            const _SectionTitle('Reset'),
-            pinSetAsync.when(
-              loading: () => const SizedBox.shrink(),
-              error: (_, __) => const SizedBox.shrink(),
-              data: (pinSet) => _InfoCard(
-                children: [
-                  ListTile(
-                    leading: Icon(
-                      Icons.delete_forever,
-                      color: pinSet ? Colors.red : Theme.of(context).hintColor,
-                    ),
-                    title: Text(
-                      'Reset all student data',
-                      style: TextStyle(
-                        color: pinSet
-                            ? Colors.red
-                            : Theme.of(context).hintColor,
-                      ),
-                    ),
-                    subtitle: pinSet ? null : const Text('Requires a PIN'),
-                    enabled: pinSet,
-                    onTap: pinSet ? () => _confirmResetAll(context, ref) : null,
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 40),
           ],
         ),
       ),
     );
-  }
-
-  void _confirmResetAll(BuildContext context, WidgetRef ref) {
-    // Captured before the dialog's await, not merely before the wipe — the
-    // callback below already runs past one async gap by the time it's
-    // reached (the dialog itself), which is exactly what
-    // use_build_context_synchronously is warning about.
-    final router = GoRouter.of(context);
-    showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset all student data?'),
-        content: const Text(
-          'All learner profiles and their progress will be deleted. This '
-          'cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete everything'),
-          ),
-        ],
-      ),
-    ).then((confirmed) async {
-      if (confirmed != true) return;
-      // router was captured before the dialog opened. Navigating off
-      // /teachers before the teacher-area lock changes below is defensive:
-      // the router's redirect reads teacherUnlockedProvider on every
-      // navigation and /teachers is a gated route, so ordering it this way
-      // means a lock-then-navigate race can't strand this screen on
-      // /unlock even if something later makes that state trigger a
-      // refresh — it doesn't appear to today.
-      await ref.read(learnerDataWiperProvider).wipeAll();
-      ref.invalidate(_allStudentsProvider);
-      ref.invalidate(activeStudentProvider);
-      ref.invalidate(hasProfileProvider);
-      router.go('/onboarding');
-      // Stronger than an ordinary learner switch (CLAUDE.md treats that as
-      // its own privacy boundary): the learner this device was mid-session
-      // as is now gone entirely, so its chat thread, tutor memory and the
-      // engine's KV cache must not carry over to whoever onboards next —
-      // and the device hands back to a learner, so the teacher area locks.
-      ref.read(chatProvider.notifier).reset();
-      ref.read(teacherUnlockedProvider.notifier).state = false;
-      ref.read(activeTeacherProvider.notifier).state = null;
-    });
-  }
-}
-
-/// All students on the device (not just the active one).
-final _allStudentsProvider = FutureProvider<List<Student>>((ref) {
-  final db = ref.watch(dbProvider);
-  return db.studentDao.getAllStudents();
-});
-
-/// Whether a Teacher PIN exists — the reset tile stays locked without one,
-/// since with no PIN set nothing gates `/teachers` at all (see teacher_pin.dart)
-/// and "teachers/admins only" would otherwise be nominal.
-///
-/// autoDispose, not a plain FutureProvider: a PIN set moments ago in
-/// Settings must unlock this tile the next time Teachers is opened, not only
-/// after the app restarts and the cached `false` is gone.
-final _pinSetProvider = FutureProvider.autoDispose<bool>((ref) {
-  return ref.watch(teacherPinProvider).isSet();
-});
-
-class _StudentRow extends ConsumerWidget {
-  const _StudentRow({required this.student});
-  final Student student;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Same lock as "Reset all student data" below, and for the same
-    // reason: with no PIN set nothing gates /teachers at all (teacher_pin.dart),
-    // so without this check any learner who opens Teachers could delete
-    // another learner's profile — exactly what "teachers/admins only" is
-    // supposed to prevent.
-    final pinSet = ref.watch(_pinSetProvider).valueOrNull ?? false;
-    return ListTile(
-      title: Text(student.name, style: const TextStyle(fontSize: 14)),
-      subtitle: Text(
-        '${student.totalPoints} pts · ${student.streakDays} day streak',
-        style: const TextStyle(fontSize: 12),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // A learner who forgot their PIN.
-          if (pinSet && student.pinHash != null)
-            IconButton(
-              icon: const Icon(Icons.lock_reset_rounded, size: 20),
-              tooltip: 'Clear PIN',
-              onPressed: () => _clearPin(context, ref),
-            ),
-          IconButton(
-            icon: Icon(
-              Icons.delete_outline,
-              color: pinSet ? Colors.red : Theme.of(context).hintColor,
-              size: 20,
-            ),
-            tooltip: pinSet ? 'Delete' : 'Requires a PIN',
-            onPressed: pinSet ? () => _confirmDelete(context, ref) : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _clearPin(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    await ref.read(learnerPinServiceProvider).clear(student.id);
-    ref.invalidate(_allStudentsProvider);
-    messenger.showSnackBar(
-      SnackBar(content: Text('${student.name}’s PIN cleared.')),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, WidgetRef ref) {
-    // Captured before the dialog opens, both so it's safe to use afterward
-    // (the .then callback below runs past that async gap) and, for the
-    // wipeAll-equivalent branch inside it, so navigating off /teachers can
-    // happen before the teacher-area lock changes — see the matching note
-    // in _confirmResetAll on why that order avoids a router redirect race.
-    final router = GoRouter.of(context);
-    showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Delete ${student.name}?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    ).then((confirmed) async {
-      if (confirmed != true) return;
-      final wasActive =
-          (await ref.read(activeStudentProvider.future))?.id == student.id;
-
-      // Nothing in this app enables `PRAGMA foreign_keys`, so cascades
-      // declared on these tables are never enforced — LearnerDataWiper is
-      // the one place that clears every table actually scoped to a
-      // student, so a deleted profile can't leave orphaned rows in a table
-      // this dialog's old inline version predates (session_summaries,
-      // topic_progress, learning_paths, earned_badges, student_projects,
-      // website_projects, app_builder_projects, assignments were all
-      // missed before).
-      await ref.read(learnerDataWiperProvider).wipeStudent(student.id);
-
-      // Read fresh, after the delete — _allStudentsProvider's cache still
-      // holds the pre-delete list until invalidated below, and reading
-      // that here would make a lone remaining learner look like there
-      // were none, or a just-deleted one look like it were still there.
-      final remaining = await ref.read(dbProvider).studentDao.getAllStudents();
-      ref.invalidate(_allStudentsProvider);
-      ref.invalidate(activeStudentProvider);
-      ref.invalidate(hasProfileProvider);
-
-      if (!wasActive) return;
-      // Same privacy boundary a learner switch enforces (CLAUDE.md) — the
-      // learner whose thread/tutor-memory/KV cache this device was holding
-      // no longer exists, so none of it may reach whoever uses the device
-      // next.
-      ref.read(chatProvider.notifier).reset();
-      if (remaining.isEmpty) {
-        // Same situation wipeAll leaves the device in — the wiper already
-        // cleared the router's `student_name` onboarding flag once this
-        // was the last learner, so onboarding is the only correct landing.
-        router.go('/onboarding');
-        ref.read(teacherUnlockedProvider.notifier).state = false;
-        ref.read(activeTeacherProvider.notifier).state = null;
-      } else {
-        // resolveActiveStudent's fallback (most-recently-active) would
-        // otherwise silently turn the device into some other learner
-        // without going through LearnerSwitcher — no language change, no
-        // explicit choice. Send the teacher to pick, the same as any other
-        // handoff.
-        router.go('/learners');
-      }
-    });
-  }
-}
-
-/// The school this device belongs to. Class sync only ever shares notes
-/// between devices of the same school, so a teacher's device needs one
-/// before it can share; a student's device takes it from the first class it
-/// joins.
-class _SchoolCard extends ConsumerWidget {
-  const _SchoolCard();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final identity = ref.watch(syncIdentityProvider).valueOrNull;
-    final name = identity?.schoolName;
-    final hasSchool = identity?.schoolId != null && (name ?? '').isNotEmpty;
-    return _InfoCard(
-      children: [
-        ListTile(
-          leading: const Icon(Icons.school_outlined),
-          title: Text(hasSchool ? name! : 'No school set'),
-          trailing: TextButton(
-            onPressed: () => _edit(context, ref, name),
-            child: Text(hasSchool ? 'Rename' : 'Set school'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Future<void> _edit(
-    BuildContext context,
-    WidgetRef ref,
-    String? current,
-  ) async {
-    final controller = TextEditingController(text: current ?? '');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('School name'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            hintText: 'e.g. Bright Future Academy',
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || name.trim().isEmpty) return;
-    await ref.read(dbProvider).classSyncDao.setSchoolName(name);
   }
 }
 
@@ -523,12 +203,12 @@ class _TeacherDevicesCard extends ConsumerWidget {
               trailing: chevron,
               onTap: () => _signIn(context, ref, t),
             ),
-          ListTile(
-            leading: const Icon(Icons.person_add_alt_1_rounded),
-            title: const Text('Add teacher'),
-            trailing: chevron,
-            onTap: () => _addTeacher(context, ref),
-          ),
+          if (profiles.isEmpty)
+            const ListTile(
+              leading: Icon(Icons.info_outline_rounded),
+              title: Text('No teachers yet'),
+              subtitle: Text('The Admin adds teachers'),
+            ),
           ListTile(
             leading: const Icon(Icons.sync_rounded),
             title: const Text('Sync'),
@@ -615,86 +295,6 @@ class _TeacherDevicesCard extends ConsumerWidget {
       return;
     }
     ref.read(activeTeacherProvider.notifier).state = signedIn;
-  }
-
-  /// Adds a profile. With no Teachers PIN yet, it is set first: profiles
-  /// sit behind the PIN every teacher knows, so a learner can't make one.
-  Future<void> _addTeacher(BuildContext context, WidgetRef ref) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final teachersPin = ref.read(teacherPinProvider);
-    if (!await teachersPin.isSet()) {
-      if (!context.mounted) return;
-      await showTeacherPinSettings(context, ref);
-      if (!await teachersPin.isSet()) return;
-    }
-    if (!context.mounted) return;
-    final name = TextEditingController();
-    final pin = TextEditingController();
-    final again = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add teacher'),
-        content: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              TextField(
-                controller: pin,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                inputFormatters: kPinInputFormatters,
-                decoration: const InputDecoration(
-                  labelText: 'PIN (4–8 digits)',
-                ),
-              ),
-              TextField(
-                controller: again,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                inputFormatters: kPinInputFormatters,
-                decoration: const InputDecoration(labelText: 'PIN again'),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    final (n, p, a) = (name.text, pin.text.trim(), again.text.trim());
-    name.dispose();
-    pin.dispose();
-    again.dispose();
-    if (ok != true) return;
-    if (p != a) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('The two PINs did not match.')),
-      );
-      return;
-    }
-    final r = await ref
-        .read(teacherProfileServiceProvider)
-        .create(name: n, pin: p);
-    if (r.profile == null) {
-      messenger.showSnackBar(SnackBar(content: Text(r.error ?? '')));
-      return;
-    }
-    ref.read(activeTeacherProvider.notifier).state = r.profile;
   }
 
   Future<void> _changeMyPin(

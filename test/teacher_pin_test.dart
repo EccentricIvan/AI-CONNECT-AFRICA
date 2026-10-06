@@ -80,12 +80,12 @@ void main() {
         teacherGateRedirect(Uri.parse(path),
             unlocked: unlocked, pinSet: pinSet);
 
-    test('locks teacher and admin routes, keeping the destination', () {
+    test('locks teacher routes, keeping the destination', () {
       expect(gate('/teacher'), '/unlock?to=%2Fteacher');
       expect(gate('/teacher/materials'), '/unlock?to=%2Fteacher%2Fmaterials');
       expect(gate('/teacher/7'), isNotNull);
-      expect(gate('/admin'), isNotNull);
       expect(gate('/teachers'), '/unlock?to=%2Fteachers');
+      expect(gate('/admin'), isNull, reason: 'Admin has its own PIN');
     });
 
     test('lets everything through when unlocked or no PIN is set', () {

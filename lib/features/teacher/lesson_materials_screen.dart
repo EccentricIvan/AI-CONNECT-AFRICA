@@ -20,6 +20,7 @@ import '../notes/note_pdf_screen.dart';
 import 'class_providers.dart';
 import 'resource_labels.dart';
 import 'teacher_profiles.dart';
+import 'teaching_scope.dart';
 
 /// Where a teacher creates subjects and adds the material they teach from.
 ///
@@ -28,19 +29,26 @@ import 'teacher_profiles.dart';
 /// [ResourceLabels], which holds every string on this screen and is asserted
 /// against [kForbiddenTechnicalTerms] in the tests.
 ///
-/// A teacher sees and changes only the subjects they created.
+/// A teacher sees the subjects the Admin assigned them, and changes only
+/// the materials they uploaded ([TeachingScope]). Subjects themselves are
+/// the Admin's.
 class LessonMaterialsScreen extends ConsumerWidget {
   const LessonMaterialsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final me = ref.watch(activeTeacherIdProvider);
+    final taught = {
+      for (final a
+          in ref.watch(myAssignmentsProvider).valueOrNull ??
+              const <TeachingAssignment>[])
+        a.subjectId,
+    };
     final subjectsAsync = ref
         .watch(customSubjectsProvider)
         .whenData(
           (all) => [
             for (final s in all)
-              if (s.classGroupUuid == null && s.ownerTeacherId == me) s,
+              if (s.classGroupUuid == null && taught.contains(s.subjectId)) s,
           ],
         );
 
@@ -51,11 +59,6 @@ class LessonMaterialsScreen extends ConsumerWidget {
         subtitle: tr(context, ResourceLabels.workspaceSubtitle),
         icon: Icons.folder_copy_rounded,
         iconColor: AppColors.accentBlue,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _createSubject(context, ref),
-        icon: const Icon(Icons.add),
-        label: Text(tr(context, ResourceLabels.newSubject)),
       ),
       body: subjectsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -82,51 +85,6 @@ class LessonMaterialsScreen extends ConsumerWidget {
       ),
     );
   }
-
-  Future<void> _createSubject(BuildContext context, WidgetRef ref) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr(ctx, ResourceLabels.newSubject)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: InputDecoration(
-            labelText: tr(ctx, ResourceLabels.subjectName),
-            hintText: tr(ctx, ResourceLabels.subjectNameHint),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(tr(ctx, ResourceLabels.cancel)),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Text(tr(ctx, ResourceLabels.createSubject)),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (name == null || !context.mounted) return;
-
-    final result = await ref
-        .read(customSubjectServiceProvider)
-        .create(name: name, ownerTeacherId: ref.read(activeTeacherIdProvider));
-    if (!context.mounted) return;
-
-    if (!result.ok) {
-      _toast(context, result.error ?? '');
-      return;
-    }
-    ref.invalidate(customSubjectsProvider);
-    ref.invalidate(mergedSubjectsProvider);
-    _toast(context, tr(context, ResourceLabels.subjectCreated));
-  }
 }
 
 // ── One subject, with its material ───────────────────────────────────────
@@ -146,17 +104,23 @@ class _SubjectTile extends ConsumerWidget {
         ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
         const {};
     final reading = ref.watch(noteReadingProvider);
-    // Where this subject's notes may go: classes this device owns, plus
-    // classes it co-teaches *this* subject in.
+    final me = ref.watch(activeTeacherIdProvider);
+    final owners =
+        ref.watch(noteOwnersProvider(subject.subjectId)).valueOrNull ??
+        const <String, int>{};
+    // Where this subject's notes may go: the classes this teacher teaches
+    // this subject to.
+    final teachesTo = {
+      for (final a
+          in ref.watch(myAssignmentsProvider).valueOrNull ??
+              const <TeachingAssignment>[])
+        if (a.subjectId == subject.subjectId) a.classGroupUuid,
+    };
     final classes = <({String uuid, String label})>[
       for (final c
           in ref.watch(ownedClassesProvider).valueOrNull ?? const <ClassGroup>[])
-        (uuid: c.groupUuid!, label: classLabel(c)),
-      for (final d
-          in ref.watch(delegatedClassesProvider).valueOrNull ??
-              const <CoTeachingClass>[])
-        if (delegatedSubjects(d).contains(subject.subjectId))
-          (uuid: d.classGroupUuid, label: delegatedClassLabel(d)),
+        if (teachesTo.contains(c.groupUuid))
+          (uuid: c.groupUuid!, label: classLabel(c)),
     ];
     final classNames = <String?, String>{
       for (final c in classes) c.uuid: c.label,
@@ -188,7 +152,9 @@ class _SubjectTile extends ConsumerWidget {
                 Padding(padding: const EdgeInsets.all(16), child: Text('$e')),
             data: (list) => Column(
               children: [
+                // Only this teacher's notes, and any nobody owns.
                 for (final r in list)
+                  if ((owners[r.resourceTitle] ?? me) == me)
                   ListTile(
                     dense: true,
                     leading: const Icon(Icons.description_outlined, size: 20),
@@ -260,11 +226,6 @@ class _SubjectTile extends ConsumerWidget {
                   icon: const Icon(Icons.edit_note, size: 18),
                   label: Text(tr(context, ResourceLabels.typeNotes)),
                 ),
-                TextButton.icon(
-                  onPressed: () => _removeSubject(context, ref),
-                  icon: const Icon(Icons.delete_forever, size: 18),
-                  label: Text(tr(context, ResourceLabels.removeSubject)),
-                ),
               ],
             ),
           ),
@@ -284,21 +245,37 @@ class _SubjectTile extends ConsumerWidget {
     ref.invalidate(subjectByIdProvider(subject.subjectId));
   }
 
-  /// Adds one or more files to this subject. A PDF is saved at once —
-  /// students can open it straight away — and its pages are read in the
-  /// background; other files are quick to read and are read now.
-  /// Whether the signed-in teacher created this subject; tells them when
-  /// not. Every change to the subject or its materials checks this.
-  Future<bool> _mine(BuildContext context, WidgetRef ref) async {
-    final ok = await ref
-        .read(customSubjectServiceProvider)
-        .mayChange(subject.subjectId, ref.read(activeTeacherIdProvider));
+  /// Whether the signed-in teacher teaches this subject (to upload), or
+  /// also uploaded [documentTitle] (to change or share it); tells them when
+  /// not. Every change checks this.
+  Future<bool> _mine(
+    BuildContext context,
+    WidgetRef ref, [
+    String? documentTitle,
+  ]) async {
+    final scope = ref.read(teachingScopeProvider);
+    final me = ref.read(activeTeacherIdProvider);
+    final ok = documentTitle == null
+        ? await scope.teaches(me, subject.subjectId)
+        : await scope.mayChangeNote(me, subject.subjectId, documentTitle);
     if (!ok && context.mounted) {
       _toast(context, tr(context, ResourceLabels.notYours));
     }
     return ok;
   }
 
+  /// Records the signed-in teacher as the uploader of [documentTitle].
+  Future<void> _own(WidgetRef ref, String documentTitle) async {
+    final me = ref.read(activeTeacherIdProvider);
+    if (me == null) return;
+    await ref
+        .read(teachingScopeProvider)
+        .recordOwner(subject.subjectId, documentTitle, me);
+  }
+
+  /// Adds one or more files to this subject. A PDF is saved at once —
+  /// students can open it straight away — and its pages are read in the
+  /// background; other files are quick to read and are read now.
   Future<void> _addFromFile(BuildContext context, WidgetRef ref) async {
     if (!await _mine(context, ref) || !context.mounted) return;
     final term = await _askTerm(context);
@@ -387,6 +364,10 @@ class _SubjectTile extends ConsumerWidget {
     if (!context.mounted) return;
 
     final added = reports.where((r) => r.ok).toList();
+    for (final r in added) {
+      await _own(ref, r.documentTitle);
+    }
+    if (!context.mounted) return;
     final failed = reports.where((r) => !r.ok && !r.cancelled).toList();
     if (failed.isNotEmpty) {
       _showFailure(
@@ -509,7 +490,9 @@ class _SubjectTile extends ConsumerWidget {
       _showFailure(context, report.failure ?? '');
       return;
     }
+    await _own(ref, report.documentTitle);
     _refresh(ref);
+    if (!context.mounted) return;
     _toast(context, tr(context, ResourceLabels.noteSaved));
   }
 
@@ -566,7 +549,7 @@ class _SubjectTile extends ConsumerWidget {
     if (classes.isEmpty) {
       _toast(
         context,
-        tr(context, 'Create a class first (Teacher → Add class).'),
+        tr(context, 'No classes assigned for this subject'),
       );
       return;
     }
@@ -614,7 +597,22 @@ class _SubjectTile extends ConsumerWidget {
       },
     );
     if (chosen == null || !context.mounted) return;
-    if (!await _mine(context, ref)) return;
+    if (!await _mine(context, ref, resource.resourceTitle)) return;
+    final scope = ref.read(teachingScopeProvider);
+    final me = ref.read(activeTeacherIdProvider);
+    for (final uuid in chosen) {
+      if (!await scope.mayShare(
+        me,
+        subject.subjectId,
+        resource.resourceTitle,
+        uuid,
+      )) {
+        if (context.mounted) {
+          _toast(context, tr(context, ResourceLabels.notYours));
+        }
+        return;
+      }
+    }
     await ref
         .read(dbProvider)
         .classSyncDao
@@ -636,7 +634,10 @@ class _SubjectTile extends ConsumerWidget {
       tr(context, ResourceLabels.removeResource),
     );
     if (!confirmed || !context.mounted) return;
-    if (!await _mine(context, ref) || !context.mounted) return;
+    if (!await _mine(context, ref, resource.resourceTitle) ||
+        !context.mounted) {
+      return;
+    }
 
     final removed = await ref
         .read(offlineStorageServiceProvider)
@@ -644,6 +645,9 @@ class _SubjectTile extends ConsumerWidget {
           resource.resourceTitle,
           subjectId: subject.subjectId,
         );
+    await ref
+        .read(teachingScopeProvider)
+        .forgetOwner(subject.subjectId, resource.resourceTitle);
     if (!context.mounted) return;
 
     _refresh(ref);
@@ -656,30 +660,6 @@ class _SubjectTile extends ConsumerWidget {
             : ResourceLabels.nothingToRemove,
       ),
     );
-  }
-
-  Future<void> _removeSubject(BuildContext context, WidgetRef ref) async {
-    final confirmed = await _confirm(
-      context,
-      tr(context, ResourceLabels.removeSubjectConfirm),
-      tr(context, ResourceLabels.removeSubject),
-    );
-    if (!confirmed || !context.mounted) return;
-
-    final removed = await ref
-        .read(customSubjectServiceProvider)
-        .delete(
-          subject.subjectId,
-          byTeacherId: ref.read(activeTeacherIdProvider),
-        );
-    if (!context.mounted) return;
-    if (!removed) {
-      _toast(context, tr(context, ResourceLabels.notYours));
-      return;
-    }
-
-    _refresh(ref);
-    _toast(context, tr(context, ResourceLabels.subjectRemoved));
   }
 
   /// Which term this material belongs to — the Term Core Tracker.
