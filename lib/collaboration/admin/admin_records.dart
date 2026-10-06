@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import '../../db/otic_database.dart';
+import '../../features/teacher/teaching_scope.dart';
 import '../sync/class_crypto.dart';
 import 'admin_records_crypto.dart';
 
@@ -413,6 +414,9 @@ class AdminRecords {
       for (final e in activeClass.entries) {
         await _db.classGroupDao.assignLearner(e.key, e.value);
       }
+
+      // What this device serves follows the new assignments.
+      await TeachingScope(_db).pruneShares();
 
       final takeover = r['takeover'];
       await _db

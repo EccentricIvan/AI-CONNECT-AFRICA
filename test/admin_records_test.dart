@@ -11,6 +11,7 @@ import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:ai_connect_africa/services/projects/project_store.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -167,6 +168,25 @@ void main() {
       expect(await scope.ownerOf('maths_9', 'Algebra'), isNull);
     });
 
+    test('a class stops being served a note once no assignment covers it',
+        () async {
+      await scope.recordOwner('maths_9', 'Algebra', amina);
+      await db.classSyncDao.setShares(
+        subjectId: 'maths_9',
+        documentTitle: 'Algebra',
+        classUuids: {east.groupUuid!, west.groupUuid!},
+      );
+      // S4 West was never assigned: dropped at the next check.
+      expect(await scope.pruneShares(), 1);
+      final kept = await db.select(db.resourceShares).get();
+      expect(kept.single.classGroupUuid, east.groupUuid);
+
+      // The Admin takes Maths in S3 East away from Amina.
+      final a = (await scope.assignments(amina)).single;
+      await admin.unassign(s, a.id);
+      expect(await db.select(db.resourceShares).get(), isEmpty);
+    });
+
     test('deleting a class or subject removes its assignments', () async {
       await admin.deleteClass(s, east);
       expect(await scope.assignments(amina), isEmpty);
@@ -216,5 +236,21 @@ void main() {
           .insert(StudentsCompanion.insert(name: 'Okot'));
       expect((await db.studentDao.getStudentById(id))!.uuid, isNotNull);
     });
+  });
+
+  testWidgets('teacher and Admin sessions end on their own', (tester) async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(activeTeacherProvider.notifier).state = TeacherProfile(
+      id: 1,
+      name: 'Amina',
+      pinSalt: 's',
+      pinHash: 'h',
+      createdAt: '2026-10-06T00:00:00Z',
+    );
+    await tester.pump(const Duration(minutes: 59));
+    expect(container.read(activeTeacherProvider), isNotNull);
+    await tester.pump(const Duration(minutes: 2));
+    expect(container.read(activeTeacherProvider), isNull);
   });
 }

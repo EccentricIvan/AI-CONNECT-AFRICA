@@ -51,7 +51,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) async {
       if (state.matchedLocation == '/onboarding') return null;
 
-      final onboarding = await _onboardingRedirect(ref);
+      final onboarding = await _onboardingRedirect(ref, state.uri.path);
       if (onboarding != null) return onboarding;
 
       // Teachers sits behind the Teachers PIN, when one is set…
@@ -257,7 +257,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 });
 
 /// Where to send someone who has not finished onboarding, or null.
-Future<String?> _onboardingRedirect(Ref ref) async {
+Future<String?> _onboardingRedirect(Ref ref, String location) async {
   // Fast path: SharedPreferences is written synchronously by onboarding
   // before it navigates away, so a name here means onboarding is done —
   // no need to wait on the (slower, background-written) database.
@@ -267,6 +267,18 @@ Future<String?> _onboardingRedirect(Ref ref) async {
 
   // On web there's no database — SharedPreferences is authoritative.
   if (kIsWeb) return '/onboarding';
+
+  // Learners the Admin added reached this device, but nobody has picked
+  // themselves here yet: ask who is learning rather than opening someone
+  // else's profile. Teachers and the Admin can still work.
+  if (prefs.getInt(kActiveStudentIdKey) == null &&
+      !const ['/learners', '/teachers', '/admin', '/unlock'].contains(location) &&
+      !location.startsWith('/teacher')) {
+    try {
+      final learners = await ref.read(dbProvider).studentDao.getAllStudents();
+      if (learners.isNotEmpty) return '/learners';
+    } catch (_) {}
+  }
 
   try {
     final hasProfile = await ref

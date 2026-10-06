@@ -89,6 +89,35 @@ class TeachingScope {
             ..where((t) => t.documentTitle.equals(documentTitle)))
           .go();
 
+  /// Drops every class share no assignment covers any more: a note may go
+  /// to a class only while its uploader (or, for a note nobody owns, some
+  /// teacher) is assigned that subject in that class. Run whenever
+  /// assignments change, so the next Sync stops serving the rest. Returns
+  /// how many shares were dropped.
+  Future<int> pruneShares() => _db.transaction(() async {
+    final taught = {
+      for (final a in await _db.select(_db.teachingAssignments).get())
+        (a.teacherId, a.classGroupUuid, a.subjectId),
+    };
+    final anyTeacher = {for (final t in taught) (t.$2, t.$3)};
+    final owners = {
+      for (final o in await _db.select(_db.noteOwners).get())
+        (o.subjectId, o.documentTitle): o.teacherId,
+    };
+    var dropped = 0;
+    for (final s in await _db.select(_db.resourceShares).get()) {
+      final owner = owners[(s.subjectId, s.documentTitle)];
+      final allowed = owner == null
+          ? anyTeacher.contains((s.classGroupUuid, s.subjectId))
+          : taught.contains((owner, s.classGroupUuid, s.subjectId));
+      if (allowed) continue;
+      dropped += await (_db.delete(
+        _db.resourceShares,
+      )..where((t) => t.id.equals(s.id))).go();
+    }
+    return dropped;
+  });
+
   /// Every note owner of [subjectId], by document title.
   Stream<Map<String, int>> watchOwners(String subjectId) =>
       (_db.select(_db.noteOwners)..where((t) => t.subjectId.equals(subjectId)))

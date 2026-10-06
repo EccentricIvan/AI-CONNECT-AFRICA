@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,8 @@ import '../../services/custom_subject_service.dart';
 import '../../services/learner_data_wiper.dart';
 import '../../services/offline_storage_service.dart';
 import '../teacher/teacher_pin.dart';
+import '../teacher/teacher_profiles.dart' show kSessionLife;
+import '../teacher/teaching_scope.dart';
 
 /// Proof that the Admin signed in with their PIN. Only [AdminService] makes
 /// one, and every change to the school's records needs it — the rule is
@@ -136,6 +140,9 @@ class AdminService {
     return n > 0;
   }
 
+  /// Classes stop being served what their assignments no longer cover.
+  Future<void> _prune() => TeachingScope(_db).pruneShares();
+
   /// Removes a teacher and their assignments. Their notes stay, owned by
   /// nobody, for whoever the Admin assigns next.
   Future<void> removeTeacher(AdminSession _, int teacherId) =>
@@ -149,6 +156,7 @@ class AdminService {
         await (_db.delete(
           _db.teacherProfiles,
         )..where((t) => t.id.equals(teacherId))).go();
+        await _prune();
       });
 
   // ── Classes and streams ───────────────────────────────────────────────
@@ -245,9 +253,12 @@ class AdminService {
     return true;
   }
 
-  Future<void> unassign(AdminSession _, int assignmentId) => (_db.delete(
-    _db.teachingAssignments,
-  )..where((t) => t.id.equals(assignmentId))).go();
+  Future<void> unassign(AdminSession _, int assignmentId) async {
+    await (_db.delete(
+      _db.teachingAssignments,
+    )..where((t) => t.id.equals(assignmentId))).go();
+    await _prune();
+  }
 
   // ── Learners and enrolments ───────────────────────────────────────────
 
@@ -316,8 +327,19 @@ final adminServiceProvider = Provider<AdminService>(
 );
 
 /// The Admin's session while signed in, or null. In memory only; cleared
-/// whenever the device is handed to a learner.
-final adminSessionProvider = StateProvider<AdminSession?>((ref) => null);
+/// whenever the device is handed to a learner, and [kSessionLife] after
+/// signing in.
+final adminSessionProvider = StateProvider<AdminSession?>((ref) {
+  Timer? expiry;
+  ref.onDispose(() => expiry?.cancel());
+  ref.listenSelf((_, next) {
+    expiry?.cancel();
+    if (next != null) {
+      expiry = Timer(kSessionLife, () => ref.controller.state = null);
+    }
+  });
+  return null;
+});
 
 final adminSetUpProvider = FutureProvider.autoDispose<bool>((ref) {
   if (kIsWeb) return Future.value(false);

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -63,11 +65,25 @@ final teacherProfilesProvider = StreamProvider<List<TeacherProfile>>((ref) {
   return ref.watch(teacherProfileServiceProvider).watchAll();
 });
 
+/// How long a teacher or the Admin stays signed in.
+const kSessionLife = Duration(minutes: 60);
+
 /// The teacher signed in on this device, or null.
 ///
 /// In memory only, so nobody is signed in after a restart. Cleared with
-/// [teacherUnlockedProvider] whenever the device is handed to a learner.
-final activeTeacherProvider = StateProvider<TeacherProfile?>((ref) => null);
+/// [teacherUnlockedProvider] whenever the device is handed to a learner,
+/// and [kSessionLife] after signing in.
+final activeTeacherProvider = StateProvider<TeacherProfile?>((ref) {
+  Timer? expiry;
+  ref.onDispose(() => expiry?.cancel());
+  ref.listenSelf((_, next) {
+    expiry?.cancel();
+    if (next != null) {
+      expiry = Timer(kSessionLife, () => ref.controller.state = null);
+    }
+  });
+  return null;
+});
 
 /// The signed-in teacher's id, or null.
 final activeTeacherIdProvider = Provider<int?>(
