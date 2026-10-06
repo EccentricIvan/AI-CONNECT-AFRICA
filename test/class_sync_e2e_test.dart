@@ -7,7 +7,6 @@ import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart
 import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
-import 'package:ai_connect_africa/db/tables/sync_identity_table.dart';
 import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/notes/note_pdf_store.dart';

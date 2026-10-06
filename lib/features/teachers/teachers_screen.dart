@@ -705,8 +705,9 @@ class _TeacherDevicesCard extends ConsumerWidget {
     if (!await teachersPin.isSet()) {
       if (!context.mounted) return;
       await showTeacherPinSettings(context, ref);
-      if (!await teachersPin.isSet() || !context.mounted) return;
+      if (!await teachersPin.isSet()) return;
     }
+    if (!context.mounted) return;
     final name = TextEditingController();
     final pin = TextEditingController();
     final again = TextEditingController();
