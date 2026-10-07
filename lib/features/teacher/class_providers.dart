@@ -53,6 +53,16 @@ final enrolledSubjectsProvider = StreamProvider.family<Set<String>, int>((
   return ref.watch(dbProvider).classSyncDao.watchEnrolled(studentId);
 });
 
+/// Subjects whose notes this learner may read — My subjects plus those
+/// taught to their Admin enrolment's class.
+final readableSubjectsProvider = StreamProvider.family<Set<String>, int>((
+  ref,
+  studentId,
+) {
+  if (kIsWeb) return Stream.value(const {});
+  return ref.watch(dbProvider).classSyncDao.watchReadable(studentId);
+});
+
 /// Classes/streams the signed-in teacher is assigned to teach (the Admin's
 /// teaching assignments) — the only ones they share notes with and sync.
 final ownedClassesProvider = StreamProvider<List<ClassGroup>>((ref) async* {

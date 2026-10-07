@@ -12,8 +12,8 @@ import '../teacher/teacher_pin.dart';
 
 /// Subjects whose notes the person at the device may read, by role, on
 /// any device: null means every subject (a teacher — PIN unlocked, or no
-/// PIN set); otherwise the subjects the active learner registered for in
-/// Class sync → My subjects. Nobody deletes notes from here; that stays in
+/// PIN set); otherwise the active learner's subjects from Sync → My
+/// subjects and their Admin enrolment. Nobody deletes notes from here; that stays in
 /// the PIN-gated Lesson materials.
 final readableNoteSubjectsProvider = FutureProvider.autoDispose<Set<String>?>((
   ref,
@@ -22,7 +22,7 @@ final readableNoteSubjectsProvider = FutureProvider.autoDispose<Set<String>?>((
   if (!await ref.read(teacherPinProvider).isSet()) return null;
   final me = await ref.watch(activeStudentProvider.future);
   if (me == null) return const {};
-  return ref.watch(enrolledSubjectsProvider(me.id).future);
+  return ref.watch(readableSubjectsProvider(me.id).future);
 });
 
 bool canReadNotes(Set<String>? readable, String subjectId) =>

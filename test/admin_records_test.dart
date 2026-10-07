@@ -216,6 +216,42 @@ void main() {
       expect((await db.studentDao.getStudentById(id))!.classGroupId, isNull);
     });
 
+    test('an enrolled learner may read the notes of subjects taught to '
+        'their class, and nothing else', () async {
+      final s = (await admin.setUp(name: 'Head', pin: '2468'))!;
+      await admin.addTeacher(s, name: 'Amina', pin: '1234');
+      await admin.addClass(s, className: 'S3', streamName: 'East');
+      await admin.addClass(s, className: 'S4', streamName: 'West');
+      final east = await classByName('S3');
+      final west = await classByName('S4');
+      await admin.addSubject(s, 'Maths 9');
+      await admin.addSubject(s, 'Physics 9');
+      for (final (group, subject) in [
+        (east, 'maths_9'),
+        (west, 'physics_9'),
+      ]) {
+        await admin.assign(
+          s,
+          teacherId: await teacherId('Amina'),
+          classGroupUuid: group.groupUuid!,
+          subjectId: subject,
+          academicYear: 2026,
+        );
+      }
+      final id = (await admin.addLearner(s, name: 'Babirye'))!;
+      Future<Set<String>> readable() =>
+          db.classSyncDao.watchReadable(id).first;
+
+      expect(await readable(), isEmpty);
+      await admin.enrol(s, studentId: id, group: east, academicYear: 2026);
+      expect(await readable(), {'maths_9'});
+      await admin.enrol(s, studentId: id, group: west, academicYear: 2026);
+      expect(await readable(), {'physics_9'},
+          reason: 'a withdrawn enrolment no longer opens its notes');
+      await db.classSyncDao.setEnrolled(id, 'maths_9', true);
+      expect(await readable(), {'maths_9', 'physics_9'});
+    });
+
     test('deleting a learner deletes their enrolments', () async {
       final s = (await admin.setUp(name: 'Head', pin: '2468'))!;
       await admin.addClass(s, className: 'S3', streamName: 'East');

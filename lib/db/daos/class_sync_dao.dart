@@ -447,6 +447,24 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
           .watch()
           .map((rows) => {for (final r in rows) r.subjectId});
 
+  /// Subjects whose notes [studentId] may read: those they registered for
+  /// in My subjects (classes joined through a teacher), plus every subject
+  /// taught to the class the Admin enrolled them in.
+  Stream<Set<String>> watchReadable(int studentId) =>
+      customSelect(
+        'SELECT subject_id FROM learner_subjects WHERE student_id = ?1 '
+        'UNION '
+        'SELECT t.subject_id FROM teaching_assignments t '
+        'JOIN student_enrolments e ON e.class_group_uuid = t.class_group_uuid '
+        "WHERE e.student_id = ?1 AND e.status = 'active'",
+        variables: [Variable.withInt(studentId)],
+        readsFrom: {
+          learnerSubjects,
+          attachedDatabase.teachingAssignments,
+          attachedDatabase.studentEnrolments,
+        },
+      ).watch().map((rows) => {for (final r in rows) r.read<String>('subject_id')});
+
   Future<List<String>> enrolledSubjects(int studentId) async => [
     for (final r in await (select(learnerSubjects)
           ..where((t) => t.studentId.equals(studentId))
