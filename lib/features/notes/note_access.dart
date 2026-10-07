@@ -2,27 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/policy/policy.dart';
 import '../../core/theme/app_colors.dart';
-import '../../db/providers/db_provider.dart';
 import '../../l10n/app_locale.dart';
 import '../../services/notes/note_pdf_store.dart';
 import '../learn/subject_notes.dart';
-import '../teacher/class_providers.dart';
-import '../teacher/teacher_pin.dart';
 
-/// Subjects whose notes the person at the device may read, by role, on
-/// any device: null means every subject (a teacher — PIN unlocked, or no
-/// PIN set); otherwise the active learner's subjects from Sync → My
-/// subjects and their Admin enrolment. Nobody deletes notes from here; that stays in
-/// the PIN-gated Lesson materials.
-final readableNoteSubjectsProvider = FutureProvider.autoDispose<Set<String>?>((
+/// Subjects whose notes the person at the device may read (see
+/// [Policy.watchReadableSubjects]): null means every subject. Nobody
+/// deletes notes from here; that stays in the PIN-gated Lesson materials.
+final readableNoteSubjectsProvider = StreamProvider.autoDispose<Set<String>?>((
   ref,
-) async {
-  if (ref.watch(teacherUnlockedProvider)) return null;
-  if (!await ref.read(teacherPinProvider).isSet()) return null;
-  final me = await ref.watch(activeStudentProvider.future);
-  if (me == null) return const {};
-  return ref.watch(readableSubjectsProvider(me.id).future);
+) async* {
+  final actor = await ref.watch(notesActorProvider.future);
+  yield* ref.watch(policyProvider).watchReadableSubjects(actor);
 });
 
 bool canReadNotes(Set<String>? readable, String subjectId) =>

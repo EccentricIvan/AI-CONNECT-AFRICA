@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/policy/policy.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../services/assignments/class_assignments.dart';
@@ -8,7 +9,6 @@ import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../learn/subject_notes.dart';
 import '../teacher/teacher_profiles.dart';
-import '../teacher/teaching_scope.dart';
 
 final _visibleAssignmentsProvider =
     FutureProvider.autoDispose<List<ClassAssignment>>((ref) async {
@@ -179,10 +179,13 @@ final _gradableProvider = FutureProvider.autoDispose<List<ClassAssignment>>((
 ) async {
   final me = ref.watch(activeTeacherIdProvider);
   if (me == null) return const [];
-  final scope = ref.watch(teachingScopeProvider);
+  final policy = ref.watch(policyProvider);
   final out = <ClassAssignment>[];
   for (final a in await ref.watch(classAssignmentsProvider).own()) {
-    if (await scope.mayChangeNote(me, a.subjectId, a.documentTitle)) {
+    if (await policy.can(
+      TeacherActor(me),
+      ChangeNote(a.subjectId, a.documentTitle),
+    )) {
       out.add(a);
     }
   }
