@@ -6904,6 +6904,17 @@ class $ClassGroupsTable extends ClassGroups
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _retiredKeysJsonMeta = const VerificationMeta(
+    'retiredKeysJson',
+  );
+  @override
+  late final GeneratedColumn<String> retiredKeysJson = GeneratedColumn<String>(
+    'retired_keys_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -6919,6 +6930,7 @@ class $ClassGroupsTable extends ClassGroups
     rosterJson,
     hostEpoch,
     ownerTeacherId,
+    retiredKeysJson,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7018,6 +7030,15 @@ class $ClassGroupsTable extends ClassGroups
         ),
       );
     }
+    if (data.containsKey('retired_keys_json')) {
+      context.handle(
+        _retiredKeysJsonMeta,
+        retiredKeysJson.isAcceptableOrUnknown(
+          data['retired_keys_json']!,
+          _retiredKeysJsonMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -7078,6 +7099,10 @@ class $ClassGroupsTable extends ClassGroups
       ownerTeacherId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}owner_teacher_id'],
+      ),
+      retiredKeysJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}retired_keys_json'],
       ),
     );
   }
@@ -7143,6 +7168,11 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
   /// only they may rename, delete or share into it. Null on a joined class.
   /// Local only, never synced.
   final int? ownerTeacherId;
+
+  /// On a class this device serves: the class keys it replaced when a
+  /// device was revoked (JSON list). A trusted device still holding one
+  /// may only ask for the current key, sealed to it.
+  final String? retiredKeysJson;
   const ClassGroup({
     required this.id,
     required this.className,
@@ -7157,6 +7187,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     this.rosterJson,
     this.hostEpoch,
     this.ownerTeacherId,
+    this.retiredKeysJson,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7191,6 +7222,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     }
     if (!nullToAbsent || ownerTeacherId != null) {
       map['owner_teacher_id'] = Variable<int>(ownerTeacherId);
+    }
+    if (!nullToAbsent || retiredKeysJson != null) {
+      map['retired_keys_json'] = Variable<String>(retiredKeysJson);
     }
     return map;
   }
@@ -7228,6 +7262,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       ownerTeacherId: ownerTeacherId == null && nullToAbsent
           ? const Value.absent()
           : Value(ownerTeacherId),
+      retiredKeysJson: retiredKeysJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(retiredKeysJson),
     );
   }
 
@@ -7250,6 +7287,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       rosterJson: serializer.fromJson<String?>(json['rosterJson']),
       hostEpoch: serializer.fromJson<int?>(json['hostEpoch']),
       ownerTeacherId: serializer.fromJson<int?>(json['ownerTeacherId']),
+      retiredKeysJson: serializer.fromJson<String?>(json['retiredKeysJson']),
     );
   }
   @override
@@ -7269,6 +7307,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       'rosterJson': serializer.toJson<String?>(rosterJson),
       'hostEpoch': serializer.toJson<int?>(hostEpoch),
       'ownerTeacherId': serializer.toJson<int?>(ownerTeacherId),
+      'retiredKeysJson': serializer.toJson<String?>(retiredKeysJson),
     };
   }
 
@@ -7286,6 +7325,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     Value<String?> rosterJson = const Value.absent(),
     Value<int?> hostEpoch = const Value.absent(),
     Value<int?> ownerTeacherId = const Value.absent(),
+    Value<String?> retiredKeysJson = const Value.absent(),
   }) => ClassGroup(
     id: id ?? this.id,
     className: className ?? this.className,
@@ -7306,6 +7346,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     ownerTeacherId: ownerTeacherId.present
         ? ownerTeacherId.value
         : this.ownerTeacherId,
+    retiredKeysJson: retiredKeysJson.present
+        ? retiredKeysJson.value
+        : this.retiredKeysJson,
   );
   ClassGroup copyWithCompanion(ClassGroupsCompanion data) {
     return ClassGroup(
@@ -7332,6 +7375,9 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
       ownerTeacherId: data.ownerTeacherId.present
           ? data.ownerTeacherId.value
           : this.ownerTeacherId,
+      retiredKeysJson: data.retiredKeysJson.present
+          ? data.retiredKeysJson.value
+          : this.retiredKeysJson,
     );
   }
 
@@ -7350,7 +7396,8 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           ..write('rosterVersion: $rosterVersion, ')
           ..write('rosterJson: $rosterJson, ')
           ..write('hostEpoch: $hostEpoch, ')
-          ..write('ownerTeacherId: $ownerTeacherId')
+          ..write('ownerTeacherId: $ownerTeacherId, ')
+          ..write('retiredKeysJson: $retiredKeysJson')
           ..write(')'))
         .toString();
   }
@@ -7370,6 +7417,7 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
     rosterJson,
     hostEpoch,
     ownerTeacherId,
+    retiredKeysJson,
   );
   @override
   bool operator ==(Object other) =>
@@ -7387,7 +7435,8 @@ class ClassGroup extends DataClass implements Insertable<ClassGroup> {
           other.rosterVersion == this.rosterVersion &&
           other.rosterJson == this.rosterJson &&
           other.hostEpoch == this.hostEpoch &&
-          other.ownerTeacherId == this.ownerTeacherId);
+          other.ownerTeacherId == this.ownerTeacherId &&
+          other.retiredKeysJson == this.retiredKeysJson);
 }
 
 class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
@@ -7404,6 +7453,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
   final Value<String?> rosterJson;
   final Value<int?> hostEpoch;
   final Value<int?> ownerTeacherId;
+  final Value<String?> retiredKeysJson;
   const ClassGroupsCompanion({
     this.id = const Value.absent(),
     this.className = const Value.absent(),
@@ -7418,6 +7468,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     this.rosterJson = const Value.absent(),
     this.hostEpoch = const Value.absent(),
     this.ownerTeacherId = const Value.absent(),
+    this.retiredKeysJson = const Value.absent(),
   });
   ClassGroupsCompanion.insert({
     this.id = const Value.absent(),
@@ -7433,6 +7484,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     this.rosterJson = const Value.absent(),
     this.hostEpoch = const Value.absent(),
     this.ownerTeacherId = const Value.absent(),
+    this.retiredKeysJson = const Value.absent(),
   }) : className = Value(className);
   static Insertable<ClassGroup> custom({
     Expression<int>? id,
@@ -7448,6 +7500,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Expression<String>? rosterJson,
     Expression<int>? hostEpoch,
     Expression<int>? ownerTeacherId,
+    Expression<String>? retiredKeysJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -7463,6 +7516,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       if (rosterJson != null) 'roster_json': rosterJson,
       if (hostEpoch != null) 'host_epoch': hostEpoch,
       if (ownerTeacherId != null) 'owner_teacher_id': ownerTeacherId,
+      if (retiredKeysJson != null) 'retired_keys_json': retiredKeysJson,
     });
   }
 
@@ -7480,6 +7534,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     Value<String?>? rosterJson,
     Value<int?>? hostEpoch,
     Value<int?>? ownerTeacherId,
+    Value<String?>? retiredKeysJson,
   }) {
     return ClassGroupsCompanion(
       id: id ?? this.id,
@@ -7495,6 +7550,7 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
       rosterJson: rosterJson ?? this.rosterJson,
       hostEpoch: hostEpoch ?? this.hostEpoch,
       ownerTeacherId: ownerTeacherId ?? this.ownerTeacherId,
+      retiredKeysJson: retiredKeysJson ?? this.retiredKeysJson,
     );
   }
 
@@ -7540,6 +7596,9 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
     if (ownerTeacherId.present) {
       map['owner_teacher_id'] = Variable<int>(ownerTeacherId.value);
     }
+    if (retiredKeysJson.present) {
+      map['retired_keys_json'] = Variable<String>(retiredKeysJson.value);
+    }
     return map;
   }
 
@@ -7558,7 +7617,8 @@ class ClassGroupsCompanion extends UpdateCompanion<ClassGroup> {
           ..write('rosterVersion: $rosterVersion, ')
           ..write('rosterJson: $rosterJson, ')
           ..write('hostEpoch: $hostEpoch, ')
-          ..write('ownerTeacherId: $ownerTeacherId')
+          ..write('ownerTeacherId: $ownerTeacherId, ')
+          ..write('retiredKeysJson: $retiredKeysJson')
           ..write(')'))
         .toString();
   }
@@ -9801,6 +9861,17 @@ class $SyncIdentityTable extends SyncIdentity
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _boxSeedMeta = const VerificationMeta(
+    'boxSeed',
+  );
+  @override
+  late final GeneratedColumn<String> boxSeed = GeneratedColumn<String>(
+    'box_seed',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _deviceRoleMeta = const VerificationMeta(
     'deviceRole',
   );
@@ -9863,6 +9934,7 @@ class $SyncIdentityTable extends SyncIdentity
     schoolId,
     schoolName,
     signingSeed,
+    boxSeed,
     deviceRole,
     hostGeneration,
     failoverSealKey,
@@ -9906,6 +9978,12 @@ class $SyncIdentityTable extends SyncIdentity
       );
     } else if (isInserting) {
       context.missing(_signingSeedMeta);
+    }
+    if (data.containsKey('box_seed')) {
+      context.handle(
+        _boxSeedMeta,
+        boxSeed.isAcceptableOrUnknown(data['box_seed']!, _boxSeedMeta),
+      );
     }
     if (data.containsKey('device_role')) {
       context.handle(
@@ -9974,6 +10052,10 @@ class $SyncIdentityTable extends SyncIdentity
         DriftSqlType.string,
         data['${effectivePrefix}signing_seed'],
       )!,
+      boxSeed: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}box_seed'],
+      ),
       deviceRole: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}device_role'],
@@ -10010,6 +10092,10 @@ class SyncIdentityData extends DataClass
   final String? schoolName;
   final String signingSeed;
 
+  /// This device's X25519 seed, for class keys sealed to it after a
+  /// revocation. Made the first time it's needed.
+  final String? boxSeed;
+
   /// What this device is to its school: [kRoleTeacher], [kRoleStudent], or
   /// null until it becomes one. The teacher device is where classes and
   /// subjects are made and students' progress arrives; a device becomes a
@@ -10037,6 +10123,7 @@ class SyncIdentityData extends DataClass
     this.schoolId,
     this.schoolName,
     required this.signingSeed,
+    this.boxSeed,
     this.deviceRole,
     required this.hostGeneration,
     this.failoverSealKey,
@@ -10054,6 +10141,9 @@ class SyncIdentityData extends DataClass
       map['school_name'] = Variable<String>(schoolName);
     }
     map['signing_seed'] = Variable<String>(signingSeed);
+    if (!nullToAbsent || boxSeed != null) {
+      map['box_seed'] = Variable<String>(boxSeed);
+    }
     if (!nullToAbsent || deviceRole != null) {
       map['device_role'] = Variable<String>(deviceRole);
     }
@@ -10080,6 +10170,9 @@ class SyncIdentityData extends DataClass
           ? const Value.absent()
           : Value(schoolName),
       signingSeed: Value(signingSeed),
+      boxSeed: boxSeed == null && nullToAbsent
+          ? const Value.absent()
+          : Value(boxSeed),
       deviceRole: deviceRole == null && nullToAbsent
           ? const Value.absent()
           : Value(deviceRole),
@@ -10106,6 +10199,7 @@ class SyncIdentityData extends DataClass
       schoolId: serializer.fromJson<String?>(json['schoolId']),
       schoolName: serializer.fromJson<String?>(json['schoolName']),
       signingSeed: serializer.fromJson<String>(json['signingSeed']),
+      boxSeed: serializer.fromJson<String?>(json['boxSeed']),
       deviceRole: serializer.fromJson<String?>(json['deviceRole']),
       hostGeneration: serializer.fromJson<int>(json['hostGeneration']),
       failoverSealKey: serializer.fromJson<String?>(json['failoverSealKey']),
@@ -10121,6 +10215,7 @@ class SyncIdentityData extends DataClass
       'schoolId': serializer.toJson<String?>(schoolId),
       'schoolName': serializer.toJson<String?>(schoolName),
       'signingSeed': serializer.toJson<String>(signingSeed),
+      'boxSeed': serializer.toJson<String?>(boxSeed),
       'deviceRole': serializer.toJson<String?>(deviceRole),
       'hostGeneration': serializer.toJson<int>(hostGeneration),
       'failoverSealKey': serializer.toJson<String?>(failoverSealKey),
@@ -10134,6 +10229,7 @@ class SyncIdentityData extends DataClass
     Value<String?> schoolId = const Value.absent(),
     Value<String?> schoolName = const Value.absent(),
     String? signingSeed,
+    Value<String?> boxSeed = const Value.absent(),
     Value<String?> deviceRole = const Value.absent(),
     int? hostGeneration,
     Value<String?> failoverSealKey = const Value.absent(),
@@ -10144,6 +10240,7 @@ class SyncIdentityData extends DataClass
     schoolId: schoolId.present ? schoolId.value : this.schoolId,
     schoolName: schoolName.present ? schoolName.value : this.schoolName,
     signingSeed: signingSeed ?? this.signingSeed,
+    boxSeed: boxSeed.present ? boxSeed.value : this.boxSeed,
     deviceRole: deviceRole.present ? deviceRole.value : this.deviceRole,
     hostGeneration: hostGeneration ?? this.hostGeneration,
     failoverSealKey: failoverSealKey.present
@@ -10166,6 +10263,7 @@ class SyncIdentityData extends DataClass
       signingSeed: data.signingSeed.present
           ? data.signingSeed.value
           : this.signingSeed,
+      boxSeed: data.boxSeed.present ? data.boxSeed.value : this.boxSeed,
       deviceRole: data.deviceRole.present
           ? data.deviceRole.value
           : this.deviceRole,
@@ -10191,6 +10289,7 @@ class SyncIdentityData extends DataClass
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
           ..write('signingSeed: $signingSeed, ')
+          ..write('boxSeed: $boxSeed, ')
           ..write('deviceRole: $deviceRole, ')
           ..write('hostGeneration: $hostGeneration, ')
           ..write('failoverSealKey: $failoverSealKey, ')
@@ -10206,6 +10305,7 @@ class SyncIdentityData extends DataClass
     schoolId,
     schoolName,
     signingSeed,
+    boxSeed,
     deviceRole,
     hostGeneration,
     failoverSealKey,
@@ -10220,6 +10320,7 @@ class SyncIdentityData extends DataClass
           other.schoolId == this.schoolId &&
           other.schoolName == this.schoolName &&
           other.signingSeed == this.signingSeed &&
+          other.boxSeed == this.boxSeed &&
           other.deviceRole == this.deviceRole &&
           other.hostGeneration == this.hostGeneration &&
           other.failoverSealKey == this.failoverSealKey &&
@@ -10232,6 +10333,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
   final Value<String?> schoolId;
   final Value<String?> schoolName;
   final Value<String> signingSeed;
+  final Value<String?> boxSeed;
   final Value<String?> deviceRole;
   final Value<int> hostGeneration;
   final Value<String?> failoverSealKey;
@@ -10242,6 +10344,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     this.schoolId = const Value.absent(),
     this.schoolName = const Value.absent(),
     this.signingSeed = const Value.absent(),
+    this.boxSeed = const Value.absent(),
     this.deviceRole = const Value.absent(),
     this.hostGeneration = const Value.absent(),
     this.failoverSealKey = const Value.absent(),
@@ -10253,6 +10356,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     this.schoolId = const Value.absent(),
     this.schoolName = const Value.absent(),
     required String signingSeed,
+    this.boxSeed = const Value.absent(),
     this.deviceRole = const Value.absent(),
     this.hostGeneration = const Value.absent(),
     this.failoverSealKey = const Value.absent(),
@@ -10264,6 +10368,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     Expression<String>? schoolId,
     Expression<String>? schoolName,
     Expression<String>? signingSeed,
+    Expression<String>? boxSeed,
     Expression<String>? deviceRole,
     Expression<int>? hostGeneration,
     Expression<String>? failoverSealKey,
@@ -10275,6 +10380,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
       if (schoolId != null) 'school_id': schoolId,
       if (schoolName != null) 'school_name': schoolName,
       if (signingSeed != null) 'signing_seed': signingSeed,
+      if (boxSeed != null) 'box_seed': boxSeed,
       if (deviceRole != null) 'device_role': deviceRole,
       if (hostGeneration != null) 'host_generation': hostGeneration,
       if (failoverSealKey != null) 'failover_seal_key': failoverSealKey,
@@ -10288,6 +10394,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     Value<String?>? schoolId,
     Value<String?>? schoolName,
     Value<String>? signingSeed,
+    Value<String?>? boxSeed,
     Value<String?>? deviceRole,
     Value<int>? hostGeneration,
     Value<String?>? failoverSealKey,
@@ -10299,6 +10406,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
       schoolId: schoolId ?? this.schoolId,
       schoolName: schoolName ?? this.schoolName,
       signingSeed: signingSeed ?? this.signingSeed,
+      boxSeed: boxSeed ?? this.boxSeed,
       deviceRole: deviceRole ?? this.deviceRole,
       hostGeneration: hostGeneration ?? this.hostGeneration,
       failoverSealKey: failoverSealKey ?? this.failoverSealKey,
@@ -10321,6 +10429,9 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
     }
     if (signingSeed.present) {
       map['signing_seed'] = Variable<String>(signingSeed.value);
+    }
+    if (boxSeed.present) {
+      map['box_seed'] = Variable<String>(boxSeed.value);
     }
     if (deviceRole.present) {
       map['device_role'] = Variable<String>(deviceRole.value);
@@ -10347,6 +10458,7 @@ class SyncIdentityCompanion extends UpdateCompanion<SyncIdentityData> {
           ..write('schoolId: $schoolId, ')
           ..write('schoolName: $schoolName, ')
           ..write('signingSeed: $signingSeed, ')
+          ..write('boxSeed: $boxSeed, ')
           ..write('deviceRole: $deviceRole, ')
           ..write('hostGeneration: $hostGeneration, ')
           ..write('failoverSealKey: $failoverSealKey, ')
@@ -17251,6 +17363,1069 @@ class AssignmentSubmissionsCompanion
   }
 }
 
+class $ClassMembersTable extends ClassMembers
+    with TableInfo<$ClassMembersTable, ClassMember> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ClassMembersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceKeyMeta = const VerificationMeta(
+    'deviceKey',
+  );
+  @override
+  late final GeneratedColumn<String> deviceKey = GeneratedColumn<String>(
+    'device_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _boxKeyMeta = const VerificationMeta('boxKey');
+  @override
+  late final GeneratedColumn<String> boxKey = GeneratedColumn<String>(
+    'box_key',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _joinedAtMeta = const VerificationMeta(
+    'joinedAt',
+  );
+  @override
+  late final GeneratedColumn<String> joinedAt = GeneratedColumn<String>(
+    'joined_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastSeenAtMeta = const VerificationMeta(
+    'lastSeenAt',
+  );
+  @override
+  late final GeneratedColumn<String> lastSeenAt = GeneratedColumn<String>(
+    'last_seen_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _revokedAtMeta = const VerificationMeta(
+    'revokedAt',
+  );
+  @override
+  late final GeneratedColumn<String> revokedAt = GeneratedColumn<String>(
+    'revoked_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    classGroupUuid,
+    deviceKey,
+    boxKey,
+    name,
+    joinedAt,
+    lastSeenAt,
+    revokedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'class_members';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ClassMember> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_classGroupUuidMeta);
+    }
+    if (data.containsKey('device_key')) {
+      context.handle(
+        _deviceKeyMeta,
+        deviceKey.isAcceptableOrUnknown(data['device_key']!, _deviceKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceKeyMeta);
+    }
+    if (data.containsKey('box_key')) {
+      context.handle(
+        _boxKeyMeta,
+        boxKey.isAcceptableOrUnknown(data['box_key']!, _boxKeyMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('joined_at')) {
+      context.handle(
+        _joinedAtMeta,
+        joinedAt.isAcceptableOrUnknown(data['joined_at']!, _joinedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_joinedAtMeta);
+    }
+    if (data.containsKey('last_seen_at')) {
+      context.handle(
+        _lastSeenAtMeta,
+        lastSeenAt.isAcceptableOrUnknown(
+          data['last_seen_at']!,
+          _lastSeenAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('revoked_at')) {
+      context.handle(
+        _revokedAtMeta,
+        revokedAt.isAcceptableOrUnknown(data['revoked_at']!, _revokedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ClassMember map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ClassMember(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      )!,
+      deviceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_key'],
+      )!,
+      boxKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}box_key'],
+      ),
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      joinedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}joined_at'],
+      )!,
+      lastSeenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_seen_at'],
+      ),
+      revokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revoked_at'],
+      ),
+    );
+  }
+
+  @override
+  $ClassMembersTable createAlias(String alias) {
+    return $ClassMembersTable(attachedDatabase, alias);
+  }
+}
+
+class ClassMember extends DataClass implements Insertable<ClassMember> {
+  final int id;
+
+  /// `class_groups.group_uuid`.
+  final String classGroupUuid;
+
+  /// The device's Ed25519 public key.
+  final String deviceKey;
+
+  /// Its X25519 public key; null for a device on an older build, which
+  /// must join again once the class key changes.
+  final String? boxKey;
+
+  /// The learner name it joined with.
+  final String name;
+
+  /// ISO-8601 UTC.
+  final String joinedAt;
+  final String? lastSeenAt;
+
+  /// ISO-8601 UTC; null while trusted.
+  final String? revokedAt;
+  const ClassMember({
+    required this.id,
+    required this.classGroupUuid,
+    required this.deviceKey,
+    this.boxKey,
+    required this.name,
+    required this.joinedAt,
+    this.lastSeenAt,
+    this.revokedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    map['device_key'] = Variable<String>(deviceKey);
+    if (!nullToAbsent || boxKey != null) {
+      map['box_key'] = Variable<String>(boxKey);
+    }
+    map['name'] = Variable<String>(name);
+    map['joined_at'] = Variable<String>(joinedAt);
+    if (!nullToAbsent || lastSeenAt != null) {
+      map['last_seen_at'] = Variable<String>(lastSeenAt);
+    }
+    if (!nullToAbsent || revokedAt != null) {
+      map['revoked_at'] = Variable<String>(revokedAt);
+    }
+    return map;
+  }
+
+  ClassMembersCompanion toCompanion(bool nullToAbsent) {
+    return ClassMembersCompanion(
+      id: Value(id),
+      classGroupUuid: Value(classGroupUuid),
+      deviceKey: Value(deviceKey),
+      boxKey: boxKey == null && nullToAbsent
+          ? const Value.absent()
+          : Value(boxKey),
+      name: Value(name),
+      joinedAt: Value(joinedAt),
+      lastSeenAt: lastSeenAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSeenAt),
+      revokedAt: revokedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(revokedAt),
+    );
+  }
+
+  factory ClassMember.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ClassMember(
+      id: serializer.fromJson<int>(json['id']),
+      classGroupUuid: serializer.fromJson<String>(json['classGroupUuid']),
+      deviceKey: serializer.fromJson<String>(json['deviceKey']),
+      boxKey: serializer.fromJson<String?>(json['boxKey']),
+      name: serializer.fromJson<String>(json['name']),
+      joinedAt: serializer.fromJson<String>(json['joinedAt']),
+      lastSeenAt: serializer.fromJson<String?>(json['lastSeenAt']),
+      revokedAt: serializer.fromJson<String?>(json['revokedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'classGroupUuid': serializer.toJson<String>(classGroupUuid),
+      'deviceKey': serializer.toJson<String>(deviceKey),
+      'boxKey': serializer.toJson<String?>(boxKey),
+      'name': serializer.toJson<String>(name),
+      'joinedAt': serializer.toJson<String>(joinedAt),
+      'lastSeenAt': serializer.toJson<String?>(lastSeenAt),
+      'revokedAt': serializer.toJson<String?>(revokedAt),
+    };
+  }
+
+  ClassMember copyWith({
+    int? id,
+    String? classGroupUuid,
+    String? deviceKey,
+    Value<String?> boxKey = const Value.absent(),
+    String? name,
+    String? joinedAt,
+    Value<String?> lastSeenAt = const Value.absent(),
+    Value<String?> revokedAt = const Value.absent(),
+  }) => ClassMember(
+    id: id ?? this.id,
+    classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+    deviceKey: deviceKey ?? this.deviceKey,
+    boxKey: boxKey.present ? boxKey.value : this.boxKey,
+    name: name ?? this.name,
+    joinedAt: joinedAt ?? this.joinedAt,
+    lastSeenAt: lastSeenAt.present ? lastSeenAt.value : this.lastSeenAt,
+    revokedAt: revokedAt.present ? revokedAt.value : this.revokedAt,
+  );
+  ClassMember copyWithCompanion(ClassMembersCompanion data) {
+    return ClassMember(
+      id: data.id.present ? data.id.value : this.id,
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
+      deviceKey: data.deviceKey.present ? data.deviceKey.value : this.deviceKey,
+      boxKey: data.boxKey.present ? data.boxKey.value : this.boxKey,
+      name: data.name.present ? data.name.value : this.name,
+      joinedAt: data.joinedAt.present ? data.joinedAt.value : this.joinedAt,
+      lastSeenAt: data.lastSeenAt.present
+          ? data.lastSeenAt.value
+          : this.lastSeenAt,
+      revokedAt: data.revokedAt.present ? data.revokedAt.value : this.revokedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClassMember(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('boxKey: $boxKey, ')
+          ..write('name: $name, ')
+          ..write('joinedAt: $joinedAt, ')
+          ..write('lastSeenAt: $lastSeenAt, ')
+          ..write('revokedAt: $revokedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    classGroupUuid,
+    deviceKey,
+    boxKey,
+    name,
+    joinedAt,
+    lastSeenAt,
+    revokedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ClassMember &&
+          other.id == this.id &&
+          other.classGroupUuid == this.classGroupUuid &&
+          other.deviceKey == this.deviceKey &&
+          other.boxKey == this.boxKey &&
+          other.name == this.name &&
+          other.joinedAt == this.joinedAt &&
+          other.lastSeenAt == this.lastSeenAt &&
+          other.revokedAt == this.revokedAt);
+}
+
+class ClassMembersCompanion extends UpdateCompanion<ClassMember> {
+  final Value<int> id;
+  final Value<String> classGroupUuid;
+  final Value<String> deviceKey;
+  final Value<String?> boxKey;
+  final Value<String> name;
+  final Value<String> joinedAt;
+  final Value<String?> lastSeenAt;
+  final Value<String?> revokedAt;
+  const ClassMembersCompanion({
+    this.id = const Value.absent(),
+    this.classGroupUuid = const Value.absent(),
+    this.deviceKey = const Value.absent(),
+    this.boxKey = const Value.absent(),
+    this.name = const Value.absent(),
+    this.joinedAt = const Value.absent(),
+    this.lastSeenAt = const Value.absent(),
+    this.revokedAt = const Value.absent(),
+  });
+  ClassMembersCompanion.insert({
+    this.id = const Value.absent(),
+    required String classGroupUuid,
+    required String deviceKey,
+    this.boxKey = const Value.absent(),
+    this.name = const Value.absent(),
+    required String joinedAt,
+    this.lastSeenAt = const Value.absent(),
+    this.revokedAt = const Value.absent(),
+  }) : classGroupUuid = Value(classGroupUuid),
+       deviceKey = Value(deviceKey),
+       joinedAt = Value(joinedAt);
+  static Insertable<ClassMember> custom({
+    Expression<int>? id,
+    Expression<String>? classGroupUuid,
+    Expression<String>? deviceKey,
+    Expression<String>? boxKey,
+    Expression<String>? name,
+    Expression<String>? joinedAt,
+    Expression<String>? lastSeenAt,
+    Expression<String>? revokedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
+      if (deviceKey != null) 'device_key': deviceKey,
+      if (boxKey != null) 'box_key': boxKey,
+      if (name != null) 'name': name,
+      if (joinedAt != null) 'joined_at': joinedAt,
+      if (lastSeenAt != null) 'last_seen_at': lastSeenAt,
+      if (revokedAt != null) 'revoked_at': revokedAt,
+    });
+  }
+
+  ClassMembersCompanion copyWith({
+    Value<int>? id,
+    Value<String>? classGroupUuid,
+    Value<String>? deviceKey,
+    Value<String?>? boxKey,
+    Value<String>? name,
+    Value<String>? joinedAt,
+    Value<String?>? lastSeenAt,
+    Value<String?>? revokedAt,
+  }) {
+    return ClassMembersCompanion(
+      id: id ?? this.id,
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+      deviceKey: deviceKey ?? this.deviceKey,
+      boxKey: boxKey ?? this.boxKey,
+      name: name ?? this.name,
+      joinedAt: joinedAt ?? this.joinedAt,
+      lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+      revokedAt: revokedAt ?? this.revokedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
+    if (deviceKey.present) {
+      map['device_key'] = Variable<String>(deviceKey.value);
+    }
+    if (boxKey.present) {
+      map['box_key'] = Variable<String>(boxKey.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (joinedAt.present) {
+      map['joined_at'] = Variable<String>(joinedAt.value);
+    }
+    if (lastSeenAt.present) {
+      map['last_seen_at'] = Variable<String>(lastSeenAt.value);
+    }
+    if (revokedAt.present) {
+      map['revoked_at'] = Variable<String>(revokedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ClassMembersCompanion(')
+          ..write('id: $id, ')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('boxKey: $boxKey, ')
+          ..write('name: $name, ')
+          ..write('joinedAt: $joinedAt, ')
+          ..write('lastSeenAt: $lastSeenAt, ')
+          ..write('revokedAt: $revokedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $RevokedDevicesTable extends RevokedDevices
+    with TableInfo<$RevokedDevicesTable, RevokedDevice> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RevokedDevicesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deviceKeyMeta = const VerificationMeta(
+    'deviceKey',
+  );
+  @override
+  late final GeneratedColumn<String> deviceKey = GeneratedColumn<String>(
+    'device_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _revokedAtMeta = const VerificationMeta(
+    'revokedAt',
+  );
+  @override
+  late final GeneratedColumn<String> revokedAt = GeneratedColumn<String>(
+    'revoked_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deviceKey, name, revokedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'revoked_devices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RevokedDevice> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('device_key')) {
+      context.handle(
+        _deviceKeyMeta,
+        deviceKey.isAcceptableOrUnknown(data['device_key']!, _deviceKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceKeyMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('revoked_at')) {
+      context.handle(
+        _revokedAtMeta,
+        revokedAt.isAcceptableOrUnknown(data['revoked_at']!, _revokedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_revokedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deviceKey};
+  @override
+  RevokedDevice map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RevokedDevice(
+      deviceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_key'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      revokedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}revoked_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RevokedDevicesTable createAlias(String alias) {
+    return $RevokedDevicesTable(attachedDatabase, alias);
+  }
+}
+
+class RevokedDevice extends DataClass implements Insertable<RevokedDevice> {
+  /// Ed25519 public key.
+  final String deviceKey;
+  final String name;
+
+  /// ISO-8601 UTC.
+  final String revokedAt;
+  const RevokedDevice({
+    required this.deviceKey,
+    required this.name,
+    required this.revokedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['device_key'] = Variable<String>(deviceKey);
+    map['name'] = Variable<String>(name);
+    map['revoked_at'] = Variable<String>(revokedAt);
+    return map;
+  }
+
+  RevokedDevicesCompanion toCompanion(bool nullToAbsent) {
+    return RevokedDevicesCompanion(
+      deviceKey: Value(deviceKey),
+      name: Value(name),
+      revokedAt: Value(revokedAt),
+    );
+  }
+
+  factory RevokedDevice.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RevokedDevice(
+      deviceKey: serializer.fromJson<String>(json['deviceKey']),
+      name: serializer.fromJson<String>(json['name']),
+      revokedAt: serializer.fromJson<String>(json['revokedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deviceKey': serializer.toJson<String>(deviceKey),
+      'name': serializer.toJson<String>(name),
+      'revokedAt': serializer.toJson<String>(revokedAt),
+    };
+  }
+
+  RevokedDevice copyWith({
+    String? deviceKey,
+    String? name,
+    String? revokedAt,
+  }) => RevokedDevice(
+    deviceKey: deviceKey ?? this.deviceKey,
+    name: name ?? this.name,
+    revokedAt: revokedAt ?? this.revokedAt,
+  );
+  RevokedDevice copyWithCompanion(RevokedDevicesCompanion data) {
+    return RevokedDevice(
+      deviceKey: data.deviceKey.present ? data.deviceKey.value : this.deviceKey,
+      name: data.name.present ? data.name.value : this.name,
+      revokedAt: data.revokedAt.present ? data.revokedAt.value : this.revokedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevokedDevice(')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('name: $name, ')
+          ..write('revokedAt: $revokedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deviceKey, name, revokedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RevokedDevice &&
+          other.deviceKey == this.deviceKey &&
+          other.name == this.name &&
+          other.revokedAt == this.revokedAt);
+}
+
+class RevokedDevicesCompanion extends UpdateCompanion<RevokedDevice> {
+  final Value<String> deviceKey;
+  final Value<String> name;
+  final Value<String> revokedAt;
+  final Value<int> rowid;
+  const RevokedDevicesCompanion({
+    this.deviceKey = const Value.absent(),
+    this.name = const Value.absent(),
+    this.revokedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RevokedDevicesCompanion.insert({
+    required String deviceKey,
+    this.name = const Value.absent(),
+    required String revokedAt,
+    this.rowid = const Value.absent(),
+  }) : deviceKey = Value(deviceKey),
+       revokedAt = Value(revokedAt);
+  static Insertable<RevokedDevice> custom({
+    Expression<String>? deviceKey,
+    Expression<String>? name,
+    Expression<String>? revokedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deviceKey != null) 'device_key': deviceKey,
+      if (name != null) 'name': name,
+      if (revokedAt != null) 'revoked_at': revokedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RevokedDevicesCompanion copyWith({
+    Value<String>? deviceKey,
+    Value<String>? name,
+    Value<String>? revokedAt,
+    Value<int>? rowid,
+  }) {
+    return RevokedDevicesCompanion(
+      deviceKey: deviceKey ?? this.deviceKey,
+      name: name ?? this.name,
+      revokedAt: revokedAt ?? this.revokedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deviceKey.present) {
+      map['device_key'] = Variable<String>(deviceKey.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (revokedAt.present) {
+      map['revoked_at'] = Variable<String>(revokedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RevokedDevicesCompanion(')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('name: $name, ')
+          ..write('revokedAt: $revokedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SchoolDevicesTable extends SchoolDevices
+    with TableInfo<$SchoolDevicesTable, SchoolDevice> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SchoolDevicesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deviceKeyMeta = const VerificationMeta(
+    'deviceKey',
+  );
+  @override
+  late final GeneratedColumn<String> deviceKey = GeneratedColumn<String>(
+    'device_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _registeredAtMeta = const VerificationMeta(
+    'registeredAt',
+  );
+  @override
+  late final GeneratedColumn<String> registeredAt = GeneratedColumn<String>(
+    'registered_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deviceKey, name, registeredAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'school_devices';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SchoolDevice> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('device_key')) {
+      context.handle(
+        _deviceKeyMeta,
+        deviceKey.isAcceptableOrUnknown(data['device_key']!, _deviceKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceKeyMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    }
+    if (data.containsKey('registered_at')) {
+      context.handle(
+        _registeredAtMeta,
+        registeredAt.isAcceptableOrUnknown(
+          data['registered_at']!,
+          _registeredAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_registeredAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deviceKey};
+  @override
+  SchoolDevice map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SchoolDevice(
+      deviceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_key'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      registeredAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}registered_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SchoolDevicesTable createAlias(String alias) {
+    return $SchoolDevicesTable(attachedDatabase, alias);
+  }
+}
+
+class SchoolDevice extends DataClass implements Insertable<SchoolDevice> {
+  /// Ed25519 public key.
+  final String deviceKey;
+  final String name;
+
+  /// ISO-8601 UTC.
+  final String registeredAt;
+  const SchoolDevice({
+    required this.deviceKey,
+    required this.name,
+    required this.registeredAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['device_key'] = Variable<String>(deviceKey);
+    map['name'] = Variable<String>(name);
+    map['registered_at'] = Variable<String>(registeredAt);
+    return map;
+  }
+
+  SchoolDevicesCompanion toCompanion(bool nullToAbsent) {
+    return SchoolDevicesCompanion(
+      deviceKey: Value(deviceKey),
+      name: Value(name),
+      registeredAt: Value(registeredAt),
+    );
+  }
+
+  factory SchoolDevice.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SchoolDevice(
+      deviceKey: serializer.fromJson<String>(json['deviceKey']),
+      name: serializer.fromJson<String>(json['name']),
+      registeredAt: serializer.fromJson<String>(json['registeredAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deviceKey': serializer.toJson<String>(deviceKey),
+      'name': serializer.toJson<String>(name),
+      'registeredAt': serializer.toJson<String>(registeredAt),
+    };
+  }
+
+  SchoolDevice copyWith({
+    String? deviceKey,
+    String? name,
+    String? registeredAt,
+  }) => SchoolDevice(
+    deviceKey: deviceKey ?? this.deviceKey,
+    name: name ?? this.name,
+    registeredAt: registeredAt ?? this.registeredAt,
+  );
+  SchoolDevice copyWithCompanion(SchoolDevicesCompanion data) {
+    return SchoolDevice(
+      deviceKey: data.deviceKey.present ? data.deviceKey.value : this.deviceKey,
+      name: data.name.present ? data.name.value : this.name,
+      registeredAt: data.registeredAt.present
+          ? data.registeredAt.value
+          : this.registeredAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SchoolDevice(')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('name: $name, ')
+          ..write('registeredAt: $registeredAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deviceKey, name, registeredAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SchoolDevice &&
+          other.deviceKey == this.deviceKey &&
+          other.name == this.name &&
+          other.registeredAt == this.registeredAt);
+}
+
+class SchoolDevicesCompanion extends UpdateCompanion<SchoolDevice> {
+  final Value<String> deviceKey;
+  final Value<String> name;
+  final Value<String> registeredAt;
+  final Value<int> rowid;
+  const SchoolDevicesCompanion({
+    this.deviceKey = const Value.absent(),
+    this.name = const Value.absent(),
+    this.registeredAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SchoolDevicesCompanion.insert({
+    required String deviceKey,
+    this.name = const Value.absent(),
+    required String registeredAt,
+    this.rowid = const Value.absent(),
+  }) : deviceKey = Value(deviceKey),
+       registeredAt = Value(registeredAt);
+  static Insertable<SchoolDevice> custom({
+    Expression<String>? deviceKey,
+    Expression<String>? name,
+    Expression<String>? registeredAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deviceKey != null) 'device_key': deviceKey,
+      if (name != null) 'name': name,
+      if (registeredAt != null) 'registered_at': registeredAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SchoolDevicesCompanion copyWith({
+    Value<String>? deviceKey,
+    Value<String>? name,
+    Value<String>? registeredAt,
+    Value<int>? rowid,
+  }) {
+    return SchoolDevicesCompanion(
+      deviceKey: deviceKey ?? this.deviceKey,
+      name: name ?? this.name,
+      registeredAt: registeredAt ?? this.registeredAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deviceKey.present) {
+      map['device_key'] = Variable<String>(deviceKey.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (registeredAt.present) {
+      map['registered_at'] = Variable<String>(registeredAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SchoolDevicesCompanion(')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('name: $name, ')
+          ..write('registeredAt: $registeredAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -17307,6 +18482,9 @@ abstract class _$OticDatabase extends GeneratedDatabase {
       $AdminRecordsStateTable(this);
   late final $AssignmentSubmissionsTable assignmentSubmissions =
       $AssignmentSubmissionsTable(this);
+  late final $ClassMembersTable classMembers = $ClassMembersTable(this);
+  late final $RevokedDevicesTable revokedDevices = $RevokedDevicesTable(this);
+  late final $SchoolDevicesTable schoolDevices = $SchoolDevicesTable(this);
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -17379,6 +18557,10 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     'idx_submissions_assignment',
     'CREATE INDEX idx_submissions_assignment ON assignment_submissions (assignment_id)',
   );
+  late final Index idxClassMembersDevice = Index(
+    'idx_class_members_device',
+    'CREATE UNIQUE INDEX idx_class_members_device ON class_members (class_group_uuid, device_key)',
+  );
   late final StudentDao studentDao = StudentDao(this as OticDatabase);
   late final SessionDao sessionDao = SessionDao(this as OticDatabase);
   late final PathDao pathDao = PathDao(this as OticDatabase);
@@ -17442,6 +18624,9 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     noteOwners,
     adminRecordsState,
     assignmentSubmissions,
+    classMembers,
+    revokedDevices,
+    schoolDevices,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -17460,6 +18645,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     idxTeachingAssignmentsTeacher,
     idxStudentEnrolmentsStudent,
     idxSubmissionsAssignment,
+    idxClassMembersDevice,
   ];
 }
 
@@ -20761,6 +21947,7 @@ typedef $$ClassGroupsTableCreateCompanionBuilder =
       Value<String?> rosterJson,
       Value<int?> hostEpoch,
       Value<int?> ownerTeacherId,
+      Value<String?> retiredKeysJson,
     });
 typedef $$ClassGroupsTableUpdateCompanionBuilder =
     ClassGroupsCompanion Function({
@@ -20777,6 +21964,7 @@ typedef $$ClassGroupsTableUpdateCompanionBuilder =
       Value<String?> rosterJson,
       Value<int?> hostEpoch,
       Value<int?> ownerTeacherId,
+      Value<String?> retiredKeysJson,
     });
 
 class $$ClassGroupsTableFilterComposer
@@ -20850,6 +22038,11 @@ class $$ClassGroupsTableFilterComposer
 
   ColumnFilters<int> get ownerTeacherId => $composableBuilder(
     column: $table.ownerTeacherId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get retiredKeysJson => $composableBuilder(
+    column: $table.retiredKeysJson,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -20927,6 +22120,11 @@ class $$ClassGroupsTableOrderingComposer
     column: $table.ownerTeacherId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get retiredKeysJson => $composableBuilder(
+    column: $table.retiredKeysJson,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ClassGroupsTableAnnotationComposer
@@ -20986,6 +22184,11 @@ class $$ClassGroupsTableAnnotationComposer
     column: $table.ownerTeacherId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get retiredKeysJson => $composableBuilder(
+    column: $table.retiredKeysJson,
+    builder: (column) => column,
+  );
 }
 
 class $$ClassGroupsTableTableManager
@@ -21032,6 +22235,7 @@ class $$ClassGroupsTableTableManager
                 Value<String?> rosterJson = const Value.absent(),
                 Value<int?> hostEpoch = const Value.absent(),
                 Value<int?> ownerTeacherId = const Value.absent(),
+                Value<String?> retiredKeysJson = const Value.absent(),
               }) => ClassGroupsCompanion(
                 id: id,
                 className: className,
@@ -21046,6 +22250,7 @@ class $$ClassGroupsTableTableManager
                 rosterJson: rosterJson,
                 hostEpoch: hostEpoch,
                 ownerTeacherId: ownerTeacherId,
+                retiredKeysJson: retiredKeysJson,
               ),
           createCompanionCallback:
               ({
@@ -21062,6 +22267,7 @@ class $$ClassGroupsTableTableManager
                 Value<String?> rosterJson = const Value.absent(),
                 Value<int?> hostEpoch = const Value.absent(),
                 Value<int?> ownerTeacherId = const Value.absent(),
+                Value<String?> retiredKeysJson = const Value.absent(),
               }) => ClassGroupsCompanion.insert(
                 id: id,
                 className: className,
@@ -21076,6 +22282,7 @@ class $$ClassGroupsTableTableManager
                 rosterJson: rosterJson,
                 hostEpoch: hostEpoch,
                 ownerTeacherId: ownerTeacherId,
+                retiredKeysJson: retiredKeysJson,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -22184,6 +23391,7 @@ typedef $$SyncIdentityTableCreateCompanionBuilder =
       Value<String?> schoolId,
       Value<String?> schoolName,
       required String signingSeed,
+      Value<String?> boxSeed,
       Value<String?> deviceRole,
       Value<int> hostGeneration,
       Value<String?> failoverSealKey,
@@ -22196,6 +23404,7 @@ typedef $$SyncIdentityTableUpdateCompanionBuilder =
       Value<String?> schoolId,
       Value<String?> schoolName,
       Value<String> signingSeed,
+      Value<String?> boxSeed,
       Value<String?> deviceRole,
       Value<int> hostGeneration,
       Value<String?> failoverSealKey,
@@ -22229,6 +23438,11 @@ class $$SyncIdentityTableFilterComposer
 
   ColumnFilters<String> get signingSeed => $composableBuilder(
     column: $table.signingSeed,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get boxSeed => $composableBuilder(
+    column: $table.boxSeed,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -22287,6 +23501,11 @@ class $$SyncIdentityTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get boxSeed => $composableBuilder(
+    column: $table.boxSeed,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get deviceRole => $composableBuilder(
     column: $table.deviceRole,
     builder: (column) => ColumnOrderings(column),
@@ -22337,6 +23556,9 @@ class $$SyncIdentityTableAnnotationComposer
     column: $table.signingSeed,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get boxSeed =>
+      $composableBuilder(column: $table.boxSeed, builder: (column) => column);
 
   GeneratedColumn<String> get deviceRole => $composableBuilder(
     column: $table.deviceRole,
@@ -22403,6 +23625,7 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolId = const Value.absent(),
                 Value<String?> schoolName = const Value.absent(),
                 Value<String> signingSeed = const Value.absent(),
+                Value<String?> boxSeed = const Value.absent(),
                 Value<String?> deviceRole = const Value.absent(),
                 Value<int> hostGeneration = const Value.absent(),
                 Value<String?> failoverSealKey = const Value.absent(),
@@ -22413,6 +23636,7 @@ class $$SyncIdentityTableTableManager
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
+                boxSeed: boxSeed,
                 deviceRole: deviceRole,
                 hostGeneration: hostGeneration,
                 failoverSealKey: failoverSealKey,
@@ -22425,6 +23649,7 @@ class $$SyncIdentityTableTableManager
                 Value<String?> schoolId = const Value.absent(),
                 Value<String?> schoolName = const Value.absent(),
                 required String signingSeed,
+                Value<String?> boxSeed = const Value.absent(),
                 Value<String?> deviceRole = const Value.absent(),
                 Value<int> hostGeneration = const Value.absent(),
                 Value<String?> failoverSealKey = const Value.absent(),
@@ -22435,6 +23660,7 @@ class $$SyncIdentityTableTableManager
                 schoolId: schoolId,
                 schoolName: schoolName,
                 signingSeed: signingSeed,
+                boxSeed: boxSeed,
                 deviceRole: deviceRole,
                 hostGeneration: hostGeneration,
                 failoverSealKey: failoverSealKey,
@@ -26083,6 +27309,589 @@ typedef $$AssignmentSubmissionsTableProcessedTableManager =
       AssignmentSubmission,
       PrefetchHooks Function()
     >;
+typedef $$ClassMembersTableCreateCompanionBuilder =
+    ClassMembersCompanion Function({
+      Value<int> id,
+      required String classGroupUuid,
+      required String deviceKey,
+      Value<String?> boxKey,
+      Value<String> name,
+      required String joinedAt,
+      Value<String?> lastSeenAt,
+      Value<String?> revokedAt,
+    });
+typedef $$ClassMembersTableUpdateCompanionBuilder =
+    ClassMembersCompanion Function({
+      Value<int> id,
+      Value<String> classGroupUuid,
+      Value<String> deviceKey,
+      Value<String?> boxKey,
+      Value<String> name,
+      Value<String> joinedAt,
+      Value<String?> lastSeenAt,
+      Value<String?> revokedAt,
+    });
+
+class $$ClassMembersTableFilterComposer
+    extends Composer<_$OticDatabase, $ClassMembersTable> {
+  $$ClassMembersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get boxKey => $composableBuilder(
+    column: $table.boxKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get joinedAt => $composableBuilder(
+    column: $table.joinedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get revokedAt => $composableBuilder(
+    column: $table.revokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ClassMembersTableOrderingComposer
+    extends Composer<_$OticDatabase, $ClassMembersTable> {
+  $$ClassMembersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get boxKey => $composableBuilder(
+    column: $table.boxKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get joinedAt => $composableBuilder(
+    column: $table.joinedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get revokedAt => $composableBuilder(
+    column: $table.revokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ClassMembersTableAnnotationComposer
+    extends Composer<_$OticDatabase, $ClassMembersTable> {
+  $$ClassMembersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get deviceKey =>
+      $composableBuilder(column: $table.deviceKey, builder: (column) => column);
+
+  GeneratedColumn<String> get boxKey =>
+      $composableBuilder(column: $table.boxKey, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get joinedAt =>
+      $composableBuilder(column: $table.joinedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastSeenAt => $composableBuilder(
+    column: $table.lastSeenAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get revokedAt =>
+      $composableBuilder(column: $table.revokedAt, builder: (column) => column);
+}
+
+class $$ClassMembersTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $ClassMembersTable,
+          ClassMember,
+          $$ClassMembersTableFilterComposer,
+          $$ClassMembersTableOrderingComposer,
+          $$ClassMembersTableAnnotationComposer,
+          $$ClassMembersTableCreateCompanionBuilder,
+          $$ClassMembersTableUpdateCompanionBuilder,
+          (
+            ClassMember,
+            BaseReferences<_$OticDatabase, $ClassMembersTable, ClassMember>,
+          ),
+          ClassMember,
+          PrefetchHooks Function()
+        > {
+  $$ClassMembersTableTableManager(_$OticDatabase db, $ClassMembersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ClassMembersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ClassMembersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ClassMembersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> classGroupUuid = const Value.absent(),
+                Value<String> deviceKey = const Value.absent(),
+                Value<String?> boxKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> joinedAt = const Value.absent(),
+                Value<String?> lastSeenAt = const Value.absent(),
+                Value<String?> revokedAt = const Value.absent(),
+              }) => ClassMembersCompanion(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                deviceKey: deviceKey,
+                boxKey: boxKey,
+                name: name,
+                joinedAt: joinedAt,
+                lastSeenAt: lastSeenAt,
+                revokedAt: revokedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String classGroupUuid,
+                required String deviceKey,
+                Value<String?> boxKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                required String joinedAt,
+                Value<String?> lastSeenAt = const Value.absent(),
+                Value<String?> revokedAt = const Value.absent(),
+              }) => ClassMembersCompanion.insert(
+                id: id,
+                classGroupUuid: classGroupUuid,
+                deviceKey: deviceKey,
+                boxKey: boxKey,
+                name: name,
+                joinedAt: joinedAt,
+                lastSeenAt: lastSeenAt,
+                revokedAt: revokedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ClassMembersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $ClassMembersTable,
+      ClassMember,
+      $$ClassMembersTableFilterComposer,
+      $$ClassMembersTableOrderingComposer,
+      $$ClassMembersTableAnnotationComposer,
+      $$ClassMembersTableCreateCompanionBuilder,
+      $$ClassMembersTableUpdateCompanionBuilder,
+      (
+        ClassMember,
+        BaseReferences<_$OticDatabase, $ClassMembersTable, ClassMember>,
+      ),
+      ClassMember,
+      PrefetchHooks Function()
+    >;
+typedef $$RevokedDevicesTableCreateCompanionBuilder =
+    RevokedDevicesCompanion Function({
+      required String deviceKey,
+      Value<String> name,
+      required String revokedAt,
+      Value<int> rowid,
+    });
+typedef $$RevokedDevicesTableUpdateCompanionBuilder =
+    RevokedDevicesCompanion Function({
+      Value<String> deviceKey,
+      Value<String> name,
+      Value<String> revokedAt,
+      Value<int> rowid,
+    });
+
+class $$RevokedDevicesTableFilterComposer
+    extends Composer<_$OticDatabase, $RevokedDevicesTable> {
+  $$RevokedDevicesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get revokedAt => $composableBuilder(
+    column: $table.revokedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RevokedDevicesTableOrderingComposer
+    extends Composer<_$OticDatabase, $RevokedDevicesTable> {
+  $$RevokedDevicesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get revokedAt => $composableBuilder(
+    column: $table.revokedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RevokedDevicesTableAnnotationComposer
+    extends Composer<_$OticDatabase, $RevokedDevicesTable> {
+  $$RevokedDevicesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get deviceKey =>
+      $composableBuilder(column: $table.deviceKey, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get revokedAt =>
+      $composableBuilder(column: $table.revokedAt, builder: (column) => column);
+}
+
+class $$RevokedDevicesTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $RevokedDevicesTable,
+          RevokedDevice,
+          $$RevokedDevicesTableFilterComposer,
+          $$RevokedDevicesTableOrderingComposer,
+          $$RevokedDevicesTableAnnotationComposer,
+          $$RevokedDevicesTableCreateCompanionBuilder,
+          $$RevokedDevicesTableUpdateCompanionBuilder,
+          (
+            RevokedDevice,
+            BaseReferences<_$OticDatabase, $RevokedDevicesTable, RevokedDevice>,
+          ),
+          RevokedDevice,
+          PrefetchHooks Function()
+        > {
+  $$RevokedDevicesTableTableManager(
+    _$OticDatabase db,
+    $RevokedDevicesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RevokedDevicesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RevokedDevicesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RevokedDevicesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deviceKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> revokedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RevokedDevicesCompanion(
+                deviceKey: deviceKey,
+                name: name,
+                revokedAt: revokedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deviceKey,
+                Value<String> name = const Value.absent(),
+                required String revokedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RevokedDevicesCompanion.insert(
+                deviceKey: deviceKey,
+                name: name,
+                revokedAt: revokedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RevokedDevicesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $RevokedDevicesTable,
+      RevokedDevice,
+      $$RevokedDevicesTableFilterComposer,
+      $$RevokedDevicesTableOrderingComposer,
+      $$RevokedDevicesTableAnnotationComposer,
+      $$RevokedDevicesTableCreateCompanionBuilder,
+      $$RevokedDevicesTableUpdateCompanionBuilder,
+      (
+        RevokedDevice,
+        BaseReferences<_$OticDatabase, $RevokedDevicesTable, RevokedDevice>,
+      ),
+      RevokedDevice,
+      PrefetchHooks Function()
+    >;
+typedef $$SchoolDevicesTableCreateCompanionBuilder =
+    SchoolDevicesCompanion Function({
+      required String deviceKey,
+      Value<String> name,
+      required String registeredAt,
+      Value<int> rowid,
+    });
+typedef $$SchoolDevicesTableUpdateCompanionBuilder =
+    SchoolDevicesCompanion Function({
+      Value<String> deviceKey,
+      Value<String> name,
+      Value<String> registeredAt,
+      Value<int> rowid,
+    });
+
+class $$SchoolDevicesTableFilterComposer
+    extends Composer<_$OticDatabase, $SchoolDevicesTable> {
+  $$SchoolDevicesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get registeredAt => $composableBuilder(
+    column: $table.registeredAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SchoolDevicesTableOrderingComposer
+    extends Composer<_$OticDatabase, $SchoolDevicesTable> {
+  $$SchoolDevicesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get registeredAt => $composableBuilder(
+    column: $table.registeredAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SchoolDevicesTableAnnotationComposer
+    extends Composer<_$OticDatabase, $SchoolDevicesTable> {
+  $$SchoolDevicesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get deviceKey =>
+      $composableBuilder(column: $table.deviceKey, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get registeredAt => $composableBuilder(
+    column: $table.registeredAt,
+    builder: (column) => column,
+  );
+}
+
+class $$SchoolDevicesTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $SchoolDevicesTable,
+          SchoolDevice,
+          $$SchoolDevicesTableFilterComposer,
+          $$SchoolDevicesTableOrderingComposer,
+          $$SchoolDevicesTableAnnotationComposer,
+          $$SchoolDevicesTableCreateCompanionBuilder,
+          $$SchoolDevicesTableUpdateCompanionBuilder,
+          (
+            SchoolDevice,
+            BaseReferences<_$OticDatabase, $SchoolDevicesTable, SchoolDevice>,
+          ),
+          SchoolDevice,
+          PrefetchHooks Function()
+        > {
+  $$SchoolDevicesTableTableManager(_$OticDatabase db, $SchoolDevicesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SchoolDevicesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SchoolDevicesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SchoolDevicesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deviceKey = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> registeredAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SchoolDevicesCompanion(
+                deviceKey: deviceKey,
+                name: name,
+                registeredAt: registeredAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deviceKey,
+                Value<String> name = const Value.absent(),
+                required String registeredAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SchoolDevicesCompanion.insert(
+                deviceKey: deviceKey,
+                name: name,
+                registeredAt: registeredAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SchoolDevicesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $SchoolDevicesTable,
+      SchoolDevice,
+      $$SchoolDevicesTableFilterComposer,
+      $$SchoolDevicesTableOrderingComposer,
+      $$SchoolDevicesTableAnnotationComposer,
+      $$SchoolDevicesTableCreateCompanionBuilder,
+      $$SchoolDevicesTableUpdateCompanionBuilder,
+      (
+        SchoolDevice,
+        BaseReferences<_$OticDatabase, $SchoolDevicesTable, SchoolDevice>,
+      ),
+      SchoolDevice,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -26154,4 +27963,10 @@ class $OticDatabaseManager {
       $$AdminRecordsStateTableTableManager(_db, _db.adminRecordsState);
   $$AssignmentSubmissionsTableTableManager get assignmentSubmissions =>
       $$AssignmentSubmissionsTableTableManager(_db, _db.assignmentSubmissions);
+  $$ClassMembersTableTableManager get classMembers =>
+      $$ClassMembersTableTableManager(_db, _db.classMembers);
+  $$RevokedDevicesTableTableManager get revokedDevices =>
+      $$RevokedDevicesTableTableManager(_db, _db.revokedDevices);
+  $$SchoolDevicesTableTableManager get schoolDevices =>
+      $$SchoolDevicesTableTableManager(_db, _db.schoolDevices);
 }

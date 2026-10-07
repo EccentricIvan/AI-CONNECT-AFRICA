@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../collaboration/sync/sync_ids.dart';
+import '../../collaboration/sync/device_registry.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../services/custom_subject_service.dart';
@@ -65,7 +66,7 @@ class AdminService {
             id: const Value(1),
             name: trimmed,
             pinSalt: salt,
-            pinHash: hashPin(salt, pin),
+            pinHash: await hashPinStrong(salt, pin),
             createdAt: DateTime.now().toUtc().toIso8601String(),
           ),
         );
@@ -74,21 +75,31 @@ class AdminService {
 
   Future<AdminSession?> signIn(String pin) async {
     final row = await _row();
-    if (row == null || hashPin(row.pinSalt, pin) != row.pinHash) return null;
+    if (row == null || !await pinMatches(row.pinSalt, pin, row.pinHash)) {
+      return null;
+    }
+    if (pinNeedsUpgrade(row.pinHash)) {
+      await (_db.update(_db.adminIdentity)..where((t) => t.id.equals(1))).write(
+        AdminIdentityCompanion(
+          pinHash: Value(await hashPinStrong(row.pinSalt, pin)),
+        ),
+      );
+    }
     return AdminSession._(row.name);
   }
 
   Future<bool> changePin(AdminSession _, String current, String next) async {
     if (!TeacherPin.isValidFormat(next)) return false;
     final row = await _row();
-    if (row == null || hashPin(row.pinSalt, current) != row.pinHash) {
+    if (row == null ||
+        !await pinMatches(row.pinSalt, current, row.pinHash)) {
       return false;
     }
     final salt = newPinSalt();
     await (_db.update(_db.adminIdentity)..where((t) => t.id.equals(1))).write(
       AdminIdentityCompanion(
         pinSalt: Value(salt),
-        pinHash: Value(hashPin(salt, next)),
+        pinHash: Value(await hashPinStrong(salt, next)),
       ),
     );
     return true;
@@ -117,7 +128,7 @@ class AdminService {
           TeacherProfilesCompanion.insert(
             name: trimmed,
             pinSalt: salt,
-            pinHash: hashPin(salt, pin),
+            pinHash: await hashPinStrong(salt, pin),
             createdAt: DateTime.now().toUtc().toIso8601String(),
             uuid: Value(newSyncId()),
           ),
@@ -134,7 +145,7 @@ class AdminService {
     )..where((t) => t.id.equals(teacherId))).write(
       TeacherProfilesCompanion(
         pinSalt: Value(salt),
-        pinHash: Value(hashPin(salt, pin)),
+        pinHash: Value(await hashPinStrong(salt, pin)),
       ),
     );
     return n > 0;
@@ -316,6 +327,17 @@ class AdminService {
 
   /// Deletes every learner's data on this device.
   Future<void> resetAllLearners(AdminSession _) => _wiper.wipeAll();
+
+  // ── Devices ───────────────────────────────────────────────────────────
+
+  /// Revokes a device for the whole school. It reaches other devices with
+  /// the next records the Admin sends; each then refuses it and replaces
+  /// the key of every class it held.
+  Future<void> revokeDevice(
+    AdminSession _,
+    String deviceKey, {
+    String name = '',
+  }) => DeviceRegistry(_db).revokeSchoolWide(deviceKey, name: name);
 }
 
 final adminServiceProvider = Provider<AdminService>(

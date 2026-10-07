@@ -10,6 +10,8 @@ import '../../curriculum/curriculum_provider.dart' show CurriculumService;
 import '../../db/otic_database.dart';
 import '../../services/assignments/class_assignments.dart';
 import 'class_crypto.dart';
+import 'device_keys.dart';
+import 'device_registry.dart';
 import 'class_share_server.dart'
     show
         kChannelPath,
@@ -192,6 +194,7 @@ class SelectiveSyncManager {
        pdfStore = pdfStore ?? NotePdfStore(_db);
 
   final OticDatabase _db;
+  late final DeviceRegistry _devices = DeviceRegistry(_db);
   final http.Client _client;
 
   /// Where received notes' original PDFs are kept.
@@ -253,13 +256,19 @@ class SelectiveSyncManager {
     final salt = newNonce();
     final secret = await joinSecret(code, salt, rounds: joinRounds);
     final proof = await joinProof(secret, salt);
+    final keys = await _devices.myKeys();
     for (final t in await reachable(endpoints)) {
       try {
         final response = await _client
             .post(
               Uri.parse('http://${t.address}:${t.port}/$kJoinPath'),
               headers: const {'content-type': 'application/json'},
-              body: jsonEncode({'nonce': salt, 'proof': proof, 'name': name}),
+              body: jsonEncode({
+                'nonce': salt,
+                'proof': proof,
+                'name': name,
+                ...keys,
+              }),
             )
             .timeout(approvalTimeout + _timeout);
         if (response.statusCode != 200) continue;
@@ -690,6 +699,7 @@ class SelectiveSyncManager {
   Future<SyncResult> syncClass({
     required TeacherEndpoint teacher,
     required ClassGroup group,
+    bool rekeyed = false,
   }) async {
     final uuid = group.groupUuid, classKey = group.classKey;
     final rootKey = group.teacherPublicKey, schoolId = group.schoolId;
@@ -743,7 +753,19 @@ class SelectiveSyncManager {
 
     final List<ChannelManifest> manifests;
     try {
-      final hello = await call(kHandshakePath, {'school_id': schoolId});
+      final hello = await call(kHandshakePath, {
+        'school_id': schoolId,
+        'box_key': (await _devices.myKeys())['box_key'],
+      });
+      // A device was revoked and the class key replaced: the teacher sent
+      // this device the new one, sealed to it. Take it and sync again.
+      if (hello['rekey'] != null && signer == rootKey && !rekeyed) {
+        final fresh = await _takeNewClassKey(group, hello['rekey']);
+        if (fresh == null) {
+          throw const SyncTrustError('the new class key did not open');
+        }
+        return syncClass(teacher: teacher, group: fresh, rekeyed: true);
+      }
       // Host failover: a root-signed reply from a device a standby has
       // since taken over from carries an older epoch. Refuse it before it
       // can drop or replace anything (it holds the same key, so its
@@ -1201,6 +1223,25 @@ class SelectiveSyncManager {
     return fetched;
   }
 
+  /// Opens a class key the teacher sealed to this device and stores it.
+  /// Null when it isn't for [group] or doesn't open.
+  Future<ClassGroup?> _takeNewClassKey(ClassGroup group, Object? sealed) async {
+    try {
+      final opened = await openSealedToDevice(
+        boxSeed: await _devices.boxSeed(),
+        sealed: sealed,
+      );
+      if (opened is! Map) return null;
+      final key = opened['class_key'];
+      if (opened['class_uuid'] != group.groupUuid || key is! String) {
+        return null;
+      }
+      return _db.classSyncDao.replaceJoinedClassKey(group.id, key);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Map<String, Object?>> _signedCall(
     TeacherEndpoint endpoint,
     String path,
@@ -1222,6 +1263,11 @@ class SelectiveSyncManager {
             kNonceHeader: nonce,
             kMacHeader: await requestMac(
               classKey: macKey,
+              path: path,
+              nonce: nonce,
+              body: raw,
+            ),
+            ...await _devices.requestHeaders(
               path: path,
               nonce: nonce,
               body: raw,

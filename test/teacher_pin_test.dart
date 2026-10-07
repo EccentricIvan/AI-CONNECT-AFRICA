@@ -102,7 +102,7 @@ void main() {
 
   testWidgets('unlock screen: wrong PIN errors, right PIN continues',
       (tester) async {
-    await TeacherPin().set('2468');
+    await tester.runAsync(() => TeacherPin().set('2468'));
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final router = GoRouter(

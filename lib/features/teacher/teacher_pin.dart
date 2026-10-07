@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 
-import 'package:crypto/crypto.dart';
+import 'package:crypto/crypto.dart' show sha256;
+import 'package:cryptography/cryptography.dart' show Hmac, Pbkdf2, SecretKey;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,7 +40,7 @@ class TeacherPin {
     final salt = newPinSalt();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_saltKey, salt);
-    await prefs.setString(_hashKey, _hash(salt, pin));
+    await prefs.setString(_hashKey, await hashPinStrong(salt, pin));
   }
 
   Future<void> clear() async {
@@ -52,15 +55,67 @@ class TeacherPin {
     final hash = prefs.getString(_hashKey);
     final salt = prefs.getString(_saltKey);
     if (hash == null || salt == null) return true;
-    return _hash(salt, pin) == hash;
+    if (!await pinMatches(salt, pin, hash)) return false;
+    if (pinNeedsUpgrade(hash)) {
+      await prefs.setString(_hashKey, await hashPinStrong(salt, pin));
+    }
+    return true;
   }
-
-  static String _hash(String salt, String pin) => hashPin(salt, pin);
 }
 
-/// Salted SHA-256 of a PIN — the Teachers PIN and each teacher's own.
+/// The old PIN hash: one round of salted SHA-256. Still verified, never
+/// written; a PIN stored this way is rehashed by [hashPinStrong] the next
+/// time it is entered correctly.
 String hashPin(String salt, String pin) =>
     sha256.convert(utf8.encode('$salt:$pin')).toString();
+
+const _strongPrefix = 'pbkdf2\$';
+
+/// PBKDF2 rounds for a new PIN hash. Kept moderate: it runs on every
+/// sign-in and learner switch on 4 GB phones. A 4–8 digit PIN stays
+/// guessable from a copied file whatever the rounds; encryption at rest
+/// is the real protection.
+@visibleForTesting
+int pinKdfRounds = 20000;
+
+/// A PIN hash for storing: `pbkdf2$<rounds>$<hex>`, PBKDF2-HMAC-SHA256 over
+/// the salted PIN, computed off the UI isolate.
+Future<String> hashPinStrong(String salt, String pin, {int? rounds}) {
+  final r = rounds ?? pinKdfRounds;
+  Future<String> work() async {
+    final key =
+        await Pbkdf2(
+          macAlgorithm: Hmac.sha256(),
+          iterations: r,
+          bits: 256,
+        ).deriveKey(
+          secretKey: SecretKey(utf8.encode(pin)),
+          nonce: utf8.encode('otic-pin:$salt'),
+        );
+    final hex = [
+      for (final b in await key.extractBytes())
+        b.toRadixString(16).padLeft(2, '0'),
+    ].join();
+    return '$_strongPrefix$r\$$hex';
+  }
+
+  return pinHashInIsolate ? Isolate.run(work) : work();
+}
+
+/// Off in widget tests, whose fake clock never waits for an isolate.
+@visibleForTesting
+bool pinHashInIsolate = true;
+
+/// Whether [pin] matches [stored], in either format.
+Future<bool> pinMatches(String salt, String pin, String stored) async {
+  if (!stored.startsWith(_strongPrefix)) return hashPin(salt, pin) == stored;
+  final rounds = int.tryParse(stored.split(r'$')[1]);
+  if (rounds == null || rounds < 1) return false;
+  return await hashPinStrong(salt, pin, rounds: rounds) == stored;
+}
+
+/// Whether [stored] is in the old format and should be rehashed.
+bool pinNeedsUpgrade(String stored) => !stored.startsWith(_strongPrefix);
 
 /// A fresh random salt for [hashPin].
 String newPinSalt() {
@@ -101,6 +156,8 @@ String? teacherGateRedirect(
   required bool pinSet,
 }) {
   if (!pinSet || unlocked || !isTeacherRoute(uri.path)) return null;
-  return Uri(path: '/unlock', queryParameters: {'to': uri.toString()})
-      .toString();
+  return Uri(
+    path: '/unlock',
+    queryParameters: {'to': uri.toString()},
+  ).toString();
 }

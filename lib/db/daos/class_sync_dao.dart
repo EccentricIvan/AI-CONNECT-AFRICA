@@ -59,6 +59,17 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
     return (select(syncIdentity)..where((t) => t.id.equals(1))).getSingle();
   }
 
+  /// A joined class's new key, handed over after the teacher revoked a
+  /// device. Never touches a class this device serves.
+  Future<ClassGroup?> replaceJoinedClassKey(int classId, String key) async {
+    await (update(classGroups)
+          ..where((t) => t.id.equals(classId) & t.joined.equals(true)))
+        .write(ClassGroupsCompanion(classKey: Value(key)));
+    return (select(classGroups)
+          ..where((t) => t.id.equals(classId) & t.joined.equals(true)))
+        .getSingleOrNull();
+  }
+
   Stream<SyncIdentityData?> watchIdentity() =>
       (select(syncIdentity)..where((t) => t.id.equals(1))).watchSingleOrNull();
 
@@ -446,6 +457,24 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
       (select(learnerSubjects)..where((t) => t.studentId.equals(studentId)))
           .watch()
           .map((rows) => {for (final r in rows) r.subjectId});
+
+  /// Subjects whose notes [studentId] may read: those they registered for
+  /// in My subjects (classes joined through a teacher), plus every subject
+  /// taught to the class the Admin enrolled them in.
+  Stream<Set<String>> watchReadable(int studentId) =>
+      customSelect(
+        'SELECT subject_id FROM learner_subjects WHERE student_id = ?1 '
+        'UNION '
+        'SELECT t.subject_id FROM teaching_assignments t '
+        'JOIN student_enrolments e ON e.class_group_uuid = t.class_group_uuid '
+        "WHERE e.student_id = ?1 AND e.status = 'active'",
+        variables: [Variable.withInt(studentId)],
+        readsFrom: {
+          learnerSubjects,
+          attachedDatabase.teachingAssignments,
+          attachedDatabase.studentEnrolments,
+        },
+      ).watch().map((rows) => {for (final r in rows) r.read<String>('subject_id')});
 
   Future<List<String>> enrolledSubjects(int studentId) async => [
     for (final r in await (select(learnerSubjects)

@@ -517,6 +517,11 @@ void main() {
       'admin_records_state',
       'teaching_assignments',
       'note_owners',
+      // Devices: who holds each class, who the school revoked, and which
+      // devices took the Admin's records — devices, not learners.
+      'class_members',
+      'revoked_devices',
+      'school_devices',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

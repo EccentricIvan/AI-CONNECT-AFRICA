@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'model_locations.dart';
 import 'model_runtime_policy.dart';
+import 'model_verifier.dart';
 
 enum ModelStatus {
   /// Model file found and ready to load.
@@ -57,7 +58,8 @@ class ModelManager {
   static const brainGgufFileName = 'qwen2.5-coder-1.5b-instruct.gguf';
 
   /// Canonical Android file (litert-community's int4 build, mirrored).
-  static const brainLiteRtFileName = 'qwen2.5-coder-1.5b-instruct_int4.litertlm';
+  static const brainLiteRtFileName =
+      'qwen2.5-coder-1.5b-instruct_int4.litertlm';
 
   /// This platform's canonical brain file.
   static String get brainFileName =>
@@ -90,12 +92,16 @@ class ModelManager {
   // A Q4 1.5B is ~1 GB; anything under this is a truncated copy.
   static const _minSizeBytes = 400 * 1024 * 1024;
 
+  static final _verifier = ModelVerifier();
+
   Future<ModelInfo> checkModel() async {
     final names = brainFileNamesForPlatform();
     ModelInfo? truncated;
     for (final name in names) {
       final candidates = await _candidatePathsFor(name);
-      debugPrint('BRAIN MODEL ($name) candidates:\n  ${candidates.join('\n  ')}');
+      debugPrint(
+        'BRAIN MODEL ($name) candidates:\n  ${candidates.join('\n  ')}',
+      );
       for (final path in candidates) {
         final file = File(path);
         try {
@@ -113,6 +119,16 @@ class ModelManager {
           );
           continue;
         }
+        if (await _verifier.isKnownBad(path)) {
+          truncated ??= ModelInfo(
+            status: ModelStatus.corrupted,
+            path: path,
+            sizeBytes: size,
+            platform: _platformLabel(path),
+          );
+          continue;
+        }
+        _verifier.verifyLater(path);
         return ModelInfo(
           status: ModelStatus.ready,
           path: path,
@@ -140,11 +156,7 @@ class ModelManager {
       final ext = await getExternalStorageDirectory();
       if (ext != null) {
         paths.add(
-          p.join(
-            ext.parent.parent.parent.parent.path,
-            'OTIC',
-            fileName,
-          ),
+          p.join(ext.parent.parent.parent.parent.path, 'OTIC', fileName),
         );
       }
     } catch (_) {}
@@ -238,5 +250,4 @@ class ModelManager {
     return 'Copy the learning packages to this device (from USB or the school '
         'server), then choose them with Install from file.';
   }
-
 }

@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 import '../../db/otic_database.dart';
 import '../../features/teacher/teaching_scope.dart';
 import '../sync/class_crypto.dart';
+import '../sync/device_registry.dart';
 import 'admin_records_crypto.dart';
 
 /// Why a bundle of school records was refused, or null when it was taken.
@@ -148,6 +149,14 @@ class AdminRecords {
                   'year': e.academicYear,
                   'status': e.status,
                 },
+          ],
+          'revoked_devices': [
+            for (final d in await _db.select(_db.revokedDevices).get())
+              {
+                'device_key': d.deviceKey,
+                'name': d.name,
+                'revoked_at': d.revokedAt,
+              },
           ],
           'takeover': ?takeover,
         });
@@ -418,6 +427,24 @@ class AdminRecords {
       // What this device serves follows the new assignments.
       await TeachingScope(_db).pruneShares();
 
+      // Devices the Admin revoked for the whole school. Added, never
+      // removed: an older copy of the records can't un-revoke one.
+      for (final d in _maps(r['revoked_devices'])) {
+        final deviceKey = d['device_key'], at = d['revoked_at'];
+        if (deviceKey is! String || at is! String) continue;
+        final name = d['name'];
+        await _db
+            .into(_db.revokedDevices)
+            .insert(
+              RevokedDevicesCompanion.insert(
+                deviceKey: deviceKey,
+                name: Value(name is String ? name : ''),
+                revokedAt: at,
+              ),
+              mode: InsertMode.insertOrIgnore,
+            );
+      }
+
       final takeover = r['takeover'];
       await _db
           .into(_db.adminRecordsState)
@@ -434,6 +461,8 @@ class AdminRecords {
             ),
           );
     });
+    // Revoked devices lose every class this device serves them.
+    await DeviceRegistry(_db).applySchoolRevocations();
     return null;
   }
 

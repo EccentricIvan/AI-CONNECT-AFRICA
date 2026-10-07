@@ -20,15 +20,13 @@ class TeacherProfileService {
 
   final OticDatabase _db;
 
-  Stream<List<TeacherProfile>> watchAll() =>
-      (_db.select(_db.teacherProfiles)
-            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
-          .watch();
+  Stream<List<TeacherProfile>> watchAll() => (_db.select(
+    _db.teacherProfiles,
+  )..orderBy([(t) => OrderingTerm.asc(t.name)])).watch();
 
-  Future<List<TeacherProfile>> all() =>
-      (_db.select(_db.teacherProfiles)
-            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
-          .get();
+  Future<List<TeacherProfile>> all() => (_db.select(
+    _db.teacherProfiles,
+  )..orderBy([(t) => OrderingTerm.asc(t.name)])).get();
 
   /// The profile when [pin] is its PIN, else null.
   Future<TeacherProfile?> signIn(int teacherId, String pin) async {
@@ -36,7 +34,17 @@ class TeacherProfileService {
       _db.teacherProfiles,
     )..where((t) => t.id.equals(teacherId))).getSingleOrNull();
     if (row == null) return null;
-    return hashPin(row.pinSalt, pin) == row.pinHash ? row : null;
+    if (!await pinMatches(row.pinSalt, pin, row.pinHash)) return null;
+    if (pinNeedsUpgrade(row.pinHash)) {
+      await (_db.update(
+        _db.teacherProfiles,
+      )..where((t) => t.id.equals(teacherId))).write(
+        TeacherProfilesCompanion(
+          pinHash: Value(await hashPinStrong(row.pinSalt, pin)),
+        ),
+      );
+    }
+    return row;
   }
 
   /// Changes [teacherId]'s PIN; false when [current] is wrong.
@@ -49,7 +57,7 @@ class TeacherProfileService {
     )..where((t) => t.id.equals(teacherId))).write(
       TeacherProfilesCompanion(
         pinSalt: Value(salt),
-        pinHash: Value(hashPin(salt, next)),
+        pinHash: Value(await hashPinStrong(salt, next)),
       ),
     );
     return true;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:ai_connect_africa/collaboration/admin/admin_records.dart';
 import 'package:ai_connect_africa/collaboration/admin/admin_records_crypto.dart';
 import 'package:ai_connect_africa/collaboration/admin/admin_records_share.dart';
+import 'package:ai_connect_africa/collaboration/sync/device_registry.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/features/admin/admin_service.dart';
 import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
@@ -259,6 +260,46 @@ void main() {
       });
       expect(await receive(target, server.code!), isNotNull);
       expect(await target.select(target.teacherProfiles).get(), isEmpty);
+    });
+
+    test('a device that took the records can be revoked school-wide', () async {
+      final target = device();
+      server.pending.listen((p) {
+        for (final r in p) {
+          server.decide(r, accept: true);
+        }
+      });
+      expect(await receive(target, server.code!), isNull);
+      final registered = (await DeviceRegistry(
+        adminDb,
+      ).watchSchoolDevices().first).single;
+      expect(registered.name, 'Lab PC');
+      expect(
+        registered.deviceKey,
+        (await DeviceRegistry(target).myKeys())['device_key'],
+      );
+
+      // A learner tablet that joined a class this device now serves.
+      final east = (await target.select(target.classGroups).get()).single;
+      final tablet = device();
+      final tabletKey = (await DeviceRegistry(tablet).myKeys())['device_key']!;
+      await DeviceRegistry(target).recordMember(east.groupUuid!, tabletKey);
+
+      await admin.revokeDevice(session, tabletKey, name: 'Lost tablet');
+      expect(
+        await AdminRecords(target).apply(await AdminRecords(adminDb).export()),
+        isNull,
+      );
+      expect(
+        await DeviceRegistry(target).isRevoked(east.groupUuid!, tabletKey),
+        isTrue,
+      );
+      final after = (await target.select(target.classGroups).get()).single;
+      expect(
+        after.classKey,
+        isNot(east.classKey),
+        reason: 'the class key is replaced so the tablet reads nothing new',
+      );
     });
 
     test('accepted, the records arrive and apply', () async {

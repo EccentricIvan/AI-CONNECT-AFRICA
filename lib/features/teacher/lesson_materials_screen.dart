@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/policy/policy.dart';
 import '../../core/theme/app_colors.dart';
 import '../../db/daos/topic_resource_dao.dart';
 import '../../db/otic_database.dart';
@@ -259,11 +260,14 @@ class _SubjectTile extends ConsumerWidget {
     WidgetRef ref, [
     String? documentTitle,
   ]) async {
-    final scope = ref.read(teachingScopeProvider);
-    final me = ref.read(activeTeacherIdProvider);
-    final ok = documentTitle == null
-        ? await scope.teaches(me, subject.subjectId)
-        : await scope.mayChangeNote(me, subject.subjectId, documentTitle);
+    final ok = await ref
+        .read(policyProvider)
+        .can(
+          TeacherActor(ref.read(activeTeacherIdProvider)),
+          documentTitle == null
+              ? UploadNote(subject.subjectId)
+              : ChangeNote(subject.subjectId, documentTitle),
+        );
     if (!ok && context.mounted) {
       _toast(context, tr(context, ResourceLabels.notYours));
     }
@@ -613,14 +617,12 @@ class _SubjectTile extends ConsumerWidget {
     );
     if (chosen == null || !context.mounted) return;
     if (!await _mine(context, ref, resource.resourceTitle)) return;
-    final scope = ref.read(teachingScopeProvider);
-    final me = ref.read(activeTeacherIdProvider);
+    final policy = ref.read(policyProvider);
+    final me = TeacherActor(ref.read(activeTeacherIdProvider));
     for (final uuid in chosen) {
-      if (!await scope.mayShare(
+      if (!await policy.can(
         me,
-        subject.subjectId,
-        resource.resourceTitle,
-        uuid,
+        ShareNote(subject.subjectId, resource.resourceTitle, uuid),
       )) {
         if (context.mounted) {
           _toast(context, tr(context, ResourceLabels.notYours));

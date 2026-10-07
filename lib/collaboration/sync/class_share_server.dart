@@ -12,6 +12,8 @@ import '../../db/otic_database.dart';
 import '../../services/assignments/class_assignments.dart';
 import '../../services/notes/note_pdf_store.dart';
 import 'class_crypto.dart';
+import 'device_keys.dart';
+import 'device_registry.dart';
 import 'failover_crypto.dart';
 import 'p2p_failover_service.dart' show buildSealedLedger;
 import 'progress_report.dart';
@@ -155,6 +157,7 @@ class _ServedClass {
     required this.classKey,
     required this.allocatedSubjects,
     this.rosterJson,
+    this.retiredKeys = const [],
   });
 
   final String groupUuid;
@@ -169,6 +172,10 @@ class _ServedClass {
   /// The class's signed co-teacher roster (JSON), forwarded verbatim —
   /// null if the class has never had a co-teacher.
   final String? rosterJson;
+
+  /// Class keys a revocation replaced (root only). A trusted device still
+  /// holding one may only ask for the current key, sealed to it.
+  final List<String> retiredKeys;
 
   bool get isDelegate => allocatedSubjects != null;
 }
@@ -203,6 +210,7 @@ class ClassShareServer {
   }) : pdfStore = pdfStore ?? NotePdfStore(_db);
 
   final OticDatabase _db;
+  late final DeviceRegistry _devices = DeviceRegistry(_db);
   final ShareRole role;
 
   /// Where the notes' original PDFs are read from.
@@ -449,6 +457,7 @@ class ClassShareServer {
         classKey: owned.classKey,
         allocatedSubjects: null,
         rosterJson: owned.rosterJson,
+        retiredKeys: DeviceRegistry.retiredKeysOf(owned),
       );
     }
     final delegated = await _db.coTeacherDao.delegatedByUuid(uuid);
@@ -520,6 +529,19 @@ class ClassShareServer {
       // The right code — now the sharer decides.
       if (!await _approve(request, rawName, group.groupUuid!)) {
         return _notFound();
+      }
+      // A device on this build names itself, so it can be revoked later.
+      final deviceKey = body['device_key'], boxKey = body['box_key'];
+      if (role == ShareRole.teacher && deviceKey is String) {
+        if (await _devices.isRevoked(group.groupUuid!, deviceKey)) {
+          return _notFound();
+        }
+        await _devices.recordMember(
+          group.groupUuid!,
+          deviceKey,
+          boxKey: boxKey is String ? boxKey : null,
+          name: rawName is String ? rawName : null,
+        );
       }
 
       final me = await _db.classSyncDao.identity();
@@ -778,11 +800,43 @@ class ClassShareServer {
 
     final raw = await request.readAsString();
     final path = request.url.path;
-    if (!await _macOk(classKey, path, nonce, raw, mac)) return _notFound();
+    // Which device is asking: on this build every request is signed by
+    // the device's own key. A revoked device is refused outright.
+    final deviceKey = request.headers[kDeviceHeader];
+    final deviceSig = request.headers[kDeviceSigHeader];
+    final rootServes = role == ShareRole.teacher && !served.isDelegate;
+    if (deviceKey != null) {
+      if (deviceSig == null ||
+          !await verifyDeviceRequest(
+            deviceKey: deviceKey,
+            signature: deviceSig,
+            path: path,
+            nonce: nonce,
+            body: raw,
+          )) {
+        return _notFound();
+      }
+      if (rootServes && await _devices.isRevoked(classUuid, deviceKey)) {
+        return _notFound();
+      }
+    }
+    if (!await _macOk(classKey, path, nonce, raw, mac)) {
+      return rootServes
+          ? await _rekey(served, path, nonce, raw, mac, deviceKey)
+          : _notFound();
+    }
 
     final body = jsonDecode(raw);
     if (body is! Map || body['school_id'] != served.schoolId) {
       return _notFound();
+    }
+    if (rootServes && deviceKey != null) {
+      final boxKey = body['box_key'];
+      await _devices.recordMember(
+        classUuid,
+        deviceKey,
+        boxKey: boxKey is String ? boxKey : null,
+      );
     }
 
     final Object? reply = switch (path) {
@@ -814,6 +868,52 @@ class ClassShareServer {
         requestNonce: nonce,
         json: reply,
         heavy: path == kFilePath,
+      ),
+    );
+  }
+
+  /// A trusted device still holding a key a revocation replaced: its
+  /// handshake gets only the current key, sealed to its own box key and
+  /// sent under the old one. Anything else — no device key, a revoked or
+  /// unknown device, a device on an older build — gets the bare 404, so a
+  /// revoked device learns nothing.
+  Future<Response> _rekey(
+    _ServedClass served,
+    String path,
+    String nonce,
+    String raw,
+    String mac,
+    String? deviceKey,
+  ) async {
+    if (path != kHandshakePath || deviceKey == null) return _notFound();
+    String? oldKey;
+    for (final k in served.retiredKeys) {
+      if (constantTimeEquals(
+        await requestMac(classKey: k, path: path, nonce: nonce, body: raw),
+        mac,
+      )) {
+        oldKey = k;
+      }
+    }
+    if (oldKey == null) return _notFound();
+    final member = await _devices.member(served.groupUuid, deviceKey);
+    final boxKey = member?.boxKey;
+    if (member == null || member.revokedAt != null || boxKey == null) {
+      return _notFound();
+    }
+    await _devices.recordMember(served.groupUuid, deviceKey);
+    final me = await _db.classSyncDao.identity();
+    return _json(
+      await sealReply(
+        classKey: oldKey,
+        signingSeed: me.signingSeed,
+        requestNonce: nonce,
+        json: {
+          'rekey': await sealToDevice(
+            recipientBoxKey: boxKey,
+            json: {'class_uuid': served.groupUuid, 'class_key': served.classKey},
+          ),
+        },
       ),
     );
   }

@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:ai_connect_africa/collaboration/sync/class_crypto.dart';
 import 'package:ai_connect_africa/collaboration/sync/selective_sync_manager.dart';
 import 'package:ai_connect_africa/collaboration/sync/class_share_server.dart';
+import 'package:ai_connect_africa/collaboration/sync/device_registry.dart';
 import 'package:ai_connect_africa/collaboration/sync/routing_envelope.dart';
 import 'package:ai_connect_africa/db/otic_database.dart';
 import 'package:ai_connect_africa/services/assignments/class_assignments.dart';
@@ -1351,6 +1352,121 @@ void main() {
         needle: 'PDF sha256 pages bytes',
       );
       expect(hits.where((h) => h.topicKey == kPdfMarkerTopic), isEmpty);
+    });
+  });
+
+  group('a revoked device', () {
+    Future<ClassGroup> fresh(OticDatabase db, ClassGroup g) async =>
+        (await db.classGroupDao.findByUuid(g.groupUuid!))!;
+
+    test('every device that joins or syncs is recorded with its keys',
+        () async {
+      final (db, m) = await student();
+      final group = await join(m, east);
+      final members = await DeviceRegistry(teacher).watchMembers(east.groupUuid!).first;
+      expect(members, hasLength(1));
+      expect(members.single.boxKey, isNotNull);
+      expect(
+        members.single.deviceKey,
+        (await DeviceRegistry(db).myKeys())['device_key'],
+      );
+      expect((await m.syncClass(teacher: endpoint, group: group)).ok, isTrue);
+      expect(members.single.revokedAt, isNull);
+    });
+
+    test('is refused; the others get the new key and keep syncing', () async {
+      final (lostDb, lost) = await student();
+      final (keptDb, kept) = await student();
+      final lostGroup = await join(lost, east);
+      final keptGroup = await join(kept, east);
+      final registry = DeviceRegistry(teacher);
+      final lostKey = (await DeviceRegistry(lostDb).myKeys())['device_key']!;
+
+      expect(await registry.revoke(east.groupUuid!, lostKey), 0);
+      final rotated = await fresh(teacher, east);
+      expect(rotated.classKey, isNot(lostGroup.classKey));
+
+      // New notes after the revocation.
+      await _note(teacher, 'chemistry', 'Salts', 'Salts form from acids.');
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: 'Salts',
+        classUuids: {east.groupUuid!},
+      );
+
+      final refused = await lost.syncClass(teacher: endpoint, group: lostGroup);
+      expect(refused.ok, isFalse);
+      expect(
+        (await _received(lostDb)).where((r) => r.resourceTitle == 'Salts'),
+        isEmpty,
+      );
+      expect((await fresh(lostDb, lostGroup)).classKey, lostGroup.classKey,
+          reason: 'a revoked device never learns the new key');
+
+      final synced = await kept.syncClass(teacher: endpoint, group: keptGroup);
+      expect(synced.ok, isTrue, reason: synced.error);
+      expect((await fresh(keptDb, keptGroup)).classKey, rotated.classKey);
+      expect(
+        (await _received(keptDb)).map((r) => r.resourceTitle),
+        contains('Salts'),
+      );
+      // And the next sync is an ordinary one, with the new key.
+      expect(
+        (await kept.syncClass(
+          teacher: endpoint,
+          group: await fresh(keptDb, keptGroup),
+        )).ok,
+        isTrue,
+      );
+    });
+
+    test('a revoked device can’t join again with a new code', () async {
+      final (db, m) = await student();
+      await join(m, east);
+      await DeviceRegistry(teacher).revoke(
+        east.groupUuid!,
+        (await DeviceRegistry(db).myKeys())['device_key']!,
+      );
+      final code = await server.openJoinCode(east);
+      final again = await m.joinClass(teachers: [endpoint], typedCode: code!);
+      expect(again.error, isNotNull);
+    });
+
+    test('a device with no box key must join again after a revocation',
+        () async {
+      final (oldDb, old) = await student();
+      final (lostDb, lost) = await student();
+      final oldGroup = await join(old, east);
+      await join(lost, east);
+      // As if it had joined on an older build: no box key on record.
+      await teacher.customStatement(
+        'UPDATE class_members SET box_key = NULL WHERE device_key = ?',
+        [(await DeviceRegistry(oldDb).myKeys())['device_key']],
+      );
+      final registry = DeviceRegistry(teacher);
+      expect(
+        await registry.revoke(
+          east.groupUuid!,
+          (await DeviceRegistry(lostDb).myKeys())['device_key']!,
+        ),
+        1,
+        reason: 'one trusted device can’t receive the new key',
+      );
+      expect((await old.syncClass(teacher: endpoint, group: oldGroup)).ok,
+          isFalse);
+      final rejoined = await join(old, east);
+      expect((await old.syncClass(teacher: endpoint, group: rejoined)).ok,
+          isTrue);
+    });
+
+    test('revoked for the whole school: refused in every class it holds',
+        () async {
+      final (db, m) = await student();
+      final group = await join(m, east);
+      final key = (await DeviceRegistry(db).myKeys())['device_key']!;
+      await DeviceRegistry(teacher).revokeSchoolWide(key, name: 'Lost tablet');
+      expect((await fresh(teacher, east)).classKey, isNot(group.classKey));
+      expect((await m.syncClass(teacher: endpoint, group: group)).ok, isFalse);
     });
   });
 }

@@ -14,6 +14,10 @@ class SyncIdentity extends Table {
   TextColumn get schoolName => text().nullable()();
   TextColumn get signingSeed => text()();
 
+  /// This device's X25519 seed, for class keys sealed to it after a
+  /// revocation. Made the first time it's needed.
+  TextColumn get boxSeed => text().nullable()();
+
   /// What this device is to its school: [kRoleTeacher], [kRoleStudent], or
   /// null until it becomes one. The teacher device is where classes and
   /// subjects are made and students' progress arrives; a device becomes a
