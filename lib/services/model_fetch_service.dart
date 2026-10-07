@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import '../ai_core/model/model_download_service.dart';
 import '../ai_core/model/model_locations.dart';
 import '../ai_core/model/model_manager.dart';
+import '../ai_core/model/model_manifest.dart';
 import '../ai_core/model/model_package.dart';
 import '../ai_core/model/model_runtime_policy.dart';
 import '../ai_core/providers/ai_provider.dart';
@@ -33,20 +34,17 @@ const kModelFetchHfBaseUrl = String.fromEnvironment(
 class ModelFetchFiles {
   // ── Desktop (llama.cpp) ────────────────────────────────────────────────
   static const chatGguf = ModelManager.brainGgufFileName;
-  static const chatGgufSha256 =
-      'cc324af070c2ecbfd324a30884d2f951a7ff756aba85cb811a6ec436933bb046';
+  static final chatGgufSha256 = kBrainGguf.sha256;
   static const chatGgufApproxBytes = 1117320768;
 
   static const translateGguf = AfriSlmModelManager.ggufFileName;
-  static const translateGgufSha256 =
-      '4af8ee1df3ec9008f763ebe95e6f21df3acd8d42c541feeb13314ca22e560afc';
+  static final translateGgufSha256 = kTranslatorGguf.sha256;
   static const translateGgufApproxBytes = 672329792;
 
   // ── Android (LiteRT-LM) ────────────────────────────────────────────────
   /// litert-community's int4 build of the same brain, mirrored.
   static const chatLiteRt = ModelManager.brainLiteRtFileName;
-  static const chatLiteRtSha256 =
-      '273ecc7771ba2dd5fe1bb6d4d4726ad0353102f04ad094082ccf59bca9f21213';
+  static final chatLiteRtSha256 = kBrainLiteRt.sha256;
   static const chatLiteRtApproxBytes = 1117385648;
 
   /// AfriSLM converted by .github/workflows/convert-afrislm-litertlm.yml.
@@ -54,8 +52,7 @@ class ModelFetchFiles {
   /// check but still rejects truncated files by size.
   /// int8 on every phone (see AfriSlmModelManager.liteRtFileName).
   static String get translateLiteRt => AfriSlmModelManager.liteRtFileName;
-  static const translateLiteRtSha256 =
-      'f5a356714430f7174f970411148601118e38dc5a7b524ff920d3d0bef122579a';
+  static final translateLiteRtSha256 = kTranslatorLiteRt.sha256;
   static const translateLiteRtApproxBytes = 898256944;
 
   /// No alternative translator build is published.
@@ -88,9 +85,8 @@ class ModelFetchFiles {
   static List<String> get chatMirrors => androidUsesLiteRt
       ? const ['$liteRtReleaseBase/$chatLiteRt', chatLiteRtUpstream]
       : const [];
-  static List<String> get translateMirrors => androidUsesLiteRt
-      ? ['$liteRtReleaseBase/$translateLiteRt']
-      : const [];
+  static List<String> get translateMirrors =>
+      androidUsesLiteRt ? ['$liteRtReleaseBase/$translateLiteRt'] : const [];
 
   /// Coding runs on the brain; there is no separate coder file.
   static String get coder => chat;

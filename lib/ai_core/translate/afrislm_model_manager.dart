@@ -9,6 +9,7 @@ import '../model/gguf_file.dart';
 import '../model/model_locations.dart';
 import '../model/model_manager.dart' show ModelInfo, ModelStatus;
 import '../model/model_runtime_policy.dart';
+import '../model/model_verifier.dart';
 
 /// Locates and installs the TranslatePsy-AfriSLM translation model.
 ///
@@ -75,11 +76,7 @@ class AfriSlmModelManager {
       final ext = await getExternalStorageDirectory();
       if (ext != null) {
         paths.add(
-          p.join(
-            ext.parent.parent.parent.parent.path,
-            'OTIC',
-            fileName,
-          ),
+          p.join(ext.parent.parent.parent.parent.path, 'OTIC', fileName),
         );
       }
     } catch (_) {}
@@ -106,6 +103,8 @@ class AfriSlmModelManager {
     }
     return out;
   }
+
+  static final _verifier = ModelVerifier();
 
   Future<ModelInfo> checkModel() async {
     final candidates = await _candidatePaths();
@@ -136,6 +135,15 @@ class AfriSlmModelManager {
         );
         continue;
       }
+      if (await _verifier.isKnownBad(path)) {
+        truncated ??= ModelInfo(
+          status: ModelStatus.corrupted,
+          path: path,
+          sizeBytes: size,
+        );
+        continue;
+      }
+      _verifier.verifyLater(path);
       return ModelInfo(status: ModelStatus.ready, path: path, sizeBytes: size);
     }
     return truncated ?? const ModelInfo(status: ModelStatus.notInstalled);
@@ -149,7 +157,9 @@ class AfriSlmModelManager {
   }) async {
     final source = File(sourcePath);
     if (!await source.exists()) {
-      throw const AfriSlmInstallException('The selected file no longer exists.');
+      throw const AfriSlmInstallException(
+        'The selected file no longer exists.',
+      );
     }
 
     if (!isAllowedModelPath(sourcePath)) {
@@ -265,7 +275,11 @@ class AfriSlmModelManager {
       if (await target.exists()) await target.delete();
       await partial.rename(targetPath);
       await _writeMarker(sourceUrl: uri.toString(), sizeBytes: size);
-      return ModelInfo(status: ModelStatus.ready, path: targetPath, sizeBytes: size);
+      return ModelInfo(
+        status: ModelStatus.ready,
+        path: targetPath,
+        sizeBytes: size,
+      );
     } on AfriSlmInstallException {
       rethrow;
     } on FileSystemException {
