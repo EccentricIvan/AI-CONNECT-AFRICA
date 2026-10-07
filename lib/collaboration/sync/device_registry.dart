@@ -194,6 +194,74 @@ class DeviceRegistry {
     }
   }
 
+  // ── Durability (teacher side) ────────────────────────────────────────
+
+  /// Records the version of each subject [deviceKey] says it holds for
+  /// [classUuid] — only subjects this device serves that class. Returns
+  /// how many were kept.
+  Future<int> recordHeld(
+    String classUuid,
+    String deviceKey,
+    Map<Object?, Object?> held,
+  ) async {
+    final served = {
+      for (final c in await (_db.select(
+        _db.servedChannels,
+      )..where((t) => t.classGroupUuid.equals(classUuid))).get())
+        c.subjectId,
+    };
+    final at = _now();
+    var kept = 0;
+    for (final e in held.entries.take(200)) {
+      final subject = e.key, version = e.value;
+      if (subject is! String || version is! int) continue;
+      if (!served.contains(subject)) continue;
+      await _db
+          .into(_db.channelReceipts)
+          .insertOnConflictUpdate(
+            ChannelReceiptsCompanion.insert(
+              classGroupUuid: classUuid,
+              subjectId: subject,
+              deviceKey: deviceKey,
+              version: version,
+              receivedAt: at,
+            ),
+          );
+      kept++;
+    }
+    return kept;
+  }
+
+  /// For [subjectId], per class: how many trusted devices hold the version
+  /// this device serves now.
+  Stream<Map<String, int>> watchReach(String subjectId) {
+    final query = _db.customSelect(
+      'SELECT r.class_group_uuid AS class_uuid, COUNT(*) AS n '
+      'FROM channel_receipts r '
+      'JOIN served_channels c ON c.class_group_uuid = r.class_group_uuid '
+      '  AND c.subject_id = r.subject_id '
+      'LEFT JOIN class_members m ON m.class_group_uuid = r.class_group_uuid '
+      '  AND m.device_key = r.device_key '
+      'WHERE r.subject_id = ? AND c.digest IS NOT NULL '
+      '  AND r.version >= c.version AND m.revoked_at IS NULL '
+      '  AND r.device_key NOT IN (SELECT device_key FROM revoked_devices) '
+      'GROUP BY r.class_group_uuid',
+      variables: [Variable.withString(subjectId)],
+      readsFrom: {
+        _db.channelReceipts,
+        _db.servedChannels,
+        _db.classMembers,
+        _db.revokedDevices,
+      },
+    );
+    return query.watch().map(
+      (rows) => {
+        for (final r in rows)
+          r.read<String>('class_uuid'): r.read<int>('n'),
+      },
+    );
+  }
+
   // ── The whole school (Admin) ─────────────────────────────────────────
 
   Stream<List<RevokedDevice>> watchRevoked() =>

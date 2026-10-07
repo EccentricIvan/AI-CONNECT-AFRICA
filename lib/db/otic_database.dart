@@ -89,6 +89,7 @@ part 'otic_database.g.dart';
     ClassMembers,
     RevokedDevices,
     SchoolDevices,
+    ChannelReceipts,
   ],
   daos: [
     StudentDao,
@@ -121,7 +122,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 27;
+  int get schemaVersion => 28;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -617,6 +618,12 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _columnExists('class_groups', 'retired_keys_json')) {
           await m.addColumn(classGroups, classGroups.retiredKeysJson);
+        }
+      }
+      if (from < 28) {
+        // Durability: which note versions each member device holds.
+        if (!await _tableExists('channel_receipts')) {
+          await m.createTable(channelReceipts);
         }
       }
     },

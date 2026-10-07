@@ -18426,6 +18426,389 @@ class SchoolDevicesCompanion extends UpdateCompanion<SchoolDevice> {
   }
 }
 
+class $ChannelReceiptsTable extends ChannelReceipts
+    with TableInfo<$ChannelReceiptsTable, ChannelReceipt> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChannelReceiptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _classGroupUuidMeta = const VerificationMeta(
+    'classGroupUuid',
+  );
+  @override
+  late final GeneratedColumn<String> classGroupUuid = GeneratedColumn<String>(
+    'class_group_uuid',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deviceKeyMeta = const VerificationMeta(
+    'deviceKey',
+  );
+  @override
+  late final GeneratedColumn<String> deviceKey = GeneratedColumn<String>(
+    'device_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<String> receivedAt = GeneratedColumn<String>(
+    'received_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    classGroupUuid,
+    subjectId,
+    deviceKey,
+    version,
+    receivedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'channel_receipts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ChannelReceipt> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('class_group_uuid')) {
+      context.handle(
+        _classGroupUuidMeta,
+        classGroupUuid.isAcceptableOrUnknown(
+          data['class_group_uuid']!,
+          _classGroupUuidMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_classGroupUuidMeta);
+    }
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('device_key')) {
+      context.handle(
+        _deviceKeyMeta,
+        deviceKey.isAcceptableOrUnknown(data['device_key']!, _deviceKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deviceKeyMeta);
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_versionMeta);
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receivedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {
+    classGroupUuid,
+    subjectId,
+    deviceKey,
+  };
+  @override
+  ChannelReceipt map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChannelReceipt(
+      classGroupUuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}class_group_uuid'],
+      )!,
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      deviceKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_key'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}received_at'],
+      )!,
+    );
+  }
+
+  @override
+  $ChannelReceiptsTable createAlias(String alias) {
+    return $ChannelReceiptsTable(attachedDatabase, alias);
+  }
+}
+
+class ChannelReceipt extends DataClass implements Insertable<ChannelReceipt> {
+  final String classGroupUuid;
+  final String subjectId;
+
+  /// Ed25519 public key of the device.
+  final String deviceKey;
+  final int version;
+
+  /// ISO-8601 UTC.
+  final String receivedAt;
+  const ChannelReceipt({
+    required this.classGroupUuid,
+    required this.subjectId,
+    required this.deviceKey,
+    required this.version,
+    required this.receivedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['class_group_uuid'] = Variable<String>(classGroupUuid);
+    map['subject_id'] = Variable<String>(subjectId);
+    map['device_key'] = Variable<String>(deviceKey);
+    map['version'] = Variable<int>(version);
+    map['received_at'] = Variable<String>(receivedAt);
+    return map;
+  }
+
+  ChannelReceiptsCompanion toCompanion(bool nullToAbsent) {
+    return ChannelReceiptsCompanion(
+      classGroupUuid: Value(classGroupUuid),
+      subjectId: Value(subjectId),
+      deviceKey: Value(deviceKey),
+      version: Value(version),
+      receivedAt: Value(receivedAt),
+    );
+  }
+
+  factory ChannelReceipt.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChannelReceipt(
+      classGroupUuid: serializer.fromJson<String>(json['classGroupUuid']),
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      deviceKey: serializer.fromJson<String>(json['deviceKey']),
+      version: serializer.fromJson<int>(json['version']),
+      receivedAt: serializer.fromJson<String>(json['receivedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'classGroupUuid': serializer.toJson<String>(classGroupUuid),
+      'subjectId': serializer.toJson<String>(subjectId),
+      'deviceKey': serializer.toJson<String>(deviceKey),
+      'version': serializer.toJson<int>(version),
+      'receivedAt': serializer.toJson<String>(receivedAt),
+    };
+  }
+
+  ChannelReceipt copyWith({
+    String? classGroupUuid,
+    String? subjectId,
+    String? deviceKey,
+    int? version,
+    String? receivedAt,
+  }) => ChannelReceipt(
+    classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+    subjectId: subjectId ?? this.subjectId,
+    deviceKey: deviceKey ?? this.deviceKey,
+    version: version ?? this.version,
+    receivedAt: receivedAt ?? this.receivedAt,
+  );
+  ChannelReceipt copyWithCompanion(ChannelReceiptsCompanion data) {
+    return ChannelReceipt(
+      classGroupUuid: data.classGroupUuid.present
+          ? data.classGroupUuid.value
+          : this.classGroupUuid,
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      deviceKey: data.deviceKey.present ? data.deviceKey.value : this.deviceKey,
+      version: data.version.present ? data.version.value : this.version,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChannelReceipt(')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('version: $version, ')
+          ..write('receivedAt: $receivedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(classGroupUuid, subjectId, deviceKey, version, receivedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChannelReceipt &&
+          other.classGroupUuid == this.classGroupUuid &&
+          other.subjectId == this.subjectId &&
+          other.deviceKey == this.deviceKey &&
+          other.version == this.version &&
+          other.receivedAt == this.receivedAt);
+}
+
+class ChannelReceiptsCompanion extends UpdateCompanion<ChannelReceipt> {
+  final Value<String> classGroupUuid;
+  final Value<String> subjectId;
+  final Value<String> deviceKey;
+  final Value<int> version;
+  final Value<String> receivedAt;
+  final Value<int> rowid;
+  const ChannelReceiptsCompanion({
+    this.classGroupUuid = const Value.absent(),
+    this.subjectId = const Value.absent(),
+    this.deviceKey = const Value.absent(),
+    this.version = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  ChannelReceiptsCompanion.insert({
+    required String classGroupUuid,
+    required String subjectId,
+    required String deviceKey,
+    required int version,
+    required String receivedAt,
+    this.rowid = const Value.absent(),
+  }) : classGroupUuid = Value(classGroupUuid),
+       subjectId = Value(subjectId),
+       deviceKey = Value(deviceKey),
+       version = Value(version),
+       receivedAt = Value(receivedAt);
+  static Insertable<ChannelReceipt> custom({
+    Expression<String>? classGroupUuid,
+    Expression<String>? subjectId,
+    Expression<String>? deviceKey,
+    Expression<int>? version,
+    Expression<String>? receivedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (classGroupUuid != null) 'class_group_uuid': classGroupUuid,
+      if (subjectId != null) 'subject_id': subjectId,
+      if (deviceKey != null) 'device_key': deviceKey,
+      if (version != null) 'version': version,
+      if (receivedAt != null) 'received_at': receivedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  ChannelReceiptsCompanion copyWith({
+    Value<String>? classGroupUuid,
+    Value<String>? subjectId,
+    Value<String>? deviceKey,
+    Value<int>? version,
+    Value<String>? receivedAt,
+    Value<int>? rowid,
+  }) {
+    return ChannelReceiptsCompanion(
+      classGroupUuid: classGroupUuid ?? this.classGroupUuid,
+      subjectId: subjectId ?? this.subjectId,
+      deviceKey: deviceKey ?? this.deviceKey,
+      version: version ?? this.version,
+      receivedAt: receivedAt ?? this.receivedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (classGroupUuid.present) {
+      map['class_group_uuid'] = Variable<String>(classGroupUuid.value);
+    }
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (deviceKey.present) {
+      map['device_key'] = Variable<String>(deviceKey.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<String>(receivedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChannelReceiptsCompanion(')
+          ..write('classGroupUuid: $classGroupUuid, ')
+          ..write('subjectId: $subjectId, ')
+          ..write('deviceKey: $deviceKey, ')
+          ..write('version: $version, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -18485,6 +18868,9 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $ClassMembersTable classMembers = $ClassMembersTable(this);
   late final $RevokedDevicesTable revokedDevices = $RevokedDevicesTable(this);
   late final $SchoolDevicesTable schoolDevices = $SchoolDevicesTable(this);
+  late final $ChannelReceiptsTable channelReceipts = $ChannelReceiptsTable(
+    this,
+  );
   late final Index idxTopicResourcesLookup = Index(
     'idx_topic_resources_lookup',
     'CREATE INDEX idx_topic_resources_lookup ON topic_resources (subject_id, topic_key)',
@@ -18627,6 +19013,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     classMembers,
     revokedDevices,
     schoolDevices,
+    channelReceipts,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -27892,6 +28279,216 @@ typedef $$SchoolDevicesTableProcessedTableManager =
       SchoolDevice,
       PrefetchHooks Function()
     >;
+typedef $$ChannelReceiptsTableCreateCompanionBuilder =
+    ChannelReceiptsCompanion Function({
+      required String classGroupUuid,
+      required String subjectId,
+      required String deviceKey,
+      required int version,
+      required String receivedAt,
+      Value<int> rowid,
+    });
+typedef $$ChannelReceiptsTableUpdateCompanionBuilder =
+    ChannelReceiptsCompanion Function({
+      Value<String> classGroupUuid,
+      Value<String> subjectId,
+      Value<String> deviceKey,
+      Value<int> version,
+      Value<String> receivedAt,
+      Value<int> rowid,
+    });
+
+class $$ChannelReceiptsTableFilterComposer
+    extends Composer<_$OticDatabase, $ChannelReceiptsTable> {
+  $$ChannelReceiptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$ChannelReceiptsTableOrderingComposer
+    extends Composer<_$OticDatabase, $ChannelReceiptsTable> {
+  $$ChannelReceiptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceKey => $composableBuilder(
+    column: $table.deviceKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$ChannelReceiptsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $ChannelReceiptsTable> {
+  $$ChannelReceiptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get classGroupUuid => $composableBuilder(
+    column: $table.classGroupUuid,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceKey =>
+      $composableBuilder(column: $table.deviceKey, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<String> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$ChannelReceiptsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $ChannelReceiptsTable,
+          ChannelReceipt,
+          $$ChannelReceiptsTableFilterComposer,
+          $$ChannelReceiptsTableOrderingComposer,
+          $$ChannelReceiptsTableAnnotationComposer,
+          $$ChannelReceiptsTableCreateCompanionBuilder,
+          $$ChannelReceiptsTableUpdateCompanionBuilder,
+          (
+            ChannelReceipt,
+            BaseReferences<
+              _$OticDatabase,
+              $ChannelReceiptsTable,
+              ChannelReceipt
+            >,
+          ),
+          ChannelReceipt,
+          PrefetchHooks Function()
+        > {
+  $$ChannelReceiptsTableTableManager(
+    _$OticDatabase db,
+    $ChannelReceiptsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChannelReceiptsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChannelReceiptsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChannelReceiptsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> classGroupUuid = const Value.absent(),
+                Value<String> subjectId = const Value.absent(),
+                Value<String> deviceKey = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<String> receivedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => ChannelReceiptsCompanion(
+                classGroupUuid: classGroupUuid,
+                subjectId: subjectId,
+                deviceKey: deviceKey,
+                version: version,
+                receivedAt: receivedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String classGroupUuid,
+                required String subjectId,
+                required String deviceKey,
+                required int version,
+                required String receivedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => ChannelReceiptsCompanion.insert(
+                classGroupUuid: classGroupUuid,
+                subjectId: subjectId,
+                deviceKey: deviceKey,
+                version: version,
+                receivedAt: receivedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$ChannelReceiptsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $ChannelReceiptsTable,
+      ChannelReceipt,
+      $$ChannelReceiptsTableFilterComposer,
+      $$ChannelReceiptsTableOrderingComposer,
+      $$ChannelReceiptsTableAnnotationComposer,
+      $$ChannelReceiptsTableCreateCompanionBuilder,
+      $$ChannelReceiptsTableUpdateCompanionBuilder,
+      (
+        ChannelReceipt,
+        BaseReferences<_$OticDatabase, $ChannelReceiptsTable, ChannelReceipt>,
+      ),
+      ChannelReceipt,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -27969,4 +28566,6 @@ class $OticDatabaseManager {
       $$RevokedDevicesTableTableManager(_db, _db.revokedDevices);
   $$SchoolDevicesTableTableManager get schoolDevices =>
       $$SchoolDevicesTableTableManager(_db, _db.schoolDevices);
+  $$ChannelReceiptsTableTableManager get channelReceipts =>
+      $$ChannelReceiptsTableTableManager(_db, _db.channelReceipts);
 }

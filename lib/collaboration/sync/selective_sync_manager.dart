@@ -14,6 +14,7 @@ import 'device_keys.dart';
 import 'device_registry.dart';
 import 'class_share_server.dart'
     show
+        kAckPath,
         kChannelPath,
         kClassHeader,
         kCoTeacherJoinPath,
@@ -869,7 +870,23 @@ class SelectiveSyncManager {
               for (final g in grades.take(200)) ?GradePayload.fromJson(g),
             ]);
           }
+          // Answers the teacher's device now holds.
+          if (ack['received'] case final List received) {
+            await ClassAssignments(_db).markReceived([
+              for (final u in received.take(500))
+                if (u is String) u,
+            ]);
+          }
         }
+      } catch (_) {}
+      // Which version of each subject this device now holds, so the
+      // teacher sees how many devices have a note. Best-effort: an older
+      // teacher build answers 404.
+      try {
+        await call(kAckPath, {
+          'school_id': schoolId,
+          'held': await _db.classSyncDao.heldVersions(uuid, rootKey),
+        });
       } catch (_) {}
     }
 

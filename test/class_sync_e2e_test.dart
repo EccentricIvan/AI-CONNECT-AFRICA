@@ -1469,4 +1469,77 @@ void main() {
       expect((await m.syncClass(teacher: endpoint, group: group)).ok, isFalse);
     });
   });
+
+  group('what has reached other devices', () {
+    test('an answer shows as received once the teacher’s device has it, '
+        'before any grade', () async {
+      final assignments = ClassAssignments(teacher);
+      final title = (await assignments.create(
+        subjectId: 'chemistry',
+        title: 'Acids',
+        instructions: 'Name two acids.',
+        maxPoints: 10,
+      ))!;
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: title,
+        classUuids: {east.groupUuid!},
+      );
+      final (db, m) = await student();
+      final g = await join(m, east);
+      final amina = await db
+          .into(db.students)
+          .insert(StudentsCompanion.insert(name: 'Amina'));
+      await db.classGroupDao.assignLearner(amina, g.id);
+      await m.syncClass(teacher: endpoint, group: g);
+
+      final learnerSide = ClassAssignments(db);
+      final seen = await learnerSide.visible(g.groupUuid);
+      await learnerSide.submit(
+        student: (await db.studentDao.getStudentById(amina))!,
+        assignment: seen.single,
+        answer: 'Hydrochloric acid.',
+        memberKey: 'local/$amina',
+      );
+      expect((await db.select(db.assignmentSubmissions).get()).single.receivedAt,
+          isNull);
+      await m.syncClass(teacher: endpoint, group: g);
+      final mine = (await db.select(db.assignmentSubmissions).get()).single;
+      expect(mine.receivedAt, isNotNull);
+      expect(mine.grade, isNull);
+    });
+
+    test('the teacher sees how many devices hold each subject as it is now',
+        () async {
+      final registry = DeviceRegistry(teacher);
+      Future<int> onDevices() async =>
+          (await registry.watchReach('chemistry').first)[east.groupUuid] ?? 0;
+
+      final (_, a) = await student();
+      final (_, b) = await student();
+      final ga = await join(a, east);
+      final gb = await join(b, east);
+      expect(await onDevices(), 0);
+      await a.syncClass(teacher: endpoint, group: ga);
+      expect(await onDevices(), 1);
+      await b.syncClass(teacher: endpoint, group: gb);
+      expect(await onDevices(), 2);
+
+      // A changed subject counts again only as devices take the new version.
+      await teacher.classSyncDao.setShares(
+        subjectId: 'chemistry',
+        documentTitle: 'Bases notes',
+        classUuids: {east.groupUuid!},
+      );
+      await a.syncClass(teacher: endpoint, group: ga);
+      expect(await onDevices(), 1);
+
+      // A revoked device no longer counts.
+      final aKey = (await registry.watchMembers(east.groupUuid!).first)
+          .firstWhere((mm) => mm.revokedAt == null)
+          .deviceKey;
+      await registry.revoke(east.groupUuid!, aKey);
+      expect(await onDevices(), lessThan(2));
+    });
+  });
 }

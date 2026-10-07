@@ -49,6 +49,12 @@ const kReportPath = 'api/v4/report';
 /// still syncs as text.
 const kFilePath = 'api/v4/sync/file';
 
+/// After a sync, a student device tells the teacher which version of each
+/// subject it now holds, so the teacher sees how many devices have a note.
+/// Best-effort and added without a version bump: a build without it
+/// answers 404 and nothing else changes.
+const kAckPath = 'api/v4/sync/ack';
+
 /// Host failover: a device pairing as this host's standby (code + Accept,
 /// binding the standby's own key), then pulling the encrypted host ledger
 /// with requests signed by that key. Root teacher device only.
@@ -490,6 +496,7 @@ class ClassShareServer {
         kCoTeacherJoinPath when role == ShareRole.teacher =>
           await _coTeacherJoin(request),
         kHandshakePath || kChannelPath || kFilePath => await _sync(request),
+        kAckPath when role == ShareRole.teacher => await _sync(request),
         kReportPath when role == ShareRole.teacher => await _sync(request),
         kStandbyPairPath when role == ShareRole.teacher =>
           await _standbyPair(request),
@@ -846,6 +853,12 @@ class ClassShareServer {
         await _report(served, classKey, nonce, body['report']),
       kReportPath => null,
       kFilePath => await _noteFile(served, body['subject_id'], body['sha256']),
+      kAckPath when rootServes && deviceKey != null => await _ack(
+        served,
+        deviceKey,
+        body['held'],
+      ),
+      kAckPath => null,
       _ => await _channel(served, body['subject_id']),
     };
     if (reply == null) return _notFound();
@@ -1037,6 +1050,7 @@ class ClassShareServer {
     // grades of exactly those answers — never anyone else's.
     final assignments = ClassAssignments(_db);
     final grades = <GradePayload>[];
+    final received = <String>[];
     for (final r in reports) {
       grades.addAll(
         await assignments.receive(
@@ -1046,10 +1060,29 @@ class ClassShareServer {
           submissions: r.submissions,
         ),
       );
+      received.addAll(
+        await assignments.heldFrom(r.memberKey, [
+          for (final s in r.submissions) s.uuid,
+        ]),
+      );
     }
     return {
       'saved': reports.length,
       'grades': [for (final g in grades) g.toJson()],
+      // Answers this device now holds, so the learner's device can say so.
+      'received': received,
+    };
+  }
+
+  /// Records which version of each subject [deviceKey] holds.
+  Future<Map<String, Object?>?> _ack(
+    _ServedClass served,
+    String deviceKey,
+    Object? held,
+  ) async {
+    if (held is! Map) return null;
+    return {
+      'kept': await _devices.recordHeld(served.groupUuid, deviceKey, held),
     };
   }
 

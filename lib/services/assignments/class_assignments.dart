@@ -397,6 +397,36 @@ class ClassAssignments {
     return out;
   }
 
+  /// On the teacher's device: which of [uuids] it holds as [memberKey]'s
+  /// answers — what the reply tells the learner's device arrived.
+  Future<List<String>> heldFrom(String memberKey, Iterable<String> uuids) async {
+    final wanted = uuids.toSet();
+    if (wanted.isEmpty) return const [];
+    return [
+      for (final r in await (_db.select(_db.assignmentSubmissions)
+            ..where((t) => t.uuid.isIn(wanted))
+            ..where((t) => t.memberKey.equals(memberKey)))
+          .get())
+        r.uuid,
+    ];
+  }
+
+  /// On the learner's device: its answers the teacher's device confirmed it
+  /// holds. Returns how many were newly marked.
+  Future<int> markReceived(Iterable<String> uuids) async {
+    final wanted = uuids.toSet();
+    if (wanted.isEmpty) return 0;
+    return (_db.update(_db.assignmentSubmissions)
+          ..where((t) => t.uuid.isIn(wanted))
+          ..where((t) => t.studentId.isNotNull())
+          ..where((t) => t.receivedAt.isNull()))
+        .write(
+          AssignmentSubmissionsCompanion(
+            receivedAt: Value(DateTime.now().toUtc().toIso8601String()),
+          ),
+        );
+  }
+
   /// On the learner's device: takes grades newer than the ones it holds,
   /// for its own submissions only. Returns how many changed.
   Future<int> applyGrades(List<GradePayload> grades) async {

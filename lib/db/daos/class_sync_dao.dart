@@ -70,6 +70,21 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
         .getSingleOrNull();
   }
 
+  /// The version of each of [classUuid]'s subjects this device holds from
+  /// [signer] (root's key also covers rows from before signers were kept).
+  Future<Map<String, int>> heldVersions(String classUuid, String signer) async =>
+      {
+        for (final r in await (select(syncState)
+              ..where((t) => t.classGroupUuid.equals(classUuid))
+              ..where((t) => t.channelDigest.isNotNull())
+              ..where((t) => t.channelVersion.isNotNull())
+              ..where(
+                (t) => t.manifestSigner.isNull() | t.manifestSigner.equals(signer),
+              ))
+            .get())
+          r.subjectId: r.channelVersion!,
+      };
+
   Stream<SyncIdentityData?> watchIdentity() =>
       (select(syncIdentity)..where((t) => t.id.equals(1))).watchSingleOrNull();
 

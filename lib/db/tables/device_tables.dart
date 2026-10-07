@@ -72,3 +72,25 @@ class SchoolDevices extends Table {
   @override
   Set<Column> get primaryKey => {deviceKey};
 }
+
+/// Teacher side: which version of each class+subject a member device
+/// says it holds, from its last sync. Lesson materials counts the devices
+/// holding the current version: "On N devices".
+@DataClassName('ChannelReceipt')
+class ChannelReceipts extends Table {
+  @override
+  String get tableName => 'channel_receipts';
+
+  TextColumn get classGroupUuid => text()();
+  TextColumn get subjectId => text()();
+
+  /// Ed25519 public key of the device.
+  TextColumn get deviceKey => text()();
+  IntColumn get version => integer()();
+
+  /// ISO-8601 UTC.
+  TextColumn get receivedAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {classGroupUuid, subjectId, deviceKey};
+}

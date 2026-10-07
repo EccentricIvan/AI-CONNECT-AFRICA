@@ -105,6 +105,9 @@ class _SubjectTile extends ConsumerWidget {
     final shares =
         ref.watch(noteSharesProvider(subject.subjectId)).valueOrNull ??
         const {};
+    final reach =
+        ref.watch(noteReachProvider(subject.subjectId)).valueOrNull ??
+        const <String, int>{};
     final reading = ref.watch(noteReadingProvider);
     final me = ref.watch(activeTeacherIdProvider);
     final owners =
@@ -165,6 +168,7 @@ class _SubjectTile extends ConsumerWidget {
                       [
                         ResourceLabels.termLabel(context, r.termMarker),
                         _sharedWith(context, shares[r.resourceTitle], classNames),
+                        ?_onDevices(context, shares[r.resourceTitle], reach),
                         ?_status(
                           context,
                           r,
@@ -538,6 +542,22 @@ class _SubjectTile extends ConsumerWidget {
       });
     }
     return null;
+  }
+
+  /// How many devices hold this note as it is now, across the classes it
+  /// is shared with; null when it isn't shared.
+  String? _onDevices(
+    BuildContext context,
+    Set<String>? uuids,
+    Map<String, int> reach,
+  ) {
+    if (uuids == null || uuids.isEmpty) return null;
+    final n = uuids.fold(0, (sum, u) => sum + (reach[u] ?? 0));
+    return switch (n) {
+      0 => tr(context, 'Only on this device'),
+      1 => tr(context, 'On 1 device'),
+      _ => trFill(context, 'On {n} devices', {'n': '$n'}),
+    };
   }
 
   String _sharedWith(

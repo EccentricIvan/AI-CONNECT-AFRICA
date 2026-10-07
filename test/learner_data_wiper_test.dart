@@ -522,6 +522,8 @@ void main() {
       'class_members',
       'revoked_devices',
       'school_devices',
+      // Which note versions member devices hold — class data.
+      'channel_receipts',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

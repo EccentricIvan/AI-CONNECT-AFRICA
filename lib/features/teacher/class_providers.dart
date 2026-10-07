@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../collaboration/sync/device_registry.dart';
 import '../../db/daos/class_group_dao.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
@@ -121,6 +122,16 @@ String delegatedClassLabel(CoTeachingClass c) {
 }
 
 /// For one subject: each note title → the classes it is shared with.
+/// For a subject, per class: how many trusted devices hold the version
+/// this device serves now.
+final noteReachProvider = StreamProvider.family<Map<String, int>, String>((
+  ref,
+  subjectId,
+) {
+  if (kIsWeb) return Stream.value(const {});
+  return DeviceRegistry(ref.watch(dbProvider)).watchReach(subjectId);
+});
+
 final noteSharesProvider =
     StreamProvider.family<Map<String, Set<String>>, String>((ref, subjectId) {
       if (kIsWeb) return Stream.value(const {});
