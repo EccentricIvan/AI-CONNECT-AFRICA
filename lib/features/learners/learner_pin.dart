@@ -30,7 +30,15 @@ class LearnerPinService {
     if (row == null) return false;
     final hash = row.pinHash, salt = row.pinSalt;
     if (hash == null || salt == null) return true;
-    return hashPin(salt, pin) == hash;
+    if (!await pinMatches(salt, pin, hash)) return false;
+    if (pinNeedsUpgrade(hash)) {
+      await (_db.update(
+        _db.students,
+      )..where((t) => t.id.equals(studentId))).write(
+        StudentsCompanion(pinHash: Value(await hashPinStrong(salt, pin))),
+      );
+    }
+    return true;
   }
 
   Future<void> set(int studentId, String pin) async {
@@ -38,11 +46,9 @@ class LearnerPinService {
       throw ArgumentError('A PIN is 4 to 8 digits.');
     }
     final salt = newPinSalt();
-    await (_db.update(
-      _db.students,
-    )..where((t) => t.id.equals(studentId))).write(
-      StudentsCompanion(pinSalt: Value(salt), pinHash: Value(hashPin(salt, pin))),
-    );
+    final hash = await hashPinStrong(salt, pin);
+    await (_db.update(_db.students)..where((t) => t.id.equals(studentId)))
+        .write(StudentsCompanion(pinSalt: Value(salt), pinHash: Value(hash)));
   }
 
   Future<void> clear(int studentId) =>
