@@ -652,6 +652,17 @@ class OticDatabase extends _$OticDatabase {
     await customStatement('UPDATE teacher_profiles SET uuid = $id WHERE uuid IS NULL');
     await customStatement('UPDATE students SET uuid = $id WHERE uuid IS NULL');
     await customStatement(
+      'INSERT INTO student_enrolments '
+      '(uuid, student_id, class_group_uuid, academic_year, status, created_at) '
+      "SELECT $id, s.id, c.group_uuid, ?, 'active', ? "
+      'FROM students s JOIN class_groups c ON c.id = s.class_group_id '
+      'WHERE c.joined = 0 AND c.group_uuid IS NOT NULL',
+      [now.year, at],
+    );
+    // A database that never had teacher-made subjects has no ownership to
+    // carry over.
+    if (!await _tableExists('custom_subjects')) return;
+    await customStatement(
       'INSERT INTO teaching_assignments '
       '(uuid, teacher_id, class_group_uuid, subject_id, academic_year, term, created_at) '
       'SELECT $id, c.owner_teacher_id, c.group_uuid, s.subject_id, ?, 0, ? '
@@ -659,14 +670,6 @@ class OticDatabase extends _$OticDatabase {
       '  ON s.owner_teacher_id = c.owner_teacher_id '
       'WHERE c.joined = 0 AND c.group_uuid IS NOT NULL '
       '  AND c.owner_teacher_id IS NOT NULL AND s.class_group_uuid IS NULL',
-      [now.year, at],
-    );
-    await customStatement(
-      'INSERT INTO student_enrolments '
-      '(uuid, student_id, class_group_uuid, academic_year, status, created_at) '
-      "SELECT $id, s.id, c.group_uuid, ?, 'active', ? "
-      'FROM students s JOIN class_groups c ON c.id = s.class_group_id '
-      'WHERE c.joined = 0 AND c.group_uuid IS NOT NULL',
       [now.year, at],
     );
     await customStatement(
