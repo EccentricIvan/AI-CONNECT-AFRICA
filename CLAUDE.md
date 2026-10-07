@@ -206,12 +206,19 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
 - **Roadmap agreed 2026-10-06** (user's P2P/RBAC spec). Done: Admin role,
   teaching assignments and enrolments, one-way Admin sync, assignment
   submission and grade sync, session expiry, tutor sources, the memory
-  check before loading the AI. Not done yet: per-learner (not per-device)
-  peer authorization, device registration and revocation, encrypted local
-  storage (SQLCipher + OS secure storage), per-teacher signing keys for
-  Sync (today a class's learners trust the hosting device's key), archiving
-  materials, and measurements on minimum hardware. Stay P2P — never a
-  central server.
+  check before loading the AI. Done 2026-10-07 (architecture plan): one
+  `Policy.can` for permissions (`lib/core/policy/`), PBKDF2 PINs (old
+  hashes upgrade on next entry), model manifests with SHA-256 checks
+  (`model_manifest.dart`, `model_verifier.dart`), and device registry and
+  revocation (schema 27, `device_registry.dart`): every Sync request is
+  signed by the device key; revoking per class (Teacher → Sync → Devices)
+  or school-wide (Admin → Devices, carried in Admin records) refuses the
+  device and replaces the class key, sealed to each trusted device's
+  X25519 key. Not done yet: durability status, teacher recovery
+  (per-teacher signing keys, one recovery passphrase per teacher),
+  encrypted local storage (SQLCipher + OS secure storage), a signed audit
+  log, per-learner peer authorization, archiving materials, and
+  measurements on minimum hardware. Stay P2P — never a central server.
 
 ### Teacher notes → tutor (offline knowledge base)
 
