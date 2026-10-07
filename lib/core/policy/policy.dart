@@ -69,6 +69,12 @@ final class ShareNote extends Request {
   final String classGroupUuid;
 }
 
+/// See and revoke the devices that joined one class/stream.
+final class ManageClassDevices extends Request {
+  const ManageClassDevices(this.classGroupUuid);
+  final String classGroupUuid;
+}
+
 /// The school's records: teachers, classes, subjects, assignments,
 /// learners and enrolments.
 final class ManageSchool extends Request {
@@ -108,6 +114,13 @@ class Policy {
             documentTitle,
             classGroupUuid,
           ),
+    ManageClassDevices(:final classGroupUuid) =>
+      actor is AdminActor ||
+          (actor is TeacherActor &&
+              actor.teacherId != null &&
+              (await _scope.assignments(
+                actor.teacherId!,
+              )).any((a) => a.classGroupUuid == classGroupUuid)),
     ManageSchool() => actor is AdminActor,
   };
 

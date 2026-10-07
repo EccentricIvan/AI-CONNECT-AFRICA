@@ -80,4 +80,9 @@ class ClassGroups extends Table {
   /// only they may rename, delete or share into it. Null on a joined class.
   /// Local only, never synced.
   IntColumn get ownerTeacherId => integer().nullable()();
+
+  /// On a class this device serves: the class keys it replaced when a
+  /// device was revoked (JSON list). A trusted device still holding one
+  /// may only ask for the current key, sealed to it.
+  TextColumn get retiredKeysJson => text().nullable()();
 }

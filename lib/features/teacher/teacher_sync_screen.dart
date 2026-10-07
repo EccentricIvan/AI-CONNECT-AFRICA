@@ -17,6 +17,7 @@ import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../shared/widgets/studio_page.dart';
 import '../collaborate/join_requests.dart';
+import 'class_devices_panel.dart';
 import 'class_progress_panel.dart';
 import 'class_providers.dart';
 import 'co_teacher_widgets.dart' show subjectNames;
@@ -312,6 +313,8 @@ class _TeacherSyncScreenState extends ConsumerState<TeacherSyncScreen> {
                   ),
                 ),
               ],
+              const SizedBox(height: 20),
+              ClassDevicesPanel(group: selected),
               const SizedBox(height: 20),
               ClassProgressPanel(group: selected),
               if (Platform.isWindows) ...[

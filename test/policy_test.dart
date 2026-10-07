@@ -135,6 +135,19 @@ void main() {
     },
   );
 
+  test(
+    'only a teacher of the class, or the Admin, manages its devices',
+    () async {
+      final e = ManageClassDevices(east.groupUuid!);
+      final w = ManageClassDevices(west.groupUuid!);
+      expect(await policy.can(TeacherActor(amina), e), isTrue);
+      expect(await policy.can(TeacherActor(amina), w), isFalse);
+      expect(await policy.can(const TeacherActor(null), e), isFalse);
+      expect(await policy.can(AdminActor(s), w), isTrue);
+      expect(await policy.can(LearnerActor(learner), e), isFalse);
+    },
+  );
+
   test('a learner reads only the subjects taught to their class', () async {
     expect(await policy.readableSubjects(LearnerActor(learner)), {
       'maths_9',

@@ -59,6 +59,17 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
     return (select(syncIdentity)..where((t) => t.id.equals(1))).getSingle();
   }
 
+  /// A joined class's new key, handed over after the teacher revoked a
+  /// device. Never touches a class this device serves.
+  Future<ClassGroup?> replaceJoinedClassKey(int classId, String key) async {
+    await (update(classGroups)
+          ..where((t) => t.id.equals(classId) & t.joined.equals(true)))
+        .write(ClassGroupsCompanion(classKey: Value(key)));
+    return (select(classGroups)
+          ..where((t) => t.id.equals(classId) & t.joined.equals(true)))
+        .getSingleOrNull();
+  }
+
   Stream<SyncIdentityData?> watchIdentity() =>
       (select(syncIdentity)..where((t) => t.id.equals(1))).watchSingleOrNull();
 

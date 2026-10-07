@@ -8,6 +8,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 
 import '../../db/otic_database.dart';
 import '../sync/class_crypto.dart';
+import '../sync/device_registry.dart';
 import 'admin_records.dart';
 import 'admin_records_crypto.dart';
 
@@ -35,9 +36,11 @@ class AdminRecordsServer {
     OticDatabase db, {
     this.approvalTimeout = kAdminApprovalTimeout,
     this.kdfRounds = kJoinKdfRounds,
-  }) : _records = AdminRecords(db);
+  }) : _records = AdminRecords(db),
+       _devices = DeviceRegistry(db);
 
   final AdminRecords _records;
+  final DeviceRegistry _devices;
   final Duration approvalTimeout;
   final int kdfRounds;
 
@@ -141,6 +144,11 @@ class AdminRecordsServer {
       _pendingCtl.add(List.unmodifiable(_pending));
     }
     if (!accepted) return _notFound();
+    // Known to the Admin from now on, so it can be revoked school-wide.
+    final deviceKey = body['device_key'];
+    if (deviceKey is String && deviceKey.isNotEmpty) {
+      await _devices.registerSchoolDevice(deviceKey, r.name);
+    }
 
     final bundle = await _records.export(takeover: _takeover);
     if (bundle == null) return _notFound();
@@ -182,6 +190,7 @@ Future<String?> receiveAdminRecords(
             'salt': salt,
             'proof': await joinProof(secret, salt),
             'name': deviceName,
+            'device_key': (await DeviceRegistry(db).myKeys())['device_key'],
           }),
         )
         .timeout(timeout);

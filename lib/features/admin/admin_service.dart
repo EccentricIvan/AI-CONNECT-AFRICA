@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../collaboration/sync/sync_ids.dart';
+import '../../collaboration/sync/device_registry.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../services/custom_subject_service.dart';
@@ -326,6 +327,17 @@ class AdminService {
 
   /// Deletes every learner's data on this device.
   Future<void> resetAllLearners(AdminSession _) => _wiper.wipeAll();
+
+  // ── Devices ───────────────────────────────────────────────────────────
+
+  /// Revokes a device for the whole school. It reaches other devices with
+  /// the next records the Admin sends; each then refuses it and replaces
+  /// the key of every class it held.
+  Future<void> revokeDevice(
+    AdminSession _,
+    String deviceKey, {
+    String name = '',
+  }) => DeviceRegistry(_db).revokeSchoolWide(deviceKey, name: name);
 }
 
 final adminServiceProvider = Provider<AdminService>(

@@ -37,6 +37,7 @@ import 'tables/learner_subjects_table.dart';
 import 'tables/learning_paths_table.dart';
 import 'tables/member_reports_table.dart';
 import 'tables/quiz_results_table.dart';
+import 'tables/device_tables.dart';
 import 'tables/resource_shares_table.dart';
 import 'tables/served_channels_table.dart';
 import 'tables/sync_identity_table.dart';
@@ -85,6 +86,9 @@ part 'otic_database.g.dart';
     NoteOwners,
     AdminRecordsState,
     AssignmentSubmissions,
+    ClassMembers,
+    RevokedDevices,
+    SchoolDevices,
   ],
   daos: [
     StudentDao,
@@ -117,7 +121,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 26;
+  int get schemaVersion => 27;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -593,6 +597,26 @@ class OticDatabase extends _$OticDatabase {
         }
         if (!await _indexExists('idx_submissions_assignment')) {
           await m.create(idxSubmissionsAssignment);
+        }
+      }
+      if (from < 27) {
+        // Device registry and revocation: who holds each class, who is
+        // refused, and the keys a revocation replaced.
+        for (final (name, create) in [
+          ('class_members', () => m.createTable(classMembers)),
+          ('revoked_devices', () => m.createTable(revokedDevices)),
+          ('school_devices', () => m.createTable(schoolDevices)),
+        ]) {
+          if (!await _tableExists(name)) await create();
+        }
+        if (!await _indexExists('idx_class_members_device')) {
+          await m.create(idxClassMembersDevice);
+        }
+        if (!await _columnExists('sync_identity', 'box_seed')) {
+          await m.addColumn(syncIdentity, syncIdentity.boxSeed);
+        }
+        if (!await _columnExists('class_groups', 'retired_keys_json')) {
+          await m.addColumn(classGroups, classGroups.retiredKeysJson);
         }
       }
     },
