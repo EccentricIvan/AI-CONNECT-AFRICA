@@ -544,15 +544,16 @@ class _SubjectTile extends ConsumerWidget {
     return null;
   }
 
-  /// How many devices hold this note as it is now, across the classes it
-  /// is shared with; null when it isn't shared.
+  /// How many devices hold this note as it is now, across the classes this
+  /// device owns that it is shared with; null when there are none.
   String? _onDevices(
     BuildContext context,
     Set<String>? uuids,
     Map<String, int> reach,
   ) {
-    if (uuids == null || uuids.isEmpty) return null;
-    final n = uuids.fold(0, (sum, u) => sum + (reach[u] ?? 0));
+    final counted = uuids?.where(reach.containsKey) ?? const <String>[];
+    if (counted.isEmpty) return null;
+    final n = counted.fold(0, (sum, u) => sum + reach[u]!);
     return switch (n) {
       0 => tr(context, 'Only on this device'),
       1 => tr(context, 'On 1 device'),

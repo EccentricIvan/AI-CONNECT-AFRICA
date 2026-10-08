@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../collaboration/sync/progress_report.dart' show progressSent;
 import '../../core/theme/app_colors.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
@@ -395,6 +397,7 @@ class _SummaryCard extends StatelessWidget {
             ),
           ],
         ),
+        _SentToTeacher(student: student),
       ],
     );
 
@@ -460,6 +463,46 @@ class _SummaryCard extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// Whether this learner's progress, as it is now, reached their teacher.
+/// Null when there is no teacher to send it to.
+final _progressSentProvider = FutureProvider.autoDispose
+    .family<bool?, Student>((ref, student) {
+  if (kIsWeb) return Future.value(null);
+  return progressSent(ref.watch(dbProvider), student);
+});
+
+class _SentToTeacher extends ConsumerWidget {
+  const _SentToTeacher({required this.student});
+
+  final Student student;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sent = ref.watch(_progressSentProvider(student)).valueOrNull;
+    if (sent == null) return const SizedBox.shrink();
+    final ac = AppColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(
+            sent ? Icons.cloud_done_outlined : Icons.phone_android_rounded,
+            size: 18,
+            color: ac.textSecondary,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              tr(context, sent ? 'Sent to your teacher' : 'Only on this device'),
+              style: TextStyle(fontSize: 13, color: ac.textSecondary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

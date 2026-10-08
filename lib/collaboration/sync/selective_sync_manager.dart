@@ -842,14 +842,10 @@ class SelectiveSyncManager {
     var reported = 0;
     if (answeredBy == rootKey) {
       try {
-        final me = await _db.classSyncDao.identity();
-        final deviceKey = (await signingPublicKey(
-          me.signingSeed,
-        )).substring(0, 16);
         final reports = await buildProgressReports(
           _db,
           group,
-          deviceKey: deviceKey,
+          deviceKey: await reportDeviceKey(_db),
         );
         if (reports.isNotEmpty) {
           final ack = await call(
@@ -864,6 +860,8 @@ class SelectiveSyncManager {
             },
           );
           reported = ack['saved'] is int ? ack['saved'] as int : 0;
+          // The teacher holds these reports as they are now.
+          if (reported == reports.length) await markReportsSent(_db, reports);
           // The teacher's grades for this device's learners' answers.
           if (ack['grades'] case final List grades) {
             await ClassAssignments(_db).applyGrades([

@@ -232,24 +232,29 @@ class DeviceRegistry {
     return kept;
   }
 
-  /// For [subjectId], per class: how many trusted devices hold the version
-  /// this device serves now.
+  /// For [subjectId], per class this device owns and shares it with: how
+  /// many trusted devices hold the version this device serves now. Classes
+  /// it co-teaches are left out — their students acknowledge to root only,
+  /// so a count here would always read 0.
   Stream<Map<String, int>> watchReach(String subjectId) {
     final query = _db.customSelect(
-      'SELECT r.class_group_uuid AS class_uuid, COUNT(*) AS n '
-      'FROM channel_receipts r '
-      'JOIN served_channels c ON c.class_group_uuid = r.class_group_uuid '
-      '  AND c.subject_id = r.subject_id '
-      'LEFT JOIN class_members m ON m.class_group_uuid = r.class_group_uuid '
-      '  AND m.device_key = r.device_key '
-      'WHERE r.subject_id = ? AND c.digest IS NOT NULL '
-      '  AND r.version >= c.version AND m.revoked_at IS NULL '
+      'SELECT c.class_group_uuid AS class_uuid, COUNT(r.device_key) AS n '
+      'FROM served_channels c '
+      'JOIN class_groups g ON g.group_uuid = c.class_group_uuid '
+      '  AND g.joined = 0 '
+      'LEFT JOIN channel_receipts r ON r.class_group_uuid = c.class_group_uuid '
+      '  AND r.subject_id = c.subject_id AND r.version >= c.version '
       '  AND r.device_key NOT IN (SELECT device_key FROM revoked_devices) '
-      'GROUP BY r.class_group_uuid',
+      '  AND NOT EXISTS (SELECT 1 FROM class_members m '
+      '    WHERE m.class_group_uuid = r.class_group_uuid '
+      '    AND m.device_key = r.device_key AND m.revoked_at IS NOT NULL) '
+      'WHERE c.subject_id = ? AND c.digest IS NOT NULL '
+      'GROUP BY c.class_group_uuid',
       variables: [Variable.withString(subjectId)],
       readsFrom: {
         _db.channelReceipts,
         _db.servedChannels,
+        _db.classGroups,
         _db.classMembers,
         _db.revokedDevices,
       },

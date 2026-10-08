@@ -214,7 +214,13 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
   signed by the device key; revoking per class (Teacher → Sync → Devices)
   or school-wide (Admin → Devices, carried in Admin records) refuses the
   device and replaces the class key, sealed to each trusted device's
-  X25519 key. Not done yet: durability status, teacher recovery
+  X25519 key. Done 2026-10-07: durability status (schema 28,
+  `channel_receipts`): after a teacher sync a student device posts the
+  subject versions it holds (`api/v4/sync/ack`, best-effort), and Lesson
+  materials shows each shared note as "On N devices" or "Only on this
+  device"; the report reply lists the answers the teacher holds, so a
+  learner's answer reads "with your teacher" before it is graded. Not
+  done yet: teacher recovery
   (per-teacher signing keys, one recovery passphrase per teacher),
   encrypted local storage (SQLCipher + OS secure storage), a signed audit
   log, per-learner peer authorization, archiving materials, and

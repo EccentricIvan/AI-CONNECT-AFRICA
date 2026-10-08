@@ -56,4 +56,9 @@ class Students extends Table {
 
   /// Portable id, the same on every device the Admin's records reach.
   TextColumn get uuid => text().nullable()();
+
+  /// Digest of the last progress report the teacher's device confirmed
+  /// (`reportDigest`). While the report built now matches it, the learner's
+  /// progress is with the teacher; otherwise it is only on this device.
+  TextColumn get progressSentDigest => text().nullable()();
 }

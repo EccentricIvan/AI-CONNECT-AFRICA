@@ -122,7 +122,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 28;
+  int get schemaVersion => 29;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -624,6 +624,12 @@ class OticDatabase extends _$OticDatabase {
         // Durability: which note versions each member device holds.
         if (!await _tableExists('channel_receipts')) {
           await m.createTable(channelReceipts);
+        }
+      }
+      if (from < 29) {
+        // Durability: the last progress report the teacher confirmed.
+        if (!await _columnExists('students', 'progress_sent_digest')) {
+          await m.addColumn(students, students.progressSentDigest);
         }
       }
     },

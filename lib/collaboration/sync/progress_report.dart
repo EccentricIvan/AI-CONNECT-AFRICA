@@ -1,9 +1,11 @@
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 
 import '../../db/otic_database.dart';
 import '../../services/assignments/class_assignments.dart';
+import 'class_crypto.dart' show signingPublicKey;
 
 /// One learner's progress as their device reports it to the teacher.
 ///
@@ -154,38 +156,84 @@ Future<List<ProgressReport>> buildProgressReports(
   final learners = await (db.select(
     db.students,
   )..where((t) => t.classGroupId.equals(group.id))).get();
-  final out = <ProgressReport>[];
-  for (final s in learners) {
-    final progress =
-        await (db.select(db.topicProgress)
-              ..where((t) => t.studentId.equals(s.id))
-              ..orderBy([(t) => OrderingTerm.desc(t.lastStudiedAt)])
-              ..limit(ProgressReport.maxTopics))
-            .get();
-    out.add(
-      ProgressReport(
-        memberKey: '$deviceKey/${s.id}',
-        name: s.name,
-        points: s.totalPoints,
-        streakDays: s.streakDays,
-        lessonsCompleted: s.totalLessonsCompleted,
-        practiceAttempted: s.totalPracticeAttempted,
-        practiceCorrect: s.totalPracticeCorrect,
-        scenariosCompleted: s.totalScenariosCompleted,
-        lastActive: s.lastActiveAt.toUtc().toIso8601String(),
-        topics: [for (final p in progress) (topic: p.topic, level: p.level)],
-        strengths: _list(s.strengthsJson),
-        weaknesses: _list(s.weaknessesJson),
-        enrolled: (await db.classSyncDao.enrolledSubjects(
-          s.id,
-        )).take(ProgressReport.maxEnrolled).toList(),
-        submissions: group.groupUuid == null
-            ? const []
-            : await ClassAssignments(db).outgoing(s.id, group.groupUuid!),
-      ),
+  return [
+    for (final s in learners) await _reportFor(db, group, s, deviceKey),
+  ];
+}
+
+Future<ProgressReport> _reportFor(
+  OticDatabase db,
+  ClassGroup group,
+  Student s,
+  String deviceKey,
+) async {
+  final progress =
+      await (db.select(db.topicProgress)
+            ..where((t) => t.studentId.equals(s.id))
+            ..orderBy([(t) => OrderingTerm.desc(t.lastStudiedAt)])
+            ..limit(ProgressReport.maxTopics))
+          .get();
+  return ProgressReport(
+    memberKey: '$deviceKey/${s.id}',
+    name: s.name,
+    points: s.totalPoints,
+    streakDays: s.streakDays,
+    lessonsCompleted: s.totalLessonsCompleted,
+    practiceAttempted: s.totalPracticeAttempted,
+    practiceCorrect: s.totalPracticeCorrect,
+    scenariosCompleted: s.totalScenariosCompleted,
+    lastActive: s.lastActiveAt.toUtc().toIso8601String(),
+    topics: [for (final p in progress) (topic: p.topic, level: p.level)],
+    strengths: _list(s.strengthsJson),
+    weaknesses: _list(s.weaknessesJson),
+    enrolled: (await db.classSyncDao.enrolledSubjects(
+      s.id,
+    )).take(ProgressReport.maxEnrolled).toList(),
+    submissions: group.groupUuid == null
+        ? const []
+        : await ClassAssignments(db).outgoing(s.id, group.groupUuid!),
+  );
+}
+
+/// Identifies a report's content: equal digests, nothing new to send.
+String reportDigest(ProgressReport r) =>
+    sha256.convert(utf8.encode(jsonEncode(r.toJson()))).toString();
+
+/// On the learner's device, once the teacher's reply confirms [reports]:
+/// remembers what the teacher now holds for each learner.
+Future<void> markReportsSent(
+  OticDatabase db,
+  List<ProgressReport> reports,
+) async {
+  for (final r in reports) {
+    final id = int.tryParse(r.memberKey.split('/').last);
+    if (id == null) continue;
+    await (db.update(db.students)..where((t) => t.id.equals(id))).write(
+      StudentsCompanion(progressSentDigest: Value(reportDigest(r))),
     );
   }
-  return out;
+}
+
+/// Whether [student]'s progress as it is now has reached their teacher.
+/// Null when there is no teacher to send it to (not in a class this device
+/// joined).
+Future<bool?> progressSent(OticDatabase db, Student student) async {
+  final groupId = student.classGroupId;
+  if (groupId == null) return null;
+  final group = await (db.select(
+    db.classGroups,
+  )..where((t) => t.id.equals(groupId))).getSingleOrNull();
+  if (group == null || !group.joined || group.groupUuid == null) return null;
+  final sent = student.progressSentDigest;
+  if (sent == null) return false;
+  final report = await _reportFor(db, group, student, await reportDeviceKey(db));
+  return reportDigest(report) == sent;
+}
+
+/// This device's part of every learner's key in its reports.
+Future<String> reportDeviceKey(OticDatabase db) async {
+  final me = await db.classSyncDao.identity();
+  return (await signingPublicKey(me.signingSeed)).substring(0, 16);
 }
 
 List<String> _list(String json) {
