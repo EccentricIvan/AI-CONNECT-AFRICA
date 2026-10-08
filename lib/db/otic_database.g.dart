@@ -267,6 +267,17 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _progressSentDigestMeta =
+      const VerificationMeta('progressSentDigest');
+  @override
+  late final GeneratedColumn<String> progressSentDigest =
+      GeneratedColumn<String>(
+        'progress_sent_digest',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -292,6 +303,7 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
     pinSalt,
     pinHash,
     uuid,
+    progressSentDigest,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -478,6 +490,15 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         uuid.isAcceptableOrUnknown(data['uuid']!, _uuidMeta),
       );
     }
+    if (data.containsKey('progress_sent_digest')) {
+      context.handle(
+        _progressSentDigestMeta,
+        progressSentDigest.isAcceptableOrUnknown(
+          data['progress_sent_digest']!,
+          _progressSentDigestMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -579,6 +600,10 @@ class $StudentsTable extends Students with TableInfo<$StudentsTable, Student> {
         DriftSqlType.string,
         data['${effectivePrefix}uuid'],
       ),
+      progressSentDigest: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}progress_sent_digest'],
+      ),
     );
   }
 
@@ -622,6 +647,11 @@ class Student extends DataClass implements Insertable<Student> {
 
   /// Portable id, the same on every device the Admin's records reach.
   final String? uuid;
+
+  /// Digest of the last progress report the teacher's device confirmed
+  /// (`reportDigest`). While the report built now matches it, the learner's
+  /// progress is with the teacher; otherwise it is only on this device.
+  final String? progressSentDigest;
   const Student({
     required this.id,
     required this.name,
@@ -646,6 +676,7 @@ class Student extends DataClass implements Insertable<Student> {
     this.pinSalt,
     this.pinHash,
     this.uuid,
+    this.progressSentDigest,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -687,6 +718,9 @@ class Student extends DataClass implements Insertable<Student> {
     if (!nullToAbsent || uuid != null) {
       map['uuid'] = Variable<String>(uuid);
     }
+    if (!nullToAbsent || progressSentDigest != null) {
+      map['progress_sent_digest'] = Variable<String>(progressSentDigest);
+    }
     return map;
   }
 
@@ -725,6 +759,9 @@ class Student extends DataClass implements Insertable<Student> {
           ? const Value.absent()
           : Value(pinHash),
       uuid: uuid == null && nullToAbsent ? const Value.absent() : Value(uuid),
+      progressSentDigest: progressSentDigest == null && nullToAbsent
+          ? const Value.absent()
+          : Value(progressSentDigest),
     );
   }
 
@@ -765,6 +802,9 @@ class Student extends DataClass implements Insertable<Student> {
       pinSalt: serializer.fromJson<String?>(json['pinSalt']),
       pinHash: serializer.fromJson<String?>(json['pinHash']),
       uuid: serializer.fromJson<String?>(json['uuid']),
+      progressSentDigest: serializer.fromJson<String?>(
+        json['progressSentDigest'],
+      ),
     );
   }
   @override
@@ -796,6 +836,7 @@ class Student extends DataClass implements Insertable<Student> {
       'pinSalt': serializer.toJson<String?>(pinSalt),
       'pinHash': serializer.toJson<String?>(pinHash),
       'uuid': serializer.toJson<String?>(uuid),
+      'progressSentDigest': serializer.toJson<String?>(progressSentDigest),
     };
   }
 
@@ -823,6 +864,7 @@ class Student extends DataClass implements Insertable<Student> {
     Value<String?> pinSalt = const Value.absent(),
     Value<String?> pinHash = const Value.absent(),
     Value<String?> uuid = const Value.absent(),
+    Value<String?> progressSentDigest = const Value.absent(),
   }) => Student(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -851,6 +893,9 @@ class Student extends DataClass implements Insertable<Student> {
     pinSalt: pinSalt.present ? pinSalt.value : this.pinSalt,
     pinHash: pinHash.present ? pinHash.value : this.pinHash,
     uuid: uuid.present ? uuid.value : this.uuid,
+    progressSentDigest: progressSentDigest.present
+        ? progressSentDigest.value
+        : this.progressSentDigest,
   );
   Student copyWithCompanion(StudentsCompanion data) {
     return Student(
@@ -903,6 +948,9 @@ class Student extends DataClass implements Insertable<Student> {
       pinSalt: data.pinSalt.present ? data.pinSalt.value : this.pinSalt,
       pinHash: data.pinHash.present ? data.pinHash.value : this.pinHash,
       uuid: data.uuid.present ? data.uuid.value : this.uuid,
+      progressSentDigest: data.progressSentDigest.present
+          ? data.progressSentDigest.value
+          : this.progressSentDigest,
     );
   }
 
@@ -931,7 +979,8 @@ class Student extends DataClass implements Insertable<Student> {
           ..write('classGroupId: $classGroupId, ')
           ..write('pinSalt: $pinSalt, ')
           ..write('pinHash: $pinHash, ')
-          ..write('uuid: $uuid')
+          ..write('uuid: $uuid, ')
+          ..write('progressSentDigest: $progressSentDigest')
           ..write(')'))
         .toString();
   }
@@ -961,6 +1010,7 @@ class Student extends DataClass implements Insertable<Student> {
     pinSalt,
     pinHash,
     uuid,
+    progressSentDigest,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -988,7 +1038,8 @@ class Student extends DataClass implements Insertable<Student> {
           other.classGroupId == this.classGroupId &&
           other.pinSalt == this.pinSalt &&
           other.pinHash == this.pinHash &&
-          other.uuid == this.uuid);
+          other.uuid == this.uuid &&
+          other.progressSentDigest == this.progressSentDigest);
 }
 
 class StudentsCompanion extends UpdateCompanion<Student> {
@@ -1015,6 +1066,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
   final Value<String?> pinSalt;
   final Value<String?> pinHash;
   final Value<String?> uuid;
+  final Value<String?> progressSentDigest;
   const StudentsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -1039,6 +1091,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.pinSalt = const Value.absent(),
     this.pinHash = const Value.absent(),
     this.uuid = const Value.absent(),
+    this.progressSentDigest = const Value.absent(),
   });
   StudentsCompanion.insert({
     this.id = const Value.absent(),
@@ -1064,6 +1117,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     this.pinSalt = const Value.absent(),
     this.pinHash = const Value.absent(),
     this.uuid = const Value.absent(),
+    this.progressSentDigest = const Value.absent(),
   }) : name = Value(name);
   static Insertable<Student> custom({
     Expression<int>? id,
@@ -1089,6 +1143,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Expression<String>? pinSalt,
     Expression<String>? pinHash,
     Expression<String>? uuid,
+    Expression<String>? progressSentDigest,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -1118,6 +1173,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       if (pinSalt != null) 'pin_salt': pinSalt,
       if (pinHash != null) 'pin_hash': pinHash,
       if (uuid != null) 'uuid': uuid,
+      if (progressSentDigest != null)
+        'progress_sent_digest': progressSentDigest,
     });
   }
 
@@ -1145,6 +1202,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     Value<String?>? pinSalt,
     Value<String?>? pinHash,
     Value<String?>? uuid,
+    Value<String?>? progressSentDigest,
   }) {
     return StudentsCompanion(
       id: id ?? this.id,
@@ -1173,6 +1231,7 @@ class StudentsCompanion extends UpdateCompanion<Student> {
       pinSalt: pinSalt ?? this.pinSalt,
       pinHash: pinHash ?? this.pinHash,
       uuid: uuid ?? this.uuid,
+      progressSentDigest: progressSentDigest ?? this.progressSentDigest,
     );
   }
 
@@ -1254,6 +1313,9 @@ class StudentsCompanion extends UpdateCompanion<Student> {
     if (uuid.present) {
       map['uuid'] = Variable<String>(uuid.value);
     }
+    if (progressSentDigest.present) {
+      map['progress_sent_digest'] = Variable<String>(progressSentDigest.value);
+    }
     return map;
   }
 
@@ -1282,7 +1344,8 @@ class StudentsCompanion extends UpdateCompanion<Student> {
           ..write('classGroupId: $classGroupId, ')
           ..write('pinSalt: $pinSalt, ')
           ..write('pinHash: $pinHash, ')
-          ..write('uuid: $uuid')
+          ..write('uuid: $uuid, ')
+          ..write('progressSentDigest: $progressSentDigest')
           ..write(')'))
         .toString();
   }
@@ -19061,6 +19124,7 @@ typedef $$StudentsTableCreateCompanionBuilder =
       Value<String?> pinSalt,
       Value<String?> pinHash,
       Value<String?> uuid,
+      Value<String?> progressSentDigest,
     });
 typedef $$StudentsTableUpdateCompanionBuilder =
     StudentsCompanion Function({
@@ -19087,6 +19151,7 @@ typedef $$StudentsTableUpdateCompanionBuilder =
       Value<String?> pinSalt,
       Value<String?> pinHash,
       Value<String?> uuid,
+      Value<String?> progressSentDigest,
     });
 
 class $$StudentsTableFilterComposer
@@ -19210,6 +19275,11 @@ class $$StudentsTableFilterComposer
 
   ColumnFilters<String> get uuid => $composableBuilder(
     column: $table.uuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get progressSentDigest => $composableBuilder(
+    column: $table.progressSentDigest,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -19337,6 +19407,11 @@ class $$StudentsTableOrderingComposer
     column: $table.uuid,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get progressSentDigest => $composableBuilder(
+    column: $table.progressSentDigest,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$StudentsTableAnnotationComposer
@@ -19442,6 +19517,11 @@ class $$StudentsTableAnnotationComposer
 
   GeneratedColumn<String> get uuid =>
       $composableBuilder(column: $table.uuid, builder: (column) => column);
+
+  GeneratedColumn<String> get progressSentDigest => $composableBuilder(
+    column: $table.progressSentDigest,
+    builder: (column) => column,
+  );
 }
 
 class $$StudentsTableTableManager
@@ -19495,6 +19575,7 @@ class $$StudentsTableTableManager
                 Value<String?> pinSalt = const Value.absent(),
                 Value<String?> pinHash = const Value.absent(),
                 Value<String?> uuid = const Value.absent(),
+                Value<String?> progressSentDigest = const Value.absent(),
               }) => StudentsCompanion(
                 id: id,
                 name: name,
@@ -19519,6 +19600,7 @@ class $$StudentsTableTableManager
                 pinSalt: pinSalt,
                 pinHash: pinHash,
                 uuid: uuid,
+                progressSentDigest: progressSentDigest,
               ),
           createCompanionCallback:
               ({
@@ -19545,6 +19627,7 @@ class $$StudentsTableTableManager
                 Value<String?> pinSalt = const Value.absent(),
                 Value<String?> pinHash = const Value.absent(),
                 Value<String?> uuid = const Value.absent(),
+                Value<String?> progressSentDigest = const Value.absent(),
               }) => StudentsCompanion.insert(
                 id: id,
                 name: name,
@@ -19569,6 +19652,7 @@ class $$StudentsTableTableManager
                 pinSalt: pinSalt,
                 pinHash: pinHash,
                 uuid: uuid,
+                progressSentDigest: progressSentDigest,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
