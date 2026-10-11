@@ -90,6 +90,7 @@ part 'otic_database.g.dart';
     RevokedDevices,
     SchoolDevices,
     ChannelReceipts,
+    RemovedSubjects,
   ],
   daos: [
     StudentDao,
@@ -122,7 +123,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 29;
+  int get schemaVersion => 30;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -630,6 +631,12 @@ class OticDatabase extends _$OticDatabase {
         // Durability: the last progress report the teacher confirmed.
         if (!await _columnExists('students', 'progress_sent_digest')) {
           await m.addColumn(students, students.progressSentDigest);
+        }
+      }
+      if (from < 30) {
+        // Built-in subjects the Admin removed.
+        if (!await _tableExists('removed_subjects')) {
+          await m.createTable(removedSubjects);
         }
       }
     },

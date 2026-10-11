@@ -11,7 +11,6 @@ import 'package:ai_connect_africa/features/teacher/teacher_profiles.dart';
 import 'package:ai_connect_africa/memory/session_recall_store.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/learner_data_wiper.dart';
-import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:ai_connect_africa/services/projects/project_store.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -40,7 +39,7 @@ void main() {
     final tmp = await Directory.systemTemp.createTemp('admin_sync');
     admin = AdminService(
       adminDb,
-      CustomSubjectService(adminDb, OfflineStorageService(adminDb)),
+      CustomSubjectService(adminDb),
       LearnerDataWiper(
         adminDb,
         recallStore: SessionRecallStore(directory: tmp),
@@ -129,7 +128,7 @@ void main() {
       final rogue = device();
       await AdminService(
         rogue,
-        CustomSubjectService(rogue, OfflineStorageService(rogue)),
+        CustomSubjectService(rogue),
         LearnerDataWiper(rogue),
       ).setUp(name: 'Rogue', pin: '1111');
       final me = await target.classSyncDao.identity();
@@ -200,7 +199,7 @@ void main() {
       );
       final targetAdmin = AdminService(
         target,
-        CustomSubjectService(target, OfflineStorageService(target)),
+        CustomSubjectService(target),
         LearnerDataWiper(target),
       );
       expect(

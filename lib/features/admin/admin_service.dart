@@ -215,7 +215,8 @@ class AdminService {
   Future<void> renameSubject(AdminSession _, String subjectId, String name) =>
       _subjects.rename(subjectId, name);
 
-  /// Deletes a subject, its materials and its assignments.
+  /// Deletes a subject, its materials and its assignments. A built-in
+  /// subject is hidden instead, and its name is free for the school's own.
   Future<void> deleteSubject(AdminSession _, String subjectId) async {
     final id = normalizeSubjectId(subjectId);
     await (_db.delete(
@@ -224,7 +225,23 @@ class AdminService {
     await (_db.delete(
       _db.noteOwners,
     )..where((t) => t.subjectId.equals(id))).go();
-    await _subjects.delete(id);
+    if (CustomSubjectService.reservedIds.contains(id)) {
+      await _subjects.removeBuiltIn(id);
+    } else {
+      await _subjects.delete(id);
+    }
+  }
+
+  /// Shows a removed built-in subject again. Null when done; else why not.
+  Future<String?> restoreSubject(AdminSession _, String subjectId) async {
+    final id = normalizeSubjectId(subjectId);
+    for (final s in await _subjects.list()) {
+      if (normalizeSubjectId(s.name) == id) {
+        return 'The school already has a subject called "${s.name}".';
+      }
+    }
+    await _subjects.restoreBuiltIn(id);
+    return null;
   }
 
   // ── Teaching assignments ──────────────────────────────────────────────

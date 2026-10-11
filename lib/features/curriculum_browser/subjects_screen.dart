@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
 import '../../curriculum/curriculum_models.dart';
+import '../../curriculum/subject_style.dart';
 import '../../db/otic_database.dart';
 import '../../services/custom_subject_service.dart';
 import '../learn/subject_notes.dart';
@@ -13,24 +14,6 @@ import '../../shared/widgets/studio_page.dart';
 
 class SubjectsScreen extends ConsumerWidget {
   const SubjectsScreen({super.key});
-
-  static const _icons = <String, IconData>{
-    'calculate': Icons.calculate,
-    'science': Icons.science,
-    'biotech': Icons.biotech,
-    'science_outlined': Icons.science_outlined,
-    'code': Icons.code,
-    'web': Icons.web,
-    'phone_android': Icons.phone_android,
-    'psychology': Icons.psychology,
-    'trending_up': Icons.trending_up,
-    'grass': Icons.grass,
-    'history_edu': Icons.history_edu,
-    'public': Icons.public,
-    'menu_book': Icons.menu_book,
-    'account_balance': Icons.account_balance,
-    'palette': Icons.palette,
-  };
 
   static Color _parseColor(String hex) {
     return Color(int.parse(hex.replaceFirst('#', '0xFF')));
@@ -43,6 +26,8 @@ class SubjectsScreen extends ConsumerWidget {
         ref.watch(customSubjectsProvider).valueOrNull ??
         const <CustomSubject>[];
     final classUuid = ref.watch(learnerClassUuidProvider).valueOrNull;
+    final noteCounts =
+        ref.watch(noteCountsProvider).valueOrNull ?? const <String, int>{};
     // The learner's class subjects, as the teacher shared them. Without a
     // class (e.g. on the teacher's own device) the device's own subjects.
     final classIds = {
@@ -98,7 +83,7 @@ class SubjectsScreen extends ConsumerWidget {
                 _grid(context, [
                   for (final x in subjects)
                     if (classIds.contains(x.id)) x,
-                ], cols),
+                ], cols, noteCounts),
               ],
               const SizedBox(height: 20),
               StudioSectionHeader(title: tr(context, 'All subjects')),
@@ -106,7 +91,7 @@ class SubjectsScreen extends ConsumerWidget {
               _grid(context, [
                 for (final x in subjects)
                   if (!classIds.contains(x.id) && !hidden.contains(x.id)) x,
-              ], cols),
+              ], cols, noteCounts),
             ],
           ),
         ),
@@ -114,7 +99,12 @@ class SubjectsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _grid(BuildContext context, List<Subject> subjects, int cols) =>
+  Widget _grid(
+    BuildContext context,
+    List<Subject> subjects,
+    int cols,
+    Map<String, int> noteCounts,
+  ) =>
       GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -129,9 +119,10 @@ class SubjectsScreen extends ConsumerWidget {
           final s = subjects[i];
           return _SubjectCard(
             name: s.name,
-            icon: _icons[s.icon] ?? Icons.menu_book,
+            icon: subjectIcon(s.icon),
             color: _parseColor(s.color),
             lessonCount: s.totalLessons,
+            noteCount: noteCounts[s.id] ?? 0,
             onTap: () => context.push('/learn/subject/${s.id}'),
           );
         },
@@ -144,6 +135,7 @@ class _SubjectCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.lessonCount,
+    required this.noteCount,
     required this.onTap,
   });
 
@@ -151,7 +143,22 @@ class _SubjectCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final int lessonCount;
+
+  /// The teacher's notes in this subject. A school's own subject has no
+  /// built-in lessons, so its notes are what the card counts.
+  final int noteCount;
   final VoidCallback onTap;
+
+  String _counts(BuildContext context) {
+    final notes = noteCount == 1
+        ? tr(context, '1 note')
+        : trFill(context, '{count} notes', {'count': '$noteCount'});
+    if (lessonCount == 0) return notes;
+    final lessons = trFill(context, '{count} lessons', {
+      'count': '$lessonCount',
+    });
+    return noteCount == 0 ? lessons : '$lessons · $notes';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -225,9 +232,7 @@ class _SubjectCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              trFill(context, '{count} lessons', {
-                                'count': '$lessonCount',
-                              }),
+                              _counts(context),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

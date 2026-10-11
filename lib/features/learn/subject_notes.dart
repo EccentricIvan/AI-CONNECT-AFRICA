@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/daos/topic_resource_dao.dart' show kRecordTopicPrefix;
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
+import '../../curriculum/curriculum_models.dart';
+import '../../curriculum/curriculum_provider.dart';
 import '../../services/custom_subject_service.dart';
 import '../../services/notes/note_pdf_store.dart';
 import '../../services/pdf/diagram_detector.dart';
@@ -74,13 +76,49 @@ final learnerNoteSubjectsProvider =
       final ids = await db.topicResourceDao.subjectIdsWithNotes(
         visibleClassUuid: classUuid,
       );
-      final names = {
-        for (final s in await ref.watch(mergedSubjectsProvider.future))
-          s.id: s.name,
-      };
-      return [for (final id in ids) (id, names[id] ?? id)]
+      final byId = await ref.watch(subjectsByIdProvider.future);
+      return [
+        for (final id in ids) (id, byId[id]?.name ?? subjectNameFromId(id)),
+      ]
         ..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
     });
+
+/// How many notes (uploaded files) the active learner may read in each
+/// subject — what the subject's Notes tab lists.
+final noteCountsProvider = FutureProvider.autoDispose<Map<String, int>>((
+  ref,
+) async {
+  final classUuid = await ref.watch(learnerClassUuidProvider.future);
+  final rows = await ref
+      .watch(dbProvider)
+      .topicResourceDao
+      .visibleNoteTitles(visibleClassUuid: classUuid);
+  final titles = <String, Set<String>>{};
+  for (final (subject, document, resource) in rows) {
+    (titles[subject] ??= {}).add(document ?? legacyDocumentTitle(resource));
+  }
+  return {for (final e in titles.entries) e.key: e.value.length};
+});
+
+/// Every subject by id, for its name and card look: the school's and the
+/// built-ins (even ones the Admin removed, so notes received for them still
+/// sit under their subject).
+final subjectsByIdProvider = FutureProvider.autoDispose<Map<String, Subject>>((
+  ref,
+) async {
+  return {
+    for (final s in await ref.watch(allSubjectsProvider.future)) s.id: s,
+    for (final s in await ref.watch(mergedSubjectsProvider.future)) s.id: s,
+  };
+});
+
+/// A readable name for a subject id with no record here, e.g.
+/// `local_farming` → "Local Farming".
+String subjectNameFromId(String id) => id
+    .split('_')
+    .where((w) => w.isNotEmpty)
+    .map((w) => '${w[0].toUpperCase()}${w.substring(1)}')
+    .join(' ');
 
 /// Groups chunk [rows] into notes, oldest first, in upload order.
 Future<List<SubjectNote>> buildSubjectNotes(

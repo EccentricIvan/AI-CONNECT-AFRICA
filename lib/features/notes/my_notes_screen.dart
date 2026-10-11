@@ -7,6 +7,7 @@ import '../../l10n/app_locale.dart';
 import '../../services/notes/note_pdf_store.dart';
 import '../../shared/widgets/responsive.dart';
 import '../../shared/widgets/studio_page.dart';
+import '../learn/subject_badge.dart';
 import '../learn/subject_notes.dart';
 import 'note_access.dart';
 import 'note_pdf_screen.dart';
@@ -80,14 +81,28 @@ class MyNotesScreen extends ConsumerWidget {
                   children: [
                     for (final s in subjects) ...[
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-                        child: Text(
-                          s.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: ac.textPrimary,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(4, 16, 0, 8),
+                        child: Row(
+                          children: [
+                            SubjectBadge(subjectId: s.id, size: 30),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                s.name,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: ac.textPrimary,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => context.push(
+                                '/learn/subject/${Uri.encodeComponent(s.id)}',
+                              ),
+                              child: Text(tr(context, 'Open')),
+                            ),
+                          ],
                         ),
                       ),
                       StudioCard(

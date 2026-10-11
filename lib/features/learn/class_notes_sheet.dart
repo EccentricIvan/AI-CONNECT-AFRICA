@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../l10n/app_locale.dart';
+import '../notes/note_access.dart';
+import 'subject_badge.dart';
 import 'subject_notes.dart';
 
 /// The learner's class notes by subject, from the chat: read a note (PDF
@@ -27,7 +29,17 @@ class _ClassNotesSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ac = AppColors.of(context);
-    final subjects = ref.watch(learnerNoteSubjectsProvider);
+    // Only subjects whose notes this learner may open.
+    final readable = ref.watch(readableNoteSubjectsProvider);
+    final notes = ref.watch(learnerNoteSubjectsProvider);
+    final subjects = readable.isLoading
+        ? const AsyncLoading<List<(String, String)>>()
+        : notes.whenData(
+            (all) => [
+              for (final s in all)
+                if (canReadNotes(readable.valueOrNull ?? const {}, s.$1)) s,
+            ],
+          );
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(context).height * 0.7,
@@ -57,10 +69,7 @@ class _ClassNotesSheet extends ConsumerWidget {
                   for (final (id, name) in list)
                     ListTile(
                       contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                      leading: const Icon(
-                        Icons.menu_book_rounded,
-                        color: AppColors.primary,
-                      ),
+                      leading: SubjectBadge(subjectId: id),
                       title: Text(name, overflow: TextOverflow.ellipsis),
                       onTap: () => _open(context, id, 0),
                       trailing: Row(

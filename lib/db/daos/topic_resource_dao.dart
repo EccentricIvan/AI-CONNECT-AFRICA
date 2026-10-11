@@ -226,6 +226,30 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
     ];
   }
 
+  /// Every (subject, document title, resource title) a learner in
+  /// [visibleClassUuid] may read, one row per note section. Quiz and other
+  /// record rows are left out; a PDF-only note's marker row counts.
+  Future<List<(String, String?, String)>> visibleNoteTitles({
+    String? visibleClassUuid,
+  }) async {
+    final t = topicResources;
+    final q = selectOnly(t, distinct: true)
+      ..addColumns([t.subjectId, t.documentTitle, t.resourceTitle])
+      ..where(_visibleTo(t, visibleClassUuid))
+      ..where(
+        t.topicKey.like('$kRecordTopicPrefix%').not() |
+            t.topicKey.equals(kPdfMarkerTopicKey),
+      );
+    return [
+      for (final r in await q.get())
+        (
+          r.read(t.subjectId)!,
+          r.read(t.documentTitle),
+          r.read(t.resourceTitle)!,
+        ),
+    ];
+  }
+
   /// Subjects with at least one note a learner in [visibleClassUuid] may
   /// read — a PDF-only note's marker row counts.
   Future<List<String>> subjectIdsWithNotes({String? visibleClassUuid}) async {

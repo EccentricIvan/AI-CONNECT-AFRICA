@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 
+import '../../curriculum/curriculum_provider.dart' show CurriculumService;
+import '../../curriculum/subject_style.dart';
 import '../../db/otic_database.dart';
 import '../../features/teacher/teaching_scope.dart';
 import '../sync/class_crypto.dart';
@@ -114,6 +116,10 @@ class AdminRecords {
                 'icon': s.icon,
                 'color': s.color,
               },
+          ],
+          'removed_subjects': [
+            for (final r in await _db.select(_db.removedSubjects).get())
+              r.subjectId,
           ],
           'assignments': [
             for (final a in await _db.select(_db.teachingAssignments).get())
@@ -307,10 +313,11 @@ class AdminRecords {
       for (final s in _maps(r['subjects'])) {
         final id = s['id'], name = s['name'];
         if (id is! String || name is! String) continue;
+        final style = subjectStyleFor(name);
         final values = CustomSubjectsCompanion(
           name: Value(name),
-          icon: Value(s['icon'] as String? ?? 'menu_book'),
-          color: Value(s['color'] as String? ?? '#4F46E5'),
+          icon: Value(s['icon'] as String? ?? style.icon),
+          color: Value(s['color'] as String? ?? style.color),
           classGroupUuid: const Value(null),
         );
         final existing = await _db.customSubjectDao.bySubjectId(id);
@@ -327,6 +334,24 @@ class AdminRecords {
           await (_db.update(
             _db.customSubjects,
           )..where((x) => x.id.equals(existing.id))).write(values);
+        }
+      }
+
+      // Removed built-in subjects: replaced whole. Records from an older
+      // build don't carry the list and leave it alone.
+      final removed = r['removed_subjects'];
+      if (removed is List) {
+        await _db.delete(_db.removedSubjects).go();
+        for (final id in removed.whereType<String>()) {
+          if (!CurriculumService.bundledSubjectIds.contains(id)) continue;
+          await _db
+              .into(_db.removedSubjects)
+              .insertOnConflictUpdate(
+                RemovedSubjectsCompanion.insert(
+                  subjectId: id,
+                  removedAt: DateTime.now().toUtc().toIso8601String(),
+                ),
+              );
         }
       }
 

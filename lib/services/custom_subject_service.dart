@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../curriculum/curriculum_models.dart';
 import '../curriculum/curriculum_provider.dart';
-import '../db/daos/topic_resource_dao.dart';
+import '../curriculum/subject_style.dart';
 import '../db/otic_database.dart';
 import '../db/providers/db_provider.dart';
 import 'offline_storage_service.dart';
@@ -17,19 +17,16 @@ import 'resource_text_extractor.dart';
 /// reads, writes or shadows `assets/curriculum/*.json`, and [CurriculumService]
 /// is untouched. A custom subject is simply appended to the browse grid.
 ///
-/// ## Where a custom subject's lessons come from
+/// ## Where a custom subject's content comes from
 ///
 /// A bundled subject's teaching content is its JSON. A custom subject has no
-/// JSON, so its content is **synthesized from the resources the teacher
-/// uploaded** — see [buildCustomSubject]. Each imported document section
-/// becomes a [Lesson], grouped into a [Unit] per school term. That is what lets
-/// a teacher-made subject flow through the existing browse → open → read
-/// screens without a single new widget.
+/// JSON: its content is the notes teachers uploaded into it, shown one per
+/// file on the subject's Notes tab, with a Quiz written from them — see
+/// [buildCustomSubject].
 class CustomSubjectService {
-  CustomSubjectService(this._db, this._storage);
+  CustomSubjectService(this._db);
 
   final OticDatabase _db;
-  final OfflineStorageService _storage;
 
   /// Ids that may not be taken, because a bundled subject already owns them.
   ///
@@ -39,15 +36,12 @@ class CustomSubjectService {
   /// happened to prefer.
   static const reservedIds = CurriculumService.bundledSubjectIds;
 
-  /// Creates a subject from a teacher-typed [name].
+  /// Creates a subject from a teacher-typed [name], with a card icon and
+  /// colour picked from the name ([subjectStyleFor]).
   ///
   /// Returns the new subject id, or a [CustomSubjectError] describing why not
   /// — an empty name, or a name that collides with something that exists.
-  Future<CustomSubjectResult> create({
-    required String name,
-    String icon = 'menu_book',
-    String color = '#4F46E5',
-  }) async {
+  Future<CustomSubjectResult> create({required String name}) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) {
       return const CustomSubjectResult.failed('Give the subject a name.');
@@ -56,16 +50,21 @@ class CustomSubjectService {
       return const CustomSubjectResult.failed('That name is too long.');
     }
 
-    final id = normalizeSubjectId(trimmed);
+    var id = normalizeSubjectId(trimmed);
     if (id.isEmpty) {
       return const CustomSubjectResult.failed(
         'Use letters or numbers in the subject name.',
       );
     }
     if (reservedIds.contains(id)) {
-      return CustomSubjectResult.failed(
-        'There is already a subject called "$trimmed".',
-      );
+      if (!(await removedBuiltIns()).contains(id)) {
+        return CustomSubjectResult.failed(
+          'There is already a subject called "$trimmed".',
+        );
+      }
+      // The built-in was removed: the name is free, but its id stays the
+      // built-in's (lesson progress and class sync key on it).
+      id = '${id}_school';
     }
     if (await _db.customSubjectDao.exists(id)) {
       return CustomSubjectResult.failed(
@@ -74,11 +73,15 @@ class CustomSubjectService {
     }
 
     try {
+      final style = subjectStyleFor(
+        trimmed,
+        taken: [for (final s in await list()) s.color],
+      );
       await _db.customSubjectDao.insertSubject(
         subjectId: id,
         name: trimmed,
-        icon: icon,
-        color: color,
+        icon: style.icon,
+        color: style.color,
       );
       return CustomSubjectResult(subjectId: id);
     } catch (e) {
@@ -113,8 +116,51 @@ class CustomSubjectService {
   Future<void> rename(String subjectId, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
-    await _db.customSubjectDao.rename(normalizeSubjectId(subjectId), trimmed);
+    final id = normalizeSubjectId(subjectId);
+    final style = subjectStyleFor(
+      trimmed,
+      taken: [
+        for (final s in await list())
+          if (s.subjectId != id) s.color,
+      ],
+    );
+    await _db.customSubjectDao.rename(id, trimmed, style: style);
   }
+
+  /// Built-in subjects the Admin removed.
+  Future<Set<String>> removedBuiltIns() async {
+    try {
+      return {
+        for (final r in await _db.select(_db.removedSubjects).get())
+          r.subjectId,
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Hides built-in [subjectId] and deletes what was uploaded into it.
+  Future<void> removeBuiltIn(String subjectId) async {
+    final id = normalizeSubjectId(subjectId);
+    if (!reservedIds.contains(id)) return;
+    await _db.transaction(() async {
+      await _db.topicResourceDao.deleteBySubject(id);
+      await _db
+          .into(_db.removedSubjects)
+          .insertOnConflictUpdate(
+            RemovedSubjectsCompanion.insert(
+              subjectId: id,
+              removedAt: DateTime.now().toUtc().toIso8601String(),
+            ),
+          );
+    });
+  }
+
+  /// Shows built-in [subjectId] again.
+  Future<void> restoreBuiltIn(String subjectId) =>
+      (_db.delete(_db.removedSubjects)
+            ..where((t) => t.subjectId.equals(normalizeSubjectId(subjectId))))
+          .go();
 
   /// Removes a subject **and** everything uploaded into it, in one
   /// transaction — a subject that vanished while its material stayed behind
@@ -132,59 +178,24 @@ class CustomSubjectService {
     final id = normalizeSubjectId(subjectId);
     final row = await find(id);
     if (row == null) return null;
-    final resources = await _storage.listResources(subjectId: id);
-    return buildCustomSubject(row, resources);
+    return buildCustomSubject(row);
   }
 }
 
-/// Assembles a [Subject] from a custom subject row and its uploaded material.
+/// Assembles a [Subject] from a custom subject row.
 ///
-/// Pure so it can be tested without a database. Units are school terms, in
-/// order, and only terms that actually have material appear — an empty
-/// "Term 3" heading tells a student nothing.
-Subject buildCustomSubject(
-  CustomSubject row,
-  List<ResourceSummary> resources,
-) {
-  const termOrder = [0, 1, 2, 3];
-  const termNames = {
-    0: 'All terms',
-    1: 'Term 1',
-    2: 'Term 2',
-    3: 'Term 3',
-  };
-
-  final units = <Unit>[];
-  for (final term in termOrder) {
-    // A section whose heading was unreadable folds into its document, once.
-    final seen = <String>{};
-    final inTerm = [
-      for (final r in resources.where((r) => r.termMarker == term))
-        if (seen.add(cleanLessonTitle(r.resourceTitle))) r,
-    ];
-    if (inTerm.isEmpty) continue;
-    units.add(
-      Unit(
-        title: termNames[term] ?? 'All terms',
-        lessons: [
-          for (final r in inTerm)
-            Lesson(
-              title: cleanLessonTitle(r.resourceTitle),
-              // The card and reader show the title; the body is retrieved from
-              // topic_resources when the student opens it, so the whole
-              // document is not held in memory just to list it.
-              content: '',
-            ),
-        ],
-      ),
-    );
-  }
-
+/// A school's subject has no built-in lessons: its content is the notes
+/// the teachers uploaded, one per file, on the subject's Notes tab. It used
+/// to list every section of every file as a "lesson", which read as loose
+/// fragments and opened a lesson screen that only knows the built-ins.
+Subject buildCustomSubject(CustomSubject row) {
+  const units = <Unit>[];
+  final style = shownSubjectStyle(row.name, row.icon, row.color);
   return Subject(
     id: row.subjectId,
     name: row.name,
-    icon: row.icon,
-    color: row.color,
+    icon: style.icon,
+    color: style.color,
     units: units,
   );
 }
@@ -215,17 +226,20 @@ class CustomSubjectResult {
 // ── Providers ────────────────────────────────────────────────────────────
 
 final customSubjectServiceProvider = Provider<CustomSubjectService>((ref) {
-  return CustomSubjectService(
-    ref.watch(dbProvider),
-    ref.watch(offlineStorageServiceProvider),
-  );
+  return CustomSubjectService(ref.watch(dbProvider));
 });
 
 final customSubjectsProvider = FutureProvider<List<CustomSubject>>((ref) {
   return ref.watch(customSubjectServiceProvider).list();
 });
 
-/// Every subject the app can show: the 16 bundled ones, then the teacher's.
+/// Built-in subject ids the Admin removed.
+final removedSubjectsProvider = FutureProvider<Set<String>>((ref) {
+  return ref.watch(customSubjectServiceProvider).removedBuiltIns();
+});
+
+/// Every subject the app can show: the bundled ones the Admin kept, then the
+/// school's own.
 ///
 /// This is the provider the browse grid watches. [allSubjectsProvider] — the
 /// bundled-only list — is left exactly as it was, so anything that genuinely
@@ -233,23 +247,28 @@ final customSubjectsProvider = FutureProvider<List<CustomSubject>>((ref) {
 final mergedSubjectsProvider = FutureProvider<List<Subject>>((ref) async {
   final bundled = await ref.watch(allSubjectsProvider.future);
   final custom = await ref.watch(customSubjectsProvider.future);
-  final storage = ref.watch(offlineStorageServiceProvider);
+  final removed = await ref.watch(removedSubjectsProvider.future);
 
-  final built = <Subject>[];
-  for (final row in custom) {
-    final resources = await storage.listResources(subjectId: row.subjectId);
-    built.add(buildCustomSubject(row, resources));
-  }
-  return [...bundled, ...built];
+  final built = [for (final row in custom) buildCustomSubject(row)];
+  return [
+    for (final s in bundled)
+      if (!removed.contains(s.id)) s,
+    ...built,
+  ];
 });
 
 /// One subject by id, bundled or custom.
 ///
 /// The router hands screens a bare id, so resolution has to try both stores.
 /// Bundled wins on a tie, which cannot happen anyway because
-/// [CustomSubjectService.reservedIds] refuses those ids at creation.
-final subjectByIdProvider =
-    FutureProvider.family<Subject?, String>((ref, subjectId) async {
+/// [CustomSubjectService.reservedIds] refuses those ids at creation. A
+/// built-in the Admin removed resolves to nothing.
+final subjectByIdProvider = FutureProvider.family<Subject?, String>((
+  ref,
+  subjectId,
+) async {
+  final removed = await ref.watch(removedSubjectsProvider.future);
+  if (removed.contains(subjectId)) return null;
   final bundled = await ref.watch(curriculumServiceProvider).load(subjectId);
   if (bundled != null) return bundled;
   return ref.watch(customSubjectServiceProvider).buildSubject(subjectId);

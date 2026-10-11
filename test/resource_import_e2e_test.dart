@@ -39,7 +39,7 @@ void main() {
     storage = OfflineStorageService(db);
     rag = OfflineRagService(storage);
     importer = ResourceImportService(storage);
-    subjects = CustomSubjectService(db, storage);
+    subjects = CustomSubjectService(db);
   });
 
   tearDown(() => db.close());
@@ -84,8 +84,8 @@ void main() {
       expect(context.toLowerCase(), contains('salt'));
     });
 
-    test('a created subject is browsable and shows its uploads as lessons',
-        () async {
+    test('a created subject is browsable, with its own card look and no '
+        'section "lessons"', () async {
       final created = await subjects.create(name: 'Local Farming');
       final subjectId = created.subjectId!;
 
@@ -102,29 +102,37 @@ void main() {
       expect(subject, isNotNull);
       expect(subject!.name, 'Local Farming');
       expect(subject.id, subjectId);
-      expect(subject.units, hasLength(1));
-      expect(subject.units.single.title, 'Term 1');
-      expect(subject.totalLessons, 1);
-      expect(subject.units.single.lessons.single.title, 'Soil Preparation');
+      // Its content is its notes, on the Notes tab — not one lesson per
+      // section that opened a screen only built-ins have.
+      expect(subject.units, isEmpty);
+      expect(subject.icon, 'grass');
+      expect(subject.color, isNot('#4F46E5'));
     });
 
-    test('uploads group into units by term', () async {
-      final subjectId = (await subjects.create(name: 'Civics')).subjectId!;
-      await importer.importText(
-        title: 'Term One Notes',
-        content: 'A long enough note about local government structures here.',
-        subjectId: subjectId,
-        termMarker: 1,
-      );
-      await importer.importText(
-        title: 'Term Two Notes',
-        content: 'A long enough note about national government structures.',
-        subjectId: subjectId,
-        termMarker: 2,
-      );
+    test('each subject’s notes stay under that subject, one per file',
+        () async {
+      final farming = (await subjects.create(name: 'Local Farming')).subjectId!;
+      final civics = (await subjects.create(name: 'Civics')).subjectId!;
+      for (final (subject, title, body) in [
+        (farming, 'Soil Preparation', 'Turn the soil before the first rains.'),
+        (farming, 'Planting', 'Plant maize in rows a metre apart each season.'),
+        (civics, 'Local Government', 'A district council makes local bylaws.'),
+      ]) {
+        await importer.importText(
+          title: title,
+          content: '$body $body $body',
+          subjectId: subject,
+          termMarker: 1,
+        );
+      }
 
-      final subject = await subjects.buildSubject(subjectId);
-      expect(subject!.units.map((u) => u.title), ['Term 1', 'Term 2']);
+      final titles = <String, Set<String>>{};
+      for (final (subject, document, resource)
+          in await db.topicResourceDao.visibleNoteTitles()) {
+        (titles[subject] ??= {}).add(document ?? resource);
+      }
+      expect(titles[farming], {'Soil Preparation', 'Planting'});
+      expect(titles[civics], {'Local Government'});
     });
   });
 
@@ -134,6 +142,21 @@ void main() {
       final result = await subjects.create(name: 'Chemistry');
       expect(result.ok, isFalse);
       expect(result.error, contains('already a subject'));
+    });
+
+    test('once the built-in is removed, the school makes its own', () async {
+      await subjects.removeBuiltIn('chemistry');
+      expect(await subjects.removedBuiltIns(), {'chemistry'});
+
+      final result = await subjects.create(name: 'Chemistry');
+      expect(result.ok, isTrue, reason: result.error ?? '');
+      // Never the built-in's id: its lesson progress keys on that.
+      expect(result.subjectId, 'chemistry_school');
+      final row = await subjects.find('chemistry_school');
+      expect(row!.icon, 'science_outlined');
+
+      await subjects.restoreBuiltIn('chemistry');
+      expect(await subjects.removedBuiltIns(), isEmpty);
     });
 
     test('the same custom name cannot be created twice', () async {

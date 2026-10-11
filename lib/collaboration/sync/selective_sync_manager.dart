@@ -7,6 +7,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:http/http.dart' as http;
 
 import '../../curriculum/curriculum_provider.dart' show CurriculumService;
+import '../../curriculum/subject_style.dart';
 import '../../db/otic_database.dart';
 import '../../services/assignments/class_assignments.dart';
 import 'class_crypto.dart';
@@ -113,11 +114,12 @@ List<({String id, String name, String icon, String color})> offeredSubjects(
       continue;
     }
     if (name is! String || name.trim().isEmpty || name.length > 60) continue;
+    final style = subjectStyleFor(name);
     out.add((
       id: id,
       name: name.trim(),
-      icon: icon is String && icon.length <= 40 ? icon : 'menu_book',
-      color: color is String && colorOk.hasMatch(color) ? color : '#4F46E5',
+      icon: icon is String && icon.length <= 40 ? icon : style.icon,
+      color: color is String && colorOk.hasMatch(color) ? color : style.color,
     ));
   }
   return out;

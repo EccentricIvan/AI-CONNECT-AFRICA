@@ -18872,6 +18872,226 @@ class ChannelReceiptsCompanion extends UpdateCompanion<ChannelReceipt> {
   }
 }
 
+class $RemovedSubjectsTable extends RemovedSubjects
+    with TableInfo<$RemovedSubjectsTable, RemovedSubject> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemovedSubjectsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _subjectIdMeta = const VerificationMeta(
+    'subjectId',
+  );
+  @override
+  late final GeneratedColumn<String> subjectId = GeneratedColumn<String>(
+    'subject_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _removedAtMeta = const VerificationMeta(
+    'removedAt',
+  );
+  @override
+  late final GeneratedColumn<String> removedAt = GeneratedColumn<String>(
+    'removed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [subjectId, removedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'removed_subjects';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RemovedSubject> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('subject_id')) {
+      context.handle(
+        _subjectIdMeta,
+        subjectId.isAcceptableOrUnknown(data['subject_id']!, _subjectIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_subjectIdMeta);
+    }
+    if (data.containsKey('removed_at')) {
+      context.handle(
+        _removedAtMeta,
+        removedAt.isAcceptableOrUnknown(data['removed_at']!, _removedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_removedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {subjectId};
+  @override
+  RemovedSubject map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RemovedSubject(
+      subjectId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subject_id'],
+      )!,
+      removedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}removed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RemovedSubjectsTable createAlias(String alias) {
+    return $RemovedSubjectsTable(attachedDatabase, alias);
+  }
+}
+
+class RemovedSubject extends DataClass implements Insertable<RemovedSubject> {
+  final String subjectId;
+
+  /// ISO-8601 UTC.
+  final String removedAt;
+  const RemovedSubject({required this.subjectId, required this.removedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['subject_id'] = Variable<String>(subjectId);
+    map['removed_at'] = Variable<String>(removedAt);
+    return map;
+  }
+
+  RemovedSubjectsCompanion toCompanion(bool nullToAbsent) {
+    return RemovedSubjectsCompanion(
+      subjectId: Value(subjectId),
+      removedAt: Value(removedAt),
+    );
+  }
+
+  factory RemovedSubject.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RemovedSubject(
+      subjectId: serializer.fromJson<String>(json['subjectId']),
+      removedAt: serializer.fromJson<String>(json['removedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'subjectId': serializer.toJson<String>(subjectId),
+      'removedAt': serializer.toJson<String>(removedAt),
+    };
+  }
+
+  RemovedSubject copyWith({String? subjectId, String? removedAt}) =>
+      RemovedSubject(
+        subjectId: subjectId ?? this.subjectId,
+        removedAt: removedAt ?? this.removedAt,
+      );
+  RemovedSubject copyWithCompanion(RemovedSubjectsCompanion data) {
+    return RemovedSubject(
+      subjectId: data.subjectId.present ? data.subjectId.value : this.subjectId,
+      removedAt: data.removedAt.present ? data.removedAt.value : this.removedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemovedSubject(')
+          ..write('subjectId: $subjectId, ')
+          ..write('removedAt: $removedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(subjectId, removedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RemovedSubject &&
+          other.subjectId == this.subjectId &&
+          other.removedAt == this.removedAt);
+}
+
+class RemovedSubjectsCompanion extends UpdateCompanion<RemovedSubject> {
+  final Value<String> subjectId;
+  final Value<String> removedAt;
+  final Value<int> rowid;
+  const RemovedSubjectsCompanion({
+    this.subjectId = const Value.absent(),
+    this.removedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  RemovedSubjectsCompanion.insert({
+    required String subjectId,
+    required String removedAt,
+    this.rowid = const Value.absent(),
+  }) : subjectId = Value(subjectId),
+       removedAt = Value(removedAt);
+  static Insertable<RemovedSubject> custom({
+    Expression<String>? subjectId,
+    Expression<String>? removedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (subjectId != null) 'subject_id': subjectId,
+      if (removedAt != null) 'removed_at': removedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  RemovedSubjectsCompanion copyWith({
+    Value<String>? subjectId,
+    Value<String>? removedAt,
+    Value<int>? rowid,
+  }) {
+    return RemovedSubjectsCompanion(
+      subjectId: subjectId ?? this.subjectId,
+      removedAt: removedAt ?? this.removedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (subjectId.present) {
+      map['subject_id'] = Variable<String>(subjectId.value);
+    }
+    if (removedAt.present) {
+      map['removed_at'] = Variable<String>(removedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemovedSubjectsCompanion(')
+          ..write('subjectId: $subjectId, ')
+          ..write('removedAt: $removedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OticDatabase extends GeneratedDatabase {
   _$OticDatabase(QueryExecutor e) : super(e);
   $OticDatabaseManager get managers => $OticDatabaseManager(this);
@@ -18932,6 +19152,9 @@ abstract class _$OticDatabase extends GeneratedDatabase {
   late final $RevokedDevicesTable revokedDevices = $RevokedDevicesTable(this);
   late final $SchoolDevicesTable schoolDevices = $SchoolDevicesTable(this);
   late final $ChannelReceiptsTable channelReceipts = $ChannelReceiptsTable(
+    this,
+  );
+  late final $RemovedSubjectsTable removedSubjects = $RemovedSubjectsTable(
     this,
   );
   late final Index idxTopicResourcesLookup = Index(
@@ -19077,6 +19300,7 @@ abstract class _$OticDatabase extends GeneratedDatabase {
     revokedDevices,
     schoolDevices,
     channelReceipts,
+    removedSubjects,
     idxTopicResourcesLookup,
     idxTopicResourcesTitle,
     idxCustomSubjectsSubjectId,
@@ -28573,6 +28797,155 @@ typedef $$ChannelReceiptsTableProcessedTableManager =
       ChannelReceipt,
       PrefetchHooks Function()
     >;
+typedef $$RemovedSubjectsTableCreateCompanionBuilder =
+    RemovedSubjectsCompanion Function({
+      required String subjectId,
+      required String removedAt,
+      Value<int> rowid,
+    });
+typedef $$RemovedSubjectsTableUpdateCompanionBuilder =
+    RemovedSubjectsCompanion Function({
+      Value<String> subjectId,
+      Value<String> removedAt,
+      Value<int> rowid,
+    });
+
+class $$RemovedSubjectsTableFilterComposer
+    extends Composer<_$OticDatabase, $RemovedSubjectsTable> {
+  $$RemovedSubjectsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RemovedSubjectsTableOrderingComposer
+    extends Composer<_$OticDatabase, $RemovedSubjectsTable> {
+  $$RemovedSubjectsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get subjectId => $composableBuilder(
+    column: $table.subjectId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get removedAt => $composableBuilder(
+    column: $table.removedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RemovedSubjectsTableAnnotationComposer
+    extends Composer<_$OticDatabase, $RemovedSubjectsTable> {
+  $$RemovedSubjectsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get subjectId =>
+      $composableBuilder(column: $table.subjectId, builder: (column) => column);
+
+  GeneratedColumn<String> get removedAt =>
+      $composableBuilder(column: $table.removedAt, builder: (column) => column);
+}
+
+class $$RemovedSubjectsTableTableManager
+    extends
+        RootTableManager<
+          _$OticDatabase,
+          $RemovedSubjectsTable,
+          RemovedSubject,
+          $$RemovedSubjectsTableFilterComposer,
+          $$RemovedSubjectsTableOrderingComposer,
+          $$RemovedSubjectsTableAnnotationComposer,
+          $$RemovedSubjectsTableCreateCompanionBuilder,
+          $$RemovedSubjectsTableUpdateCompanionBuilder,
+          (
+            RemovedSubject,
+            BaseReferences<
+              _$OticDatabase,
+              $RemovedSubjectsTable,
+              RemovedSubject
+            >,
+          ),
+          RemovedSubject,
+          PrefetchHooks Function()
+        > {
+  $$RemovedSubjectsTableTableManager(
+    _$OticDatabase db,
+    $RemovedSubjectsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemovedSubjectsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemovedSubjectsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemovedSubjectsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> subjectId = const Value.absent(),
+                Value<String> removedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => RemovedSubjectsCompanion(
+                subjectId: subjectId,
+                removedAt: removedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String subjectId,
+                required String removedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => RemovedSubjectsCompanion.insert(
+                subjectId: subjectId,
+                removedAt: removedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RemovedSubjectsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OticDatabase,
+      $RemovedSubjectsTable,
+      RemovedSubject,
+      $$RemovedSubjectsTableFilterComposer,
+      $$RemovedSubjectsTableOrderingComposer,
+      $$RemovedSubjectsTableAnnotationComposer,
+      $$RemovedSubjectsTableCreateCompanionBuilder,
+      $$RemovedSubjectsTableUpdateCompanionBuilder,
+      (
+        RemovedSubject,
+        BaseReferences<_$OticDatabase, $RemovedSubjectsTable, RemovedSubject>,
+      ),
+      RemovedSubject,
+      PrefetchHooks Function()
+    >;
 
 class $OticDatabaseManager {
   final _$OticDatabase _db;
@@ -28652,4 +29025,6 @@ class $OticDatabaseManager {
       $$SchoolDevicesTableTableManager(_db, _db.schoolDevices);
   $$ChannelReceiptsTableTableManager get channelReceipts =>
       $$ChannelReceiptsTableTableManager(_db, _db.channelReceipts);
+  $$RemovedSubjectsTableTableManager get removedSubjects =>
+      $$RemovedSubjectsTableTableManager(_db, _db.removedSubjects);
 }

@@ -127,3 +127,20 @@ class NoteOwners extends Table {
   @override
   Set<Column> get primaryKey => {subjectId, documentTitle};
 }
+
+/// Built-in subjects the school's Admin removed. They stay in the app's
+/// assets but are no longer shown, and their names are free for the
+/// school's own subjects. Part of the Admin's records.
+@DataClassName('RemovedSubject')
+class RemovedSubjects extends Table {
+  @override
+  String get tableName => 'removed_subjects';
+
+  TextColumn get subjectId => text()();
+
+  /// ISO-8601 UTC.
+  TextColumn get removedAt => text()();
+
+  @override
+  Set<Column> get primaryKey => {subjectId};
+}

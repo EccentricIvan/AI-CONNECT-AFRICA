@@ -8,7 +8,6 @@ import 'package:ai_connect_africa/features/teacher/teaching_scope.dart';
 import 'package:ai_connect_africa/memory/session_recall_store.dart';
 import 'package:ai_connect_africa/services/custom_subject_service.dart';
 import 'package:ai_connect_africa/services/learner_data_wiper.dart';
-import 'package:ai_connect_africa/services/offline_storage_service.dart';
 import 'package:ai_connect_africa/services/projects/project_store.dart';
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
@@ -31,7 +30,7 @@ void main() {
     final tmp = await Directory.systemTemp.createTemp('policy_test');
     admin = AdminService(
       db,
-      CustomSubjectService(db, OfflineStorageService(db)),
+      CustomSubjectService(db),
       LearnerDataWiper(
         db,
         recallStore: SessionRecallStore(directory: tmp),

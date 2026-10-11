@@ -203,31 +203,57 @@ Future<String?> askTeacherPin(BuildContext context, {required String title}) =>
     _askPin(context, title: title);
 
 Future<String?> _askPin(BuildContext context, {required String title}) async {
-  final controller = TextEditingController();
   final value = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title),
+    builder: (_) => _PinDialog(title: title),
+  );
+  return value?.trim();
+}
+
+/// Owns its text field's controller, so the controller lives until the
+/// dialog has finished closing. Disposing it as soon as `showDialog`
+/// returned crashed the app whenever the screen behind rebuilt during the
+/// closing animation, e.g. to say a PIN was wrong.
+class _PinDialog extends StatefulWidget {
+  const _PinDialog({required this.title});
+
+  final String title;
+
+  @override
+  State<_PinDialog> createState() => _PinDialogState();
+}
+
+class _PinDialogState extends State<_PinDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
         obscureText: true,
         keyboardType: TextInputType.number,
         inputFormatters: kPinInputFormatters,
-        onSubmitted: (v) => Navigator.pop(ctx, v),
+        onSubmitted: (v) => Navigator.pop(context, v),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(ctx),
+          onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(ctx, controller.text),
+          onPressed: () => Navigator.pop(context, _controller.text),
           child: const Text('OK'),
         ),
       ],
-    ),
-  );
-  controller.dispose();
-  return value?.trim();
+    );
+  }
 }

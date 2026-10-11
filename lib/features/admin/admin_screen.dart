@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../collaboration/sync/device_registry.dart';
 import '../../core/theme/app_colors.dart';
+import '../../curriculum/curriculum_models.dart';
+import '../../curriculum/curriculum_provider.dart';
+import '../../curriculum/subject_style.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 import '../../services/custom_subject_service.dart';
@@ -238,6 +241,10 @@ class _Records extends ConsumerWidget {
         ref.watch(_classesProvider).valueOrNull ?? const <ClassGroup>[];
     final subjects =
         ref.watch(_subjectsProvider).valueOrNull ?? const <CustomSubject>[];
+    final removed =
+        ref.watch(removedSubjectsProvider).valueOrNull ?? const <String>{};
+    final builtIns =
+        ref.watch(allSubjectsProvider).valueOrNull ?? const <Subject>[];
     final assignments =
         ref.watch(_assignmentsProvider).valueOrNull ??
         const <TeachingAssignment>[];
@@ -380,7 +387,9 @@ class _Records extends ConsumerWidget {
             if (subjects.isEmpty) const ListTile(title: Text('No subjects')),
             for (final s in subjects)
               ListTile(
-                leading: const Icon(Icons.menu_book_rounded),
+                leading: _SubjectIcon(
+                  shownSubjectStyle(s.name, s.icon, s.color),
+                ),
                 title: Text(s.name),
                 trailing: _Menu({
                   'Rename': () async {
@@ -401,6 +410,43 @@ class _Records extends ConsumerWidget {
                     }
                   },
                 }),
+              ),
+          ],
+        ),
+        const _Title('Built-in subjects'),
+        _Card(
+          children: [
+            for (final s in builtIns)
+              if (!removed.contains(s.id))
+                ListTile(
+                  leading: _SubjectIcon((icon: s.icon, color: s.color)),
+                  title: Text(s.name),
+                  trailing: _Menu({
+                    'Delete': () async {
+                      if (await _confirm(context, 'Delete ${s.name}?')) {
+                        await run(() => admin.deleteSubject(session, s.id));
+                        ref.invalidate(removedSubjectsProvider);
+                      }
+                    },
+                  }),
+                ),
+            if (removed.isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.restore_rounded),
+                title: const Text('Restore'),
+                onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final pick = await _pick<Subject>(context, 'Restore', {
+                    for (final s in builtIns)
+                      if (removed.contains(s.id)) s.name: s,
+                  });
+                  if (pick == null) return;
+                  final error = await admin.restoreSubject(session, pick.id);
+                  ref.invalidate(removedSubjectsProvider);
+                  if (error != null) {
+                    messenger.showSnackBar(SnackBar(content: Text(error)));
+                  }
+                },
               ),
           ],
         ),
@@ -538,51 +584,13 @@ class _Records extends ConsumerWidget {
     WidgetRef ref, {
     ClassGroup? existing,
   }) async {
-    final name = TextEditingController(text: existing?.className ?? '');
-    final stream = TextEditingController(text: existing?.streamName ?? '');
-    final ok = await showDialog<bool>(
+    final result = await showDialog<(String, String)>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(existing == null ? 'New class' : 'Rename class'),
-        content: SizedBox(
-          width: 360,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Class',
-                  hintText: 'e.g. S2',
-                ),
-              ),
-              TextField(
-                controller: stream,
-                decoration: const InputDecoration(
-                  labelText: 'Stream (optional)',
-                  hintText: 'e.g. East',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+      builder: (_) => _ClassDialog(existing: existing),
     );
-    final (c, s) = (name.text.trim(), stream.text.trim());
-    name.dispose();
-    stream.dispose();
-    if (ok != true || c.isEmpty) return;
+    if (result == null) return;
+    final (c, s) = result;
+    if (c.isEmpty) return;
     final admin = ref.read(adminServiceProvider);
     if (existing == null) {
       await admin.addClass(session, className: c, streamName: s);
@@ -842,6 +850,23 @@ class _Card extends StatelessWidget {
 }
 
 /// A row's actions, by label.
+/// A subject's icon in its card colour.
+class _SubjectIcon extends StatelessWidget {
+  const _SubjectIcon(this.style);
+  final SubjectStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color(int.parse(style.color.replaceFirst('#', '0xFF')));
+    return StudioIconChip(
+      icon: subjectIcon(style.icon),
+      color: color,
+      size: 34,
+      radius: 11,
+    );
+  }
+}
+
 class _Menu extends StatelessWidget {
   const _Menu(this.actions);
   final Map<String, Future<void> Function()> actions;
@@ -878,30 +903,10 @@ Future<bool> _confirm(BuildContext context, String message) async =>
     false;
 
 Future<String?> _ask(BuildContext context, String label, String initial) async {
-  final controller = TextEditingController(text: initial);
   final value = await showDialog<String>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      content: TextField(
-        controller: controller,
-        autofocus: true,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(labelText: label),
-        onSubmitted: (v) => Navigator.pop(ctx, v),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(ctx, controller.text),
-          child: const Text('Save'),
-        ),
-      ],
-    ),
+    builder: (_) => _AskDialog(label: label, initial: initial),
   );
-  controller.dispose();
   final trimmed = value?.trim();
   return trimmed == null || trimmed.isEmpty ? null : trimmed;
 }
@@ -923,3 +928,117 @@ Future<T?> _pick<T>(
     ],
   ),
 );
+
+/// One text field. Owns its controller so it outlives the closing
+/// animation (disposing it when `showDialog` returned could crash).
+class _AskDialog extends StatefulWidget {
+  const _AskDialog({required this.label, required this.initial});
+
+  final String label;
+  final String initial;
+
+  @override
+  State<_AskDialog> createState() => _AskDialogState();
+}
+
+class _AskDialogState extends State<_AskDialog> {
+  late final _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(labelText: widget.label),
+        onSubmitted: (v) => Navigator.pop(context, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+/// New class or rename: (class, stream), or null when cancelled.
+class _ClassDialog extends StatefulWidget {
+  const _ClassDialog({this.existing});
+
+  final ClassGroup? existing;
+
+  @override
+  State<_ClassDialog> createState() => _ClassDialogState();
+}
+
+class _ClassDialogState extends State<_ClassDialog> {
+  late final _name = TextEditingController(
+    text: widget.existing?.className ?? '',
+  );
+  late final _stream = TextEditingController(
+    text: widget.existing?.streamName ?? '',
+  );
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _stream.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'New class' : 'Rename class'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Class',
+                hintText: 'e.g. S2',
+              ),
+            ),
+            TextField(
+              controller: _stream,
+              decoration: const InputDecoration(
+                labelText: 'Stream (optional)',
+                hintText: 'e.g. East',
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(
+            context,
+            (_name.text.trim(), _stream.text.trim()),
+          ),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}

@@ -46,9 +46,20 @@ class CustomSubjectDao extends DatabaseAccessor<OticDatabase>
     );
   }
 
-  Future<void> rename(String subjectId, String name) async {
+  /// Renames a subject; [style] restyles its card to match the new name.
+  Future<void> rename(
+    String subjectId,
+    String name, {
+    ({String icon, String color})? style,
+  }) async {
     await (update(customSubjects)..where((t) => t.subjectId.equals(subjectId)))
-        .write(CustomSubjectsCompanion(name: Value(name)));
+        .write(
+          CustomSubjectsCompanion(
+            name: Value(name),
+            icon: style == null ? const Value.absent() : Value(style.icon),
+            color: style == null ? const Value.absent() : Value(style.color),
+          ),
+        );
   }
 
   /// Removes the subject row only. The caller is responsible for its

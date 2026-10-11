@@ -194,6 +194,16 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
     set up as a second Admin.
   - A device whose learners all came from the Admin and where nobody has
     picked themselves yet opens "Who's learning?".
+  - **Subjects (schema 30).** A school subject's card icon and colour are
+    picked from its name, locally (`subject_style.dart`; rows still on the
+    old indigo default are styled from the name on display). The Admin can
+    delete built-in subjects: they are hidden (`removed_subjects`, carried
+    in Admin records) and their name is freed; a school "Chemistry" made
+    after that gets the id `chemistry_school`, never the built-in's id.
+  - A school subject has no Lessons tab: its content is its notes, one
+    per uploaded file on the subject's Notes tab (never per section), and
+    its card counts notes (`noteCountsProvider`). My notes and the chat's
+    class-notes sheet group notes under each subject with its icon/colour.
 - **Class assignments (schema 26).** A teacher adds one in Lesson
   materials; it is a `~assignment` row of a note, so it is signed and goes
   only to the classes the teacher shares it with. Learners answer on

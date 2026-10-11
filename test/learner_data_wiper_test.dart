@@ -489,6 +489,8 @@ void main() {
     const kept = {
       'topic_resources',
       'custom_subjects',
+      // Built-in subjects the Admin removed: the school's, not a learner's.
+      'removed_subjects',
       'class_groups',
       'translation_cache_entries',
       'sync_state',

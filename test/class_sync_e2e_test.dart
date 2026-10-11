@@ -750,10 +750,7 @@ void main() {
 
     test('a class’s students are offered only the subjects taught to it',
         () async {
-      final subjects = CustomSubjectService(
-        teacher,
-        OfflineStorageService(teacher),
-      );
+      final subjects = CustomSubjectService(teacher);
       await subjects.create(name: 'Carpentry');
       await subjects.create(name: 'Fine Art');
       // The Admin assigned a teacher to teach Carpentry to S2 East only.
@@ -780,10 +777,7 @@ void main() {
 
     test('the teacher’s subjects reach students, and follow the teacher’s '
         'edits and removals', () async {
-      final subjects = CustomSubjectService(
-        teacher,
-        OfflineStorageService(teacher),
-      );
+      final subjects = CustomSubjectService(teacher);
       await subjects.create(name: 'Carpentry');
       await subjects.create(name: 'Fine Art');
 
@@ -816,10 +810,7 @@ void main() {
     });
 
     test('a classmate can’t offer subjects', () async {
-      await CustomSubjectService(
-        teacher,
-        OfflineStorageService(teacher),
-      ).create(name: 'Carpentry');
+      await CustomSubjectService(teacher).create(name: 'Carpentry');
       final (a, ma) = await student();
       final ga = await join(ma, east);
       await ma.syncClass(teacher: endpoint, group: ga);
