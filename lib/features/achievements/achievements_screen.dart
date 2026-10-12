@@ -720,10 +720,14 @@ class _QuizScores extends ConsumerWidget {
                     'correct': '${s.lastCorrect}',
                     'total': '${s.lastTotal}',
                   }),
-                  detail: trFill(context, '{subject} · best {pct}%', {
-                    'subject': names[s.subjectId] ?? s.subjectId,
-                    'pct': '${s.bestPercent}',
-                  }),
+                  detail: [
+                    trFill(context, '{subject} · best {pct}%', {
+                      'subject': names[s.subjectId] ?? s.subjectId,
+                      'pct': '${s.bestPercent}',
+                    }),
+                    if (s.lastTutorUsed case final n? when n > 0)
+                      trFill(context, 'tutor used {n}', {'n': '$n'}),
+                  ].join(' · '),
                   ratio: s.lastTotal == 0 ? 0 : s.lastCorrect / s.lastTotal,
                   onTap: () => GoRouter.of(context).push(
                     '/learn/subject/${Uri.encodeComponent(s.subjectId)}?tab=1',

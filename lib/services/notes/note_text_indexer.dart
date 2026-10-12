@@ -85,7 +85,8 @@ class NoteTextIndexer {
       final db = _ref.read(dbProvider);
       final pdfs = await _ref
           .read(notePdfStoreProvider)
-          .recorded(ownOnly: true);
+          // An assignment's PDF is never read into the tutor's notes.
+          .recorded(ownOnly: true, assignments: false);
       for (final p in pdfs) {
         var next = prefs.getInt(nextKey(p));
         if (next == null) {

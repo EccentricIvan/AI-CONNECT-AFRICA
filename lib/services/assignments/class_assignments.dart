@@ -1,19 +1,41 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../collaboration/cloud/cloud_sync.dart';
 import '../../collaboration/sync/sync_ids.dart';
+import '../../db/daos/topic_resource_dao.dart' show kAssignmentRecordTopicKey;
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 
 /// Topic key of a class assignment's row. Like the PDF marker and quiz
 /// rows it is part of a note, so it is signed with the teacher's channel,
 /// shared only with the classes the teacher ticks, and never searched.
-const kAssignmentTopicKey = '~assignment';
+const kAssignmentTopicKey = kAssignmentRecordTopicKey;
 
 /// The answer a learner may send, at most.
 const kMaxAnswerChars = 4000;
+
+/// What a teacher sets: an ordinary assignment, homework, or a holiday
+/// assessment.
+enum AssignmentKind {
+  assignment('Assignment'),
+  homework('Homework'),
+  holiday('Holiday assessment');
+
+  const AssignmentKind(this.label);
+  final String label;
+
+  static AssignmentKind from(Object? name) => values.firstWhere(
+    (k) => k.name == name,
+    orElse: () => AssignmentKind.assignment,
+  );
+}
+
+/// Longest time limit a teacher may set, in minutes (one day).
+const kMaxAssessmentMinutes = 24 * 60;
 
 /// A teacher's assignment to a class: what learners see and answer.
 class ClassAssignment {
@@ -25,6 +47,10 @@ class ClassAssignment {
     required this.maxPoints,
     this.due,
     this.documentTitle = '',
+    this.kind = AssignmentKind.assignment,
+    this.opensAt,
+    this.closesAt,
+    this.minutes,
   });
 
   final String id;
@@ -39,8 +65,49 @@ class ClassAssignment {
   /// The note it travels in.
   final String documentTitle;
 
-  String format() =>
-      '[ASSIGNMENT] ${jsonEncode({'id': id, 'title': title, 'instructions': instructions, 'max': maxPoints, 'due': due})}';
+  final AssignmentKind kind;
+
+  /// It can't be started before [opensAt] or after [closesAt] (UTC); null
+  /// means no limit on that side.
+  final DateTime? opensAt;
+  final DateTime? closesAt;
+
+  /// Time limit from when the learner starts it; null for none.
+  final int? minutes;
+
+  /// Started once, then submitted when the learner is done or the time
+  /// runs out — never answered again.
+  bool get timed => minutes != null || closesAt != null;
+
+  bool notOpenYet(DateTime now) => opensAt != null && now.isBefore(opensAt!);
+  bool closed(DateTime now) => closesAt != null && !now.isBefore(closesAt!);
+
+  /// When an attempt started at [startedAt] must be submitted: the time
+  /// limit or the closing time, whichever comes first. Null when neither.
+  DateTime? deadlineFor(DateTime startedAt) {
+    final byLimit = minutes == null
+        ? null
+        : startedAt.add(Duration(minutes: minutes!));
+    if (byLimit == null) return closesAt;
+    if (closesAt == null) return byLimit;
+    return byLimit.isBefore(closesAt!) ? byLimit : closesAt;
+  }
+
+  /// The signed note row's JSON. New keys are written only when set, so an
+  /// ordinary assignment reads exactly as before.
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'title': title,
+    'instructions': instructions,
+    'max': maxPoints,
+    'due': due,
+    if (kind != AssignmentKind.assignment) 'kind': kind.name,
+    if (opensAt != null) 'opens': opensAt!.toUtc().toIso8601String(),
+    if (closesAt != null) 'closes': closesAt!.toUtc().toIso8601String(),
+    if (minutes != null) 'minutes': minutes,
+  };
+
+  String format() => '[ASSIGNMENT] ${jsonEncode(toJson())}';
 
   static ClassAssignment? parse(TopicResource row) {
     final text = row.contentChunk.trim();
@@ -52,6 +119,9 @@ class ClassAssignment {
       if (id is! String || title is! String || max is! int || max <= 0) {
         return null;
       }
+      DateTime? at(Object? v) =>
+          v is String ? DateTime.tryParse(v)?.toUtc() : null;
+      final mins = j['minutes'];
       return ClassAssignment(
         id: id,
         subjectId: row.subjectId,
@@ -62,6 +132,12 @@ class ClassAssignment {
         maxPoints: max,
         due: j['due'] is String ? j['due'] as String : null,
         documentTitle: row.documentTitle ?? row.resourceTitle,
+        kind: AssignmentKind.from(j['kind']),
+        opensAt: at(j['opens']),
+        closesAt: at(j['closes']),
+        minutes: mins is int && mins > 0 && mins <= kMaxAssessmentMinutes
+            ? mins
+            : null,
       );
     } catch (_) {
       return null;
@@ -77,6 +153,7 @@ class SubmissionPayload {
     required this.subjectId,
     required this.answer,
     required this.createdAt,
+    this.startedAt,
   });
 
   final String uuid;
@@ -85,12 +162,17 @@ class SubmissionPayload {
   final String answer;
   final String createdAt;
 
+  /// When a timed assessment was started; null when untimed.
+  final String? startedAt;
+
   Map<String, Object?> toJson() => {
     'uuid': uuid,
     'assignment': assignmentId,
     'subject': subjectId,
     'answer': answer,
     'created_at': createdAt,
+    // Only when set, so an untimed answer's report reads as before.
+    if (startedAt != null) 'started_at': startedAt,
   };
 
   /// Null when [json] isn't one. Clipped, so a device can't bloat the
@@ -111,6 +193,7 @@ class SubmissionPayload {
         at.length > 40) {
       return null;
     }
+    final started = json['started_at'];
     return SubmissionPayload(
       uuid: uuid,
       assignmentId: a,
@@ -119,6 +202,7 @@ class SubmissionPayload {
           ? answer.substring(0, kMaxAnswerChars)
           : answer,
       createdAt: at,
+      startedAt: started is String && started.length <= 40 ? started : null,
     );
   }
 }
@@ -166,11 +250,24 @@ class GradePayload {
   }
 }
 
+/// Queues a record for the school cloud plug-in (`cloud_sync.dart`).
+typedef CloudRecordSink =
+    Future<void> Function(String kind, String refUuid, {String? recordId});
+
 /// Class assignments, submissions and grades.
 class ClassAssignments {
-  ClassAssignments(this._db);
+  ClassAssignments(this._db, {CloudRecordSink? cloud}) : _cloud = cloud;
 
   final OticDatabase _db;
+  final CloudRecordSink? _cloud;
+
+  Future<void> _queue(String kind, String uuid, {String? recordId}) async {
+    try {
+      await _cloud?.call(kind, uuid, recordId: recordId);
+    } catch (_) {
+      // The outbox is best-effort; the local record is what counts.
+    }
+  }
 
   // ── Teacher ───────────────────────────────────────────────────────────
 
@@ -184,10 +281,20 @@ class ClassAssignments {
     required int maxPoints,
     String? due,
     int termMarker = 0,
+    AssignmentKind kind = AssignmentKind.assignment,
+    DateTime? opensAt,
+    DateTime? closesAt,
+    int? minutes,
   }) async {
     final t = title.trim();
     if (t.isEmpty || maxPoints <= 0) return null;
-    final documentTitle = 'Assignment — $t';
+    if (opensAt != null && closesAt != null && !closesAt.isAfter(opensAt)) {
+      return null;
+    }
+    if (minutes != null && (minutes <= 0 || minutes > kMaxAssessmentMinutes)) {
+      return null;
+    }
+    final documentTitle = '${kind.label} — $t';
     final a = ClassAssignment(
       id: newSyncId(),
       subjectId: subjectId,
@@ -195,6 +302,10 @@ class ClassAssignments {
       instructions: instructions.trim(),
       maxPoints: maxPoints,
       due: due,
+      kind: kind,
+      opensAt: opensAt?.toUtc(),
+      closesAt: closesAt?.toUtc(),
+      minutes: minutes,
     );
     final at = DateTime.now().toUtc().toIso8601String();
     await _db
@@ -211,6 +322,7 @@ class ClassAssignments {
             updatedAt: Value(at),
           ),
         );
+    await _queue(CloudKind.assignment, a.id);
     return documentTitle;
   }
 
@@ -231,15 +343,21 @@ class ClassAssignments {
       _db.assignmentSubmissions,
     )..where((t) => t.uuid.equals(submissionUuid))).getSingleOrNull();
     if (row == null) return;
+    final version = row.gradeVersion + 1;
     await (_db.update(
       _db.assignmentSubmissions,
     )..where((t) => t.id.equals(row.id))).write(
       AssignmentSubmissionsCompanion(
         grade: Value(grade),
         feedback: Value(feedback?.trim().isEmpty ?? true ? null : feedback),
-        gradeVersion: Value(row.gradeVersion + 1),
+        gradeVersion: Value(version),
         gradedAt: Value(DateTime.now().toUtc().toIso8601String()),
       ),
+    );
+    await _queue(
+      CloudKind.grade,
+      submissionUuid,
+      recordId: 'grade:$submissionUuid:$version',
     );
   }
 
@@ -268,31 +386,152 @@ class ClassAssignments {
   ];
 
   /// Saves [student]'s answer. A new answer is a new submission; nothing
-  /// earlier is overwritten.
-  Future<void> submit({
+  /// earlier is overwritten. A timed assessment takes one submission only,
+  /// stamped with when its attempt started, and [auto] (time ran out)
+  /// submits even an empty answer so the teacher sees it was not done.
+  /// Returns false when nothing was saved.
+  Future<bool> submit({
     required Student student,
     required ClassAssignment assignment,
     required String answer,
     required String memberKey,
+    bool auto = false,
+    DateTime? now,
   }) async {
     final text = answer.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty && !auto) return false;
+    final at = now ?? DateTime.now();
+    String? startedAt;
+    if (assignment.timed) {
+      if (await _submitted(student.id, assignment.id)) return false;
+      final attempt = await this.attempt(student.id, assignment.id);
+      // Closed and never started: nothing to hand in.
+      if (attempt == null && assignment.closed(at)) return false;
+      startedAt = attempt?.startedAt ?? at.toUtc().toIso8601String();
+    }
+    final uuid = newSyncId();
+    await _db.transaction(() async {
+      await _db
+          .into(_db.assignmentSubmissions)
+          .insert(
+            AssignmentSubmissionsCompanion.insert(
+              uuid: uuid,
+              assignmentId: assignment.id,
+              subjectId: assignment.subjectId,
+              studentId: Value(student.id),
+              memberKey: memberKey,
+              learnerName: student.name,
+              answer: text.length > kMaxAnswerChars
+                  ? text.substring(0, kMaxAnswerChars)
+                  : text,
+              createdAt: at.toUtc().toIso8601String(),
+              startedAt: Value(startedAt),
+            ),
+          );
+      await (_db.delete(_db.assignmentAttempts)..where(
+            (t) =>
+                t.studentId.equals(student.id) &
+                t.assignmentId.equals(assignment.id),
+          ))
+          .go();
+    });
+    await _queue(CloudKind.submission, uuid);
+    return true;
+  }
+
+  Future<bool> _submitted(int studentId, String assignmentId) async =>
+      (await (_db.select(_db.assignmentSubmissions)
+            ..where((t) => t.studentId.equals(studentId))
+            ..where((t) => t.assignmentId.equals(assignmentId))
+            ..limit(1))
+          .getSingleOrNull()) !=
+      null;
+
+  // ── Timed assessments ─────────────────────────────────────────────────
+
+  /// [studentId]'s attempt in progress at [assignmentId], if any.
+  Future<AssignmentAttempt?> attempt(int studentId, String assignmentId) =>
+      (_db.select(_db.assignmentAttempts)
+            ..where((t) => t.studentId.equals(studentId))
+            ..where((t) => t.assignmentId.equals(assignmentId)))
+          .getSingleOrNull();
+
+  Stream<List<AssignmentAttempt>> watchAttempts(int studentId) => (_db.select(
+    _db.assignmentAttempts,
+  )..where((t) => t.studentId.equals(studentId))).watch();
+
+  /// Starts the clock, once. Returns the attempt, or null when it can't be
+  /// started now (not open yet, closed, or already handed in).
+  Future<AssignmentAttempt?> start(
+    int studentId,
+    ClassAssignment assignment, {
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final existing = await attempt(studentId, assignment.id);
+    if (existing != null) return existing;
+    if (assignment.notOpenYet(at) || assignment.closed(at)) return null;
+    if (await _submitted(studentId, assignment.id)) return null;
     await _db
-        .into(_db.assignmentSubmissions)
+        .into(_db.assignmentAttempts)
         .insert(
-          AssignmentSubmissionsCompanion.insert(
-            uuid: newSyncId(),
+          AssignmentAttemptsCompanion.insert(
+            studentId: studentId,
             assignmentId: assignment.id,
-            subjectId: assignment.subjectId,
-            studentId: Value(student.id),
-            memberKey: memberKey,
-            learnerName: student.name,
-            answer: text.length > kMaxAnswerChars
-                ? text.substring(0, kMaxAnswerChars)
-                : text,
-            createdAt: DateTime.now().toUtc().toIso8601String(),
+            startedAt: at.toUtc().toIso8601String(),
           ),
+          mode: InsertMode.insertOrIgnore,
         );
+    return attempt(studentId, assignment.id);
+  }
+
+  /// Keeps what the learner has typed so far.
+  Future<void> saveDraft(int studentId, String assignmentId, String draft) =>
+      (_db.update(_db.assignmentAttempts)
+            ..where((t) => t.studentId.equals(studentId))
+            ..where((t) => t.assignmentId.equals(assignmentId)))
+          .write(
+            AssignmentAttemptsCompanion(
+              draft: Value(
+                draft.length > kMaxAnswerChars
+                    ? draft.substring(0, kMaxAnswerChars)
+                    : draft,
+              ),
+            ),
+          );
+
+  /// Hands in every attempt of [student] whose time has run out, as its
+  /// draft stands — e.g. after the app was closed mid-assessment. Returns
+  /// how many.
+  Future<int> submitExpired({
+    required Student student,
+    required List<ClassAssignment> assignments,
+    required String memberKey,
+    DateTime? now,
+  }) async {
+    final at = now ?? DateTime.now();
+    final byId = {for (final a in assignments) a.id: a};
+    var n = 0;
+    for (final a in await (_db.select(
+      _db.assignmentAttempts,
+    )..where((t) => t.studentId.equals(student.id))).get()) {
+      final assignment = byId[a.assignmentId];
+      final started = DateTime.tryParse(a.startedAt);
+      if (assignment == null || started == null) continue;
+      final deadline = assignment.deadlineFor(started);
+      if (deadline == null || at.isBefore(deadline)) continue;
+      if (await submit(
+        student: student,
+        assignment: assignment,
+        answer: a.draft,
+        memberKey: memberKey,
+        auto: true,
+        now: deadline,
+      )) {
+        n++;
+      }
+    }
+    return n;
   }
 
   Stream<List<AssignmentSubmission>> watchMine(int studentId) =>
@@ -326,6 +565,7 @@ class ClassAssignments {
           subjectId: r.subjectId,
           answer: r.answer,
           createdAt: r.createdAt,
+          startedAt: r.startedAt,
         ),
     ];
   }
@@ -378,9 +618,11 @@ class ClassAssignments {
                 learnerName: learnerName,
                 answer: s.answer,
                 createdAt: s.createdAt,
+                startedAt: Value(s.startedAt),
                 receivedAt: Value(DateTime.now().toUtc().toIso8601String()),
               ),
             );
+        await _queue(CloudKind.submission, s.uuid);
         continue;
       }
       // Never another learner's row, and never a new answer in an old one.
@@ -463,6 +705,13 @@ class ClassAssignments {
   }
 }
 
-final classAssignmentsProvider = Provider<ClassAssignments>(
-  (ref) => ClassAssignments(ref.watch(dbProvider)),
-);
+final classAssignmentsProvider = Provider<ClassAssignments>((ref) {
+  final outbox = ref.watch(cloudOutboxProvider);
+  return ClassAssignments(
+    ref.watch(dbProvider),
+    cloud: (kind, uuid, {recordId}) async {
+      await outbox.enqueue(kind, uuid, recordId: recordId);
+      unawaited(outbox.flush());
+    },
+  );
+});

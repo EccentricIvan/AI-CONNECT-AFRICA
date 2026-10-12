@@ -6,6 +6,7 @@ import '../otic_database.dart';
 import '../../memory/session_recall_store.dart';
 import '../../services/academic_score_tracker_repository.dart';
 import '../../services/learner_data_wiper.dart';
+import '../../services/learning/tutor_use.dart';
 
 // ── Database singleton ────────────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ class StudentNotifier extends AsyncNotifier<Student?> {
   }
 
   Future<void> _rememberActive(int id) async {
+    ref.read(tutorLastReplyProvider.notifier).state = null;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(kActiveStudentIdKey, id);

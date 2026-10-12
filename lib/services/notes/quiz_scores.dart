@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 
+/// One topic's part of a round: (correct, answered, answered with the
+/// tutor used).
+typedef QuizTopicTally = (int, int, int);
+
 /// A learner's results on one topic: the latest round and the best one.
 class TopicQuizScore {
   const TopicQuizScore({
@@ -14,6 +18,7 @@ class TopicQuizScore {
     required this.bestPercent,
     required this.rounds,
     required this.lastAt,
+    this.lastTutorUsed,
   });
 
   final String subjectId;
@@ -23,6 +28,10 @@ class TopicQuizScore {
   final int bestPercent;
   final int rounds;
   final DateTime lastAt;
+
+  /// Answers in the latest round given after the tutor replied; null for
+  /// a round saved before this was recorded (unknown, not none).
+  final int? lastTutorUsed;
 }
 
 /// Quiz results per learner and topic (`quiz_results`).
@@ -31,12 +40,12 @@ class QuizScores {
 
   final OticDatabase _db;
 
-  /// Records one finished round: [byTopic] maps each topic in it to
-  /// (correct, total).
+  /// Records one finished round: [byTopic] maps each topic in it to its
+  /// [QuizTopicTally].
   Future<void> record({
     required int studentId,
     required String subjectId,
-    required Map<String, (int, int)> byTopic,
+    required Map<String, QuizTopicTally> byTopic,
     DateTime? at,
   }) async {
     final stamp = (at ?? DateTime.now()).toUtc().toIso8601String();
@@ -50,6 +59,7 @@ class QuizScores {
               topic: e.key,
               correct: e.value.$1,
               total: e.value.$2,
+              tutorUsed: Value(e.value.$3),
               takenAt: stamp,
             ),
       ]),
@@ -81,6 +91,7 @@ class QuizScores {
               .reduce((a, b) => a > b ? a : b),
           rounds: e.value.length,
           lastAt: DateTime.tryParse(e.value.last.takenAt) ?? DateTime(0),
+          lastTutorUsed: e.value.last.tutorUsed,
         ),
     ]..sort((a, b) => b.lastAt.compareTo(a.lastAt));
     return out;

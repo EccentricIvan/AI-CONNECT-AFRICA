@@ -279,19 +279,19 @@ void main() {
     await scores.record(
       studentId: 1,
       subjectId: 'biology',
-      byTopic: {'Cells': (4, 5), 'Tissues': (1, 2)},
+      byTopic: {'Cells': (4, 5, 0), 'Tissues': (1, 2, 0)},
       at: DateTime.utc(2026, 10, 5),
     );
     await scores.record(
       studentId: 1,
       subjectId: 'biology',
-      byTopic: {'Cells': (2, 5)},
+      byTopic: {'Cells': (2, 5, 1)},
       at: DateTime.utc(2026, 10, 6),
     );
     await scores.record(
       studentId: 2,
       subjectId: 'biology',
-      byTopic: {'Cells': (5, 5)},
+      byTopic: {'Cells': (5, 5, 0)},
     );
 
     final mine = await scores.watch(1).first;
@@ -300,5 +300,6 @@ void main() {
     expect((cells.lastCorrect, cells.lastTotal), (2, 5));
     expect(cells.bestPercent, 80);
     expect(cells.rounds, 2);
+    expect(cells.lastTutorUsed, 1);
   });
 }

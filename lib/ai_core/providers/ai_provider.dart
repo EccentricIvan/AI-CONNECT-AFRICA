@@ -40,6 +40,7 @@ import '../../services/afrislm_translation_service.dart';
 import '../../services/ai_coder_service.dart';
 import '../../services/ai_engine_service.dart';
 import '../../services/chat_inference_pipeline.dart';
+import '../../services/learning/tutor_use.dart';
 import '../../services/offline_rag_service.dart';
 import '../../services/qwen_chat_service.dart';
 import '../../services/qwen_reasoning_service.dart';
@@ -888,6 +889,8 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
       final cur = state.valueOrNull;
       if (cur == null || !cur.isGenerating || epoch != _epoch) return;
       state = AsyncData(cur.copyWith(streamingText: cumulative));
+      // The learner reads the reply as it streams.
+      ref.read(tutorLastReplyProvider.notifier).state = DateTime.now();
     }
 
     void pushMath(SchoolMathSolution partial) {
@@ -1044,6 +1047,7 @@ class ChatNotifier extends AsyncNotifier<ChatState> {
         clearError: true,
         clearStreamingMath: true,
       ));
+      ref.read(tutorLastReplyProvider.notifier).state = DateTime.now();
 
       final pipeline = await ref.read(tutorPipelineProvider.future);
       unawaited(_saveSessionSnapshot(

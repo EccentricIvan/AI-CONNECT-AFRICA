@@ -526,6 +526,10 @@ void main() {
       'school_devices',
       // Which note versions member devices hold — class data.
       'channel_receipts',
+      // The cloud plug-in's outbox names records only (kind + uuid); a
+      // wiped learner's records are gone, so their entries are dropped
+      // unsent.
+      'cloud_outbox',
     };
     final actual = db.allTables.map((t) => t.actualTableName).toSet();
     final classified = LearnerDataWiper.wipedTableNames.union(kept);

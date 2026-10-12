@@ -238,7 +238,7 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
       ..where(_visibleTo(t, visibleClassUuid))
       ..where(
         t.topicKey.like('$kRecordTopicPrefix%').not() |
-            t.topicKey.equals(kPdfMarkerTopicKey),
+            (t.topicKey.equals(kPdfMarkerTopicKey) & notAssignmentNote),
       );
     return [
       for (final r in await q.get())
@@ -249,6 +249,17 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
         ),
     ];
   }
+
+  /// True for a `topic_resources` row whose note is not a class assignment
+  /// (no `~assignment` row in the same note). An assignment's PDF holds
+  /// the assessment, so it is never listed or counted as a note.
+  static const notAssignmentNote = CustomExpression<bool>(
+    "NOT EXISTS (SELECT 1 FROM topic_resources a "
+    "WHERE a.topic_key = '$kAssignmentRecordTopicKey' "
+    'AND a.subject_id = topic_resources.subject_id '
+    'AND a.document_title IS topic_resources.document_title '
+    'AND a.class_group_uuid IS topic_resources.class_group_uuid)',
+  );
 
   /// Subjects with at least one note a learner in [visibleClassUuid] may
   /// read — a PDF-only note's marker row counts.
@@ -402,9 +413,7 @@ class TopicResourceDao extends DatabaseAccessor<OticDatabase>
       if (subjectId != null) 'subject_id = ?',
       if (ownOnly) 'class_group_uuid IS NULL',
     ];
-    final where = conditions.isEmpty
-        ? ''
-        : 'WHERE ${conditions.join(' AND ')}';
+    final where = conditions.isEmpty ? '' : 'WHERE ${conditions.join(' AND ')}';
     final rows = await customSelect(
       'SELECT COALESCE(document_title, resource_title) AS resource_title, '
       '       subject_id, MIN(topic_key) AS topic_key, MIN(term_marker) AS term_marker, '
@@ -459,6 +468,9 @@ const kQuizTopicKey = '~quiz';
 /// Every record row (not teaching text) has a topic key starting with this;
 /// the tutor's search and the notes text skip them all.
 const kRecordTopicPrefix = '~';
+
+/// Topic key of a class assignment's row (`kAssignmentTopicKey`).
+const kAssignmentRecordTopicKey = '~assignment';
 
 class ResourceSummary {
   const ResourceSummary({

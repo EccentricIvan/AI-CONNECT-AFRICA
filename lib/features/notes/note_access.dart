@@ -30,7 +30,10 @@ final notePdfAllowedProvider = FutureProvider.autoDispose.family<bool, String>((
   final readable = await ref.watch(readableNoteSubjectsProvider.future);
   if (readable == null) return true;
   final classUuid = await ref.watch(learnerClassUuidProvider.future);
-  for (final p in await ref.watch(notePdfStoreProvider).visibleTo(classUuid)) {
+  for (final p
+      in await ref
+          .watch(notePdfStoreProvider)
+          .visibleTo(classUuid, assignments: true)) {
     if (p.sha256 == sha && readable.contains(p.subjectId)) return true;
   }
   return false;

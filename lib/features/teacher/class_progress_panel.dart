@@ -141,6 +141,11 @@ class _MemberRow extends StatelessWidget {
                 color: AppColors.accentOrange,
               ),
             ),
+          if (r.quizzes.isNotEmpty)
+            Text(
+              'Quizzes: ${r.quizzes.take(4).map(_quiz).join(', ')}',
+              style: TextStyle(fontSize: 12, color: ac.textSecondary),
+            ),
           if (r.topics.isNotEmpty) ...[
             const SizedBox(height: 6),
             Wrap(
@@ -161,6 +166,14 @@ class _MemberRow extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  static String _quiz(
+    ({String subject, String topic, int correct, int total, int? tutorUsed}) q,
+  ) {
+    final used = q.tutorUsed ?? 0;
+    return '${q.topic} ${q.correct}/${q.total}'
+        '${used > 0 ? ' (tutor used $used)' : ''}';
   }
 
   static String _when(String iso) {

@@ -336,8 +336,10 @@ class _QuestionCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final ac = AppColors.of(context);
-    final q = ref.watch(subjectQuizProvider(subjectId)).questions[index];
+    final quiz = ref.watch(subjectQuizProvider(subjectId));
+    final q = quiz.questions[index];
     final answered = chosen != null;
+    final tutorUsed = quiz.tutorUsed.contains(index);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -367,6 +369,27 @@ class _QuestionCard extends ConsumerWidget {
                     ? _OptionState.wrong
                     : _OptionState.idle,
                 onTap: answered ? null : () => _choose(ref, o, o == q.correct),
+              ),
+            if (answered && tutorUsed)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.smart_toy_outlined,
+                      size: 14,
+                      color: AppColors.accentOrange,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      tr(context, 'Tutor used'),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.accentOrange,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             if (answered && q.explanation.isNotEmpty) ...[
               const SizedBox(height: 8),

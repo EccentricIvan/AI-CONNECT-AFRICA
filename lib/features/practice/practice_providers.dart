@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai_core/providers/ai_provider.dart';
 import '../../db/providers/db_provider.dart';
 import '../../gamification/badge_service.dart';
+import '../../services/learning/tutor_use.dart';
 import 'scenario_generator.dart';
 import 'scenario_models.dart';
 
@@ -112,6 +113,7 @@ class ApplyNotifier extends AutoDisposeNotifier<ApplyState> {
         isEvaluating: false,
         scenariosEvaluated: newCount,
       );
+      ref.read(tutorLastReplyProvider.notifier).state = DateTime.now();
 
       final student = await ref.read(activeStudentProvider.future);
       if (student != null) {

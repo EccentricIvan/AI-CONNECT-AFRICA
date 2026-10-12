@@ -40,6 +40,11 @@ class AssignmentSubmissions extends Table {
   /// ISO-8601 UTC: made on the learner's device (its clock).
   TextColumn get createdAt => text()();
 
+  /// ISO-8601 UTC: when the learner started a timed assessment (its
+  /// clock), so the teacher sees how long it took. Null when untimed
+  /// (schema 32).
+  TextColumn get startedAt => text().nullable()();
+
   /// ISO-8601 UTC: reached the teacher's device. Null until then.
   TextColumn get receivedAt => text().nullable()();
 

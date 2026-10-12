@@ -10,6 +10,7 @@ import '../../ai_core/providers/ai_provider.dart';
 import '../../curriculum/curriculum_models.dart';
 import '../../db/providers/db_provider.dart';
 import '../../services/custom_subject_service.dart';
+import '../../services/learning/tutor_use.dart';
 import '../../services/notes/note_quiz_builder.dart';
 import '../../services/notes/quiz_scores.dart';
 import 'subject_notes.dart';
@@ -243,10 +244,19 @@ class SubjectQuizState {
     this.generating = false,
     this.target = 0,
     this.answers = const {},
+    this.shownAt = const [],
+    this.tutorUsed = const {},
     this.error,
   });
 
   final List<QuizQuestion> questions;
+
+  /// When each of [questions] appeared, index for index.
+  final List<DateTime> shownAt;
+
+  /// Answered questions the tutor replied to the learner between the
+  /// question appearing and the answer (`tutor_use.dart`).
+  final Set<int> tutorUsed;
 
   /// The topic of each of [questions], index for index ('' for none).
   final List<String> topics;
@@ -270,13 +280,17 @@ class SubjectQuizState {
   bool get finished =>
       !generating && questions.isNotEmpty && answers.length == questions.length;
 
-  /// Topic → (correct, answered) of this round.
-  Map<String, (int, int)> get scoreByTopic {
-    final out = <String, (int, int)>{};
+  /// Topic → (correct, answered, answered with the tutor used) of this round.
+  Map<String, QuizTopicTally> get scoreByTopic {
+    final out = <String, QuizTopicTally>{};
     for (final e in answers.entries) {
       final t = e.key < topics.length ? topics[e.key] : '';
-      final (c, n) = out[t] ?? (0, 0);
-      out[t] = (c + (questions[e.key].correct == e.value ? 1 : 0), n + 1);
+      final (c, n, a) = out[t] ?? (0, 0, 0);
+      out[t] = (
+        c + (questions[e.key].correct == e.value ? 1 : 0),
+        n + 1,
+        a + (tutorUsed.contains(e.key) ? 1 : 0),
+      );
     }
     return out;
   }
@@ -287,6 +301,8 @@ class SubjectQuizState {
     bool? generating,
     int? target,
     Map<int, int>? answers,
+    List<DateTime>? shownAt,
+    Set<int>? tutorUsed,
     String? error,
     bool clearError = false,
   }) => SubjectQuizState(
@@ -296,6 +312,8 @@ class SubjectQuizState {
     generating: generating ?? this.generating,
     target: target ?? this.target,
     answers: answers ?? this.answers,
+    shownAt: shownAt ?? this.shownAt,
+    tutorUsed: tutorUsed ?? this.tutorUsed,
     error: clearError ? null : error ?? this.error,
   );
 }
@@ -331,6 +349,7 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
         topics: [for (final q in pick) q.topic],
         topic: topic,
         target: pick.length,
+        shownAt: List.filled(pick.length, DateTime.now()),
       );
       return true;
     } catch (e) {
@@ -363,6 +382,7 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
             state = state.copyWith(
               questions: List.of(questions),
               topics: List.filled(questions.length, ''),
+              shownAt: [...state.shownAt, DateTime.now()],
             );
           }
         }
@@ -377,9 +397,14 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
         questions.addAll(bank.take(count));
       }
       if (round != _round) return;
+      final now = DateTime.now();
       state = state.copyWith(
         questions: questions,
         topics: List.filled(questions.length, ''),
+        shownAt: [
+          for (var i = 0; i < questions.length; i++)
+            i < state.shownAt.length ? state.shownAt[i] : now,
+        ],
         generating: false,
         error: questions.isEmpty ? 'No questions available' : null,
       );
@@ -397,7 +422,13 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
 
   void answer(int index, int option) {
     if (state.answers.containsKey(index)) return;
-    state = state.copyWith(answers: {...state.answers, index: option});
+    final shown = index < state.shownAt.length ? state.shownAt[index] : null;
+    final used =
+        shown != null && tutorUsedSince(ref.read(tutorLastReplyProvider), shown);
+    state = state.copyWith(
+      answers: {...state.answers, index: option},
+      tutorUsed: used ? {...state.tutorUsed, index} : null,
+    );
     if (state.finished) unawaited(_record(state));
   }
 
@@ -410,11 +441,11 @@ class SubjectQuizNotifier extends FamilyNotifier<SubjectQuizState, String> {
       if (student == null) return;
       final name =
           (await ref.read(subjectByIdProvider(arg).future))?.name ?? arg;
-      final byTopic = <String, (int, int)>{};
+      final byTopic = <String, QuizTopicTally>{};
       for (final e in done.scoreByTopic.entries) {
         final t = e.key.isEmpty ? name : e.key;
-        final (c, n) = byTopic[t] ?? (0, 0);
-        byTopic[t] = (c + e.value.$1, n + e.value.$2);
+        final (c, n, a) = byTopic[t] ?? (0, 0, 0);
+        byTopic[t] = (c + e.value.$1, n + e.value.$2, a + e.value.$3);
       }
       await ref
           .read(quizScoresProvider)

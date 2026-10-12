@@ -23,7 +23,9 @@ import 'daos/translation_cache_dao.dart';
 import 'daos/website_dao.dart';
 import 'tables/app_builder_projects_table.dart';
 import 'tables/admin_tables.dart';
+import 'tables/assignment_attempts_table.dart';
 import 'tables/assignment_submissions_table.dart';
+import 'tables/cloud_outbox_table.dart';
 import 'tables/assignments_table.dart';
 import 'tables/chat_sessions_table.dart';
 import 'tables/sync_state_table.dart';
@@ -86,6 +88,8 @@ part 'otic_database.g.dart';
     NoteOwners,
     AdminRecordsState,
     AssignmentSubmissions,
+    AssignmentAttempts,
+    CloudOutbox,
     ClassMembers,
     RevokedDevices,
     SchoolDevices,
@@ -123,7 +127,7 @@ class OticDatabase extends _$OticDatabase {
   OticDatabase.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 30;
+  int get schemaVersion => 32;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -637,6 +641,30 @@ class OticDatabase extends _$OticDatabase {
         // Built-in subjects the Admin removed.
         if (!await _tableExists('removed_subjects')) {
           await m.createTable(removedSubjects);
+        }
+      }
+      if (from < 31) {
+        // Quiz answers given after the tutor replied. Additive: older
+        // rounds stay null (unknown).
+        if (!await _columnExists('quiz_results', 'tutor_used')) {
+          await m.addColumn(quizResults, quizResults.tutorUsed);
+        }
+      }
+      if (from < 32) {
+        // Timed assessments (start time, drafts) and the cloud plug-in's
+        // outbox. Additive.
+        if (await _tableExists('assignment_submissions') &&
+            !await _columnExists('assignment_submissions', 'started_at')) {
+          await m.addColumn(
+            assignmentSubmissions,
+            assignmentSubmissions.startedAt,
+          );
+        }
+        for (final (name, create) in [
+          ('assignment_attempts', () => m.createTable(assignmentAttempts)),
+          ('cloud_outbox', () => m.createTable(cloudOutbox)),
+        ]) {
+          if (!await _tableExists(name)) await create();
         }
       }
     },

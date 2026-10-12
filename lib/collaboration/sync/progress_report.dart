@@ -5,6 +5,7 @@ import 'package:drift/drift.dart';
 
 import '../../db/otic_database.dart';
 import '../../services/assignments/class_assignments.dart';
+import '../../services/notes/quiz_scores.dart';
 import 'class_crypto.dart' show signingPublicKey;
 
 /// One learner's progress as their device reports it to the teacher.
@@ -29,7 +30,17 @@ class ProgressReport {
     required this.weaknesses,
     this.enrolled = const [],
     this.submissions = const [],
+    this.quizzes = const [],
   });
+
+  /// The latest quiz round per subject and topic, most recent first: counts
+  /// only, never the questions or answers. [tutorUsed] is how many answers
+  /// came after the tutor replied; null when the round predates that.
+  final List<
+    ({String subject, String topic, int correct, int total, int? tutorUsed})
+  >
+  quizzes;
+  static const maxQuizzes = 20;
 
   /// The learner's answers to the teacher's assignments — sent explicitly
   /// as their work, the one thing they typed that leaves the device.
@@ -84,6 +95,18 @@ class ProgressReport {
     'weaknesses': weaknesses,
     'enrolled': enrolled,
     'submissions': [for (final s in submissions) s.toJson()],
+    // Only when there is one, so reports without quizzes keep their digest.
+    if (quizzes.isNotEmpty)
+      'quizzes': [
+        for (final q in quizzes)
+          {
+            's': q.subject,
+            't': q.topic,
+            'c': q.correct,
+            'n': q.total,
+            if (q.tutorUsed != null) 'a': q.tutorUsed,
+          },
+      ],
   };
 
   /// Reads a report from another device. Null when it isn't one. Every
@@ -138,6 +161,26 @@ class ProgressReport {
           for (final s in subs.take(maxSubmissions))
             ?SubmissionPayload.fromJson(s),
       ],
+      quizzes: [
+        if (json['quizzes'] case final List qs)
+          for (final q in qs.take(maxQuizzes))
+            if (q is Map &&
+                q['s'] is String &&
+                q['t'] is String &&
+                q['c'] is int &&
+                q['n'] is int &&
+                (q['n'] as int) > 0 &&
+                (q['n'] as int) <= 100)
+              (
+                subject: _clip(q['s'] as String),
+                topic: _clip(q['t'] as String),
+                total: q['n'] as int,
+                correct: (q['c'] as int).clamp(0, q['n'] as int),
+                tutorUsed: q['a'] is int
+                    ? (q['a'] as int).clamp(0, q['n'] as int)
+                    : null,
+              ),
+      ],
     );
   }
 
@@ -156,9 +199,21 @@ Future<List<ProgressReport>> buildProgressReports(
   final learners = await (db.select(
     db.students,
   )..where((t) => t.classGroupId.equals(group.id))).get();
-  return [
-    for (final s in learners) await _reportFor(db, group, s, deviceKey),
-  ];
+  // Timed assessments whose time ran out are handed in first, so the
+  // teacher gets them even if the learner never reopened Assignments.
+  final uuid = group.groupUuid;
+  if (uuid != null) {
+    final assignments = ClassAssignments(db);
+    final visible = await assignments.visible(uuid);
+    for (final s in learners) {
+      await assignments.submitExpired(
+        student: s,
+        assignments: visible,
+        memberKey: 'local/${s.id}',
+      );
+    }
+  }
+  return [for (final s in learners) await _reportFor(db, group, s, deviceKey)];
 }
 
 Future<ProgressReport> _reportFor(
@@ -192,6 +247,21 @@ Future<ProgressReport> _reportFor(
     submissions: group.groupUuid == null
         ? const []
         : await ClassAssignments(db).outgoing(s.id, group.groupUuid!),
+    quizzes: [
+      for (final q in QuizScores.summarize(
+        await (db.select(db.quizResults)
+              ..where((t) => t.studentId.equals(s.id))
+              ..orderBy([(t) => OrderingTerm.asc(t.id)]))
+            .get(),
+      ).take(ProgressReport.maxQuizzes))
+        (
+          subject: q.subjectId,
+          topic: q.topic,
+          correct: q.lastCorrect,
+          total: q.lastTotal,
+          tutorUsed: q.lastTutorUsed,
+        ),
+    ],
   );
 }
 
@@ -226,7 +296,12 @@ Future<bool?> progressSent(OticDatabase db, Student student) async {
   if (group == null || !group.joined || group.groupUuid == null) return null;
   final sent = student.progressSentDigest;
   if (sent == null) return false;
-  final report = await _reportFor(db, group, student, await reportDeviceKey(db));
+  final report = await _reportFor(
+    db,
+    group,
+    student,
+    await reportDeviceKey(db),
+  );
   return reportDigest(report) == sent;
 }
 

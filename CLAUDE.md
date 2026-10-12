@@ -40,7 +40,19 @@ Target platforms: Android (4 GB RAM / 32 GB storage minimum), Windows (8 GB RAM)
 
 ## Core Constraint: Offline-First
 
-Every feature must work with zero network connectivity. Before adding any dependency or API call, verify it works fully offline. This means:
+Every feature must work with zero network connectivity. Before adding any dependency or API call, verify it works fully offline.
+
+**Amended 2026-10-12 at the user's request:** the core stays offline and P2P,
+and a school may add an optional **cloud plug-in**: off by default, never
+needed by any feature (`lib/collaboration/cloud/cloud_sync.dart`). Records
+(assignments, answers, grades) are queued in `cloud_outbox` as they are made
+and sent only when a `CloudSyncAdapter` is plugged in by overriding
+`cloudSyncAdapterProvider`. Each record has a stable id (`submission:<uuid>`,
+`grade:<uuid>:<version>`), so the server must treat a repeat as a no-op. An
+outbox row names a record only; its content is read at send time, so a
+deleted record is dropped, not sent. No HTTP client exists yet: it waits
+for the hosted backend's API spec. The rules below apply to everything
+else. This means:
 
 - No calls to OpenAI, Anthropic, Google, or any hosted LLM API
 - No Firebase, Supabase, or cloud sync
@@ -213,6 +225,20 @@ Devices are **shared**: learners take turns on one classroom PC/tablet.
   (a new answer is a new row; created vs received times kept apart);
   grades change only with a higher version; answers to an assignment not
   shared with that class are refused.
+- **Homework, holiday assessments, timing (schema 32).** An assignment
+  has a type (Assignment / Homework / Holiday assessment), an optional
+  opening and closing time, and an optional time limit, all inside its
+  signed JSON (keys written only when set, so plain ones read as before).
+  A PDF can be attached: it becomes the assignment note's original
+  (`NotePdfStore.recordOwn`), so it syncs and opens like any note PDF.
+  - Timed (a limit or a closing time) means one attempt: Start records
+    the time in `assignment_attempts` (with the draft, saved while
+    typing), and it is handed in on Submit or, when the limit or closing
+    time comes first, automatically as the draft stands, stamped at the
+    deadline (`submitExpired`, also run when Assignments opens).
+  - The start time rides the answer to the teacher (`started_at`), who
+    sees started/handed-in times and "late". Times are the learner
+    device's clock.
 - **Roadmap agreed 2026-10-06** (user's P2P/RBAC spec). Done: Admin role,
   teaching assignments and enrolments, one-way Admin sync, assignment
   submission and grade sync, session expiry, tutor sources, the memory
@@ -315,6 +341,16 @@ able to read them as uploaded.
   - Finished rounds are saved per learner and topic in `quiz_results`
     (schema 21, `quiz_scores.dart`) and shown under Quiz scores in
     Achievements.
+  - **Tutor used (schema 31).** An answer given after the tutor replied to
+    the learner (and after the question appeared) is marked "Tutor used"
+    (`tutor_use.dart`: chat replies, including while streaming, and
+    Practice scenario feedback; in memory, cleared on learner switch). It
+    records that they happened together, never that the tutor gave the
+    answer, and can't see help from outside the app, so there is no
+    "without tutor" label. `quiz_results.tutor_used` counts
+    them; null (older rounds) means unknown. The latest round per topic
+    rides the progress report as counts (`quizzes`, only when there are
+    any) to Teacher → Class progress.
 - **Bytes** come from `api/v4/sync/file` (`ClassShareServer._noteFile`).
   - It serves a file only if its marker is in a channel the requester may
     pull.

@@ -21,6 +21,10 @@ class QuizResults extends Table {
   IntColumn get correct => integer()();
   IntColumn get total => integer()();
 
+  /// Of [total], the answers given after the tutor replied to the learner
+  /// (schema 31). Null for rounds saved before that: unknown, not none.
+  IntColumn get tutorUsed => integer().nullable()();
+
   /// ISO-8601 UTC.
   TextColumn get takenAt => text()();
 }

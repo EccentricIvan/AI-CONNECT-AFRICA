@@ -6,7 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../db/daos/topic_resource_dao.dart' show kPdfMarkerTopicKey;
+import '../../db/daos/topic_resource_dao.dart'
+    show kAssignmentRecordTopicKey, kPdfMarkerTopicKey;
 import '../../db/otic_database.dart';
 import '../../db/providers/db_provider.dart';
 
@@ -162,6 +163,7 @@ class NotePdfStore {
     String? subjectId,
     String? classUuid,
     bool ownOnly = false,
+    bool assignments = true,
   }) async {
     final q = _db.select(_db.topicResources)
       ..where((t) => t.topicKey.equals(kPdfMarkerTopic));
@@ -171,22 +173,45 @@ class NotePdfStore {
     } else if (classUuid != null) {
       q.where((t) => t.classGroupUuid.equals(classUuid));
     }
-    return [
+    final pdfs = [
       for (final r in await q.get())
         if (NotePdf.fromRow(r) case final pdf?) pdf,
+    ];
+    if (assignments) return pdfs;
+    // Class assignments' PDFs hold assessments, not notes.
+    final assessed = {
+      for (final r in await (_db.select(
+        _db.topicResources,
+      )..where((t) => t.topicKey.equals(kAssignmentRecordTopicKey))).get())
+        (r.subjectId, r.documentTitle ?? r.resourceTitle, r.classGroupUuid),
+    };
+    return [
+      for (final p in pdfs)
+        if (!assessed.contains((
+          p.subjectId,
+          p.documentTitle,
+          p.classGroupUuid,
+        )))
+          p,
     ];
   }
 
   /// This device's own note PDFs, plus [classUuid]'s received ones —
   /// what a learner in that class may open.
-  Future<List<NotePdf>> visibleTo(String? classUuid) async => [
-    ...await recorded(ownOnly: true),
-    if (classUuid != null) ...await recorded(classUuid: classUuid),
+  /// Assignments' PDFs only with [assignments]: they are opened from the
+  /// assignment, never listed as notes.
+  Future<List<NotePdf>> visibleTo(
+    String? classUuid, {
+    bool assignments = false,
+  }) async => [
+    ...await recorded(ownOnly: true, assignments: assignments),
+    if (classUuid != null)
+      ...await recorded(classUuid: classUuid, assignments: assignments),
   ];
 
   /// The PDF of [documentTitle] that [classUuid]'s learner may open.
   Future<NotePdf?> find(String documentTitle, {String? classUuid}) async {
-    for (final p in await visibleTo(classUuid)) {
+    for (final p in await visibleTo(classUuid, assignments: true)) {
       if (p.documentTitle == documentTitle) return p;
     }
     return null;
