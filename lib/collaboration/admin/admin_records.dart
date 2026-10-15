@@ -302,7 +302,10 @@ class AdminRecords {
                   classKey: Value(classKey),
                 ),
               );
-        } else if (!existing.joined) {
+        } else if (existing.joined) {
+          // Joined through the teacher: keep it, and keep its learners in it.
+          classId[uuid] = existing.id;
+        } else {
           classId[uuid] = existing.id;
           await (_db.update(
             _db.classGroups,

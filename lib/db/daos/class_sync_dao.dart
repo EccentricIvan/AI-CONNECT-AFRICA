@@ -220,6 +220,22 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
     )..where((t) => t.id.equals(group.id))).getSingle();
   }
 
+  /// True when this device serves [groupUuid] to others: it has shared a
+  /// note or served a channel for it. A class row alone (the Admin's records
+  /// put every class on every device) does not make a device its teacher.
+  Future<bool> hostsClass(String groupUuid) async {
+    final shared = await (select(resourceShares)
+          ..where((t) => t.classGroupUuid.equals(groupUuid))
+          ..limit(1))
+        .get();
+    if (shared.isNotEmpty) return true;
+    final served = await (select(servedChannels)
+          ..where((t) => t.classGroupUuid.equals(groupUuid))
+          ..limit(1))
+        .get();
+    return served.isNotEmpty;
+  }
+
   /// Records a class joined from a teacher (student device). Returns null
   /// when this device itself owns a class with that id — it is the teacher.
   Future<ClassGroup?> upsertJoinedClass({
@@ -242,7 +258,9 @@ class ClassSyncDao extends DatabaseAccessor<OticDatabase>
       joined: const Value(true),
     );
     if (existing != null) {
-      if (!existing.joined) return null;
+      // A row the Admin's records created is not "hosted" until something is
+      // shared from it, so a learner's device may still join that class.
+      if (!existing.joined && await hostsClass(groupUuid)) return null;
       await (update(
         classGroups,
       )..where((t) => t.id.equals(existing.id))).write(values);

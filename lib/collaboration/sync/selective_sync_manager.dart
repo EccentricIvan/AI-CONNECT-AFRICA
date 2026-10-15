@@ -337,7 +337,9 @@ class SelectiveSyncManager {
     final me = await _db.classSyncDao.identity();
     // Any device may teach and join classes; just not its own.
     final local = await _db.classGroupDao.findByUuid(uuid);
-    if (local != null && !local.joined) {
+    if (local != null &&
+        !local.joined &&
+        await _db.classSyncDao.hostsClass(uuid)) {
       return const JoinResult.failed('This class was created on this device.');
     }
     if (me.schoolId != null && me.schoolId != schoolId) {
